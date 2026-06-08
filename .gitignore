@@ -1,0 +1,24 @@
+# dependencies
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# local Codex working directories
+/work
+/outputs
+
+# logs and environment files
+*.log
+.env*
+!.env.example
+
+# editors and operating systems
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# TypeScript
+*.tsbuildinfo
