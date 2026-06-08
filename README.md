@@ -2,6 +2,8 @@
 
 Aplicativo web para transformar PNG, JPG, JPEG e WEBP em vetores editáveis para CAD. O mesmo conjunto de contornos é exportado como paths SVG ou entidades `LWPOLYLINE` em DXF, com escala e unidade configuráveis.
 
+**Aplicação em produção:** [vectorcad-converter.vercel.app](https://vectorcad-converter.vercel.app)
+
 ## Tecnologias e escolhas
 
 - **Next.js, React e TypeScript**: interface e rotas de backend em um único projeto.
