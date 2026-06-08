@@ -29,6 +29,10 @@ npm run build
 npm start
 ```
 
+## Deploy na Vercel
+
+O repositório inclui `vercel.json` e está pronto para deploy automático pela integração GitHub da Vercel. Importe o repositório, mantenha o preset **Next.js**, o diretório raiz como `./` e o branch de produção como `main`. Cada push em `main` gera um novo deploy de produção.
+
 ## Como usar
 
 1. Arraste uma imagem para a área de upload ou clique em **Enviar imagem**.
