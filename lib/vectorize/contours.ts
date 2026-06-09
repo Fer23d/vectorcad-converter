@@ -1,3 +1,4 @@
+import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import type { Point, VectorDocument, VectorPath, VectorSettings } from "@/types/vector";
 
 type Segment = [Point, Point];
@@ -21,6 +22,14 @@ export function simplifyPath(points: Point[], tolerance: number): Point[] {
   return [first, last];
 }
 
+function simplifyClosed(points: Point[], tolerance: number) {
+  if (points.length < 6 || tolerance <= 0) return points;
+  const middle = Math.floor(points.length / 2);
+  const left = simplifyPath(points.slice(0, middle + 1), tolerance);
+  const right = simplifyPath([...points.slice(middle), points[0]], tolerance);
+  return [...left.slice(0, -1), ...right.slice(0, -1)];
+}
+
 function polygonArea(points: Point[]) {
   return Math.abs(points.reduce((sum, p, i) => {
     const q = points[(i + 1) % points.length];
@@ -30,20 +39,16 @@ function polygonArea(points: Point[]) {
 
 function stitch(segments: Segment[]): Point[][] {
   const byStart = new Map<string, Segment[]>();
-  for (const s of segments) byStart.set(key(s[0]), [...(byStart.get(key(s[0])) || []), s]);
-  const used = new Set<Segment>();
-  const paths: Point[][] = [];
+  for (const segment of segments) byStart.set(key(segment[0]), [...(byStart.get(key(segment[0])) || []), segment]);
+  const used = new Set<Segment>(), paths: Point[][] = [];
   for (const first of segments) {
     if (used.has(first)) continue;
     used.add(first);
     const path = [first[0], first[1]];
-    let cursor = first[1];
-    while (key(cursor) !== key(path[0])) {
-      const next = (byStart.get(key(cursor)) || []).find(s => !used.has(s));
+    while (key(path[path.length - 1]) !== key(path[0])) {
+      const next = (byStart.get(key(path[path.length - 1])) || []).find(segment => !used.has(segment));
       if (!next) break;
-      used.add(next);
-      path.push(next[1]);
-      cursor = next[1];
+      used.add(next); path.push(next[1]);
     }
     paths.push(path);
   }
@@ -60,20 +65,26 @@ export function vectorizeBitmap(data: Uint8Array, width: number, height: number,
     if (!on(x, y + 1)) segments.push([{ x: x + 1, y: y + 1 }, { x, y: y + 1 }]);
     if (!on(x - 1, y)) segments.push([{ x, y: y + 1 }, { x, y }]);
   }
-  const tolerance = settings.mode === "precision" ? settings.simplification * 0.35 : settings.mode === "cnc" ? settings.simplification * 1.8 : settings.simplification;
-  const paths: VectorPath[] = stitch(segments)
-    .filter(p => polygonArea(p) >= settings.minArea)
-    .map(p => {
-      const closed = key(p[0]) === key(p[p.length - 1]);
-      const core = closed ? p.slice(0, -1) : p;
-      const simplified = simplifyPath(core, tolerance);
-      const points = closed && simplified.length >= 3 ? [...simplified, simplified[0]] : simplified;
-      return { points, closed: settings.closePaths || closed, layer: polygonArea(p) > width * height * 0.002 ? "CONTOURS" : "DETAILS" };
-    });
+  const raw = stitch(segments);
+  const closed = raw.filter(path => key(path[0]) === key(path[path.length - 1]));
+  const open = joinNearbyPaths(raw.filter(path => key(path[0]) !== key(path[path.length - 1])), settings.joinDistance);
+  const tolerance = settings.outputMode === "pixel" ? 0 : settings.mode === "precision" ? settings.simplification * .4 : settings.outputMode === "cad" ? settings.simplification * 1.5 : settings.simplification;
+  const paths: VectorPath[] = [...closed, ...open]
+    .filter(path => polygonArea(path) >= settings.minArea || key(path[0]) !== key(path[path.length - 1]))
+    .map(path => {
+      let isClosed = key(path[0]) === key(path[path.length - 1]);
+      let points = isClosed ? path.slice(0, -1) : path;
+      if (!isClosed && settings.closePaths && Math.hypot(points[0].x - points[points.length - 1].x, points[0].y - points[points.length - 1].y) <= settings.joinDistance) isClosed = true;
+      points = isClosed ? simplifyClosed(points, tolerance) : simplifyPath(points, tolerance);
+      if (settings.outputMode !== "pixel" && settings.smoothIterations > 0) points = chaikin(points, isClosed, settings.smoothIterations);
+      const layer: VectorPath["layer"] = polygonArea(points) > width * height * .002 ? "CONTOURS" : "DETAILS";
+      return { points, closed: isClosed, curved: settings.outputMode === "smooth" && settings.smoothIterations > 0, layer };
+    })
+    .filter(path => path.points.length >= (path.closed ? 3 : 2));
   return { width, height, sourceWidth: width, sourceHeight: height, unit: "px", paths };
 }
 
 export function scaleDocument(doc: VectorDocument, width: number, height: number, unit: VectorDocument["unit"]): VectorDocument {
   const sx = width / doc.sourceWidth, sy = height / doc.sourceHeight;
-  return { ...doc, width, height, unit, paths: doc.paths.map(path => ({ ...path, points: path.points.map(p => ({ x: p.x * sx, y: p.y * sy })) })) };
+  return { ...doc, width, height, unit, paths: doc.paths.map(path => ({ ...path, points: path.points.map(point => ({ x: point.x * sx, y: point.y * sy })) })) };
 }

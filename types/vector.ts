@@ -1,8 +1,9 @@
 export type Unit = "mm" | "cm" | "px";
 export type VectorMode = "logo" | "technical" | "silhouette" | "outline" | "precision" | "cnc";
+export type OutputMode = "pixel" | "smooth" | "cad";
 
 export interface Point { x: number; y: number }
-export interface VectorPath { points: Point[]; closed: boolean; layer: "CONTOURS" | "DETAILS" | "GUIDES" }
+export interface VectorPath { points: Point[]; closed: boolean; curved?: boolean; layer: "CONTOURS" | "DETAILS" | "GUIDES" }
 export interface VectorDocument {
   width: number;
   height: number;
@@ -16,6 +17,11 @@ export interface ProcessingSettings {
   brightness: number;
   contrast: number;
   threshold: number;
+  adaptiveThreshold: boolean;
+  blurRadius: number;
+  morphologyRadius: number;
+  openingRadius: number;
+  minComponentArea: number;
   invert: boolean;
   removeNoise: boolean;
   smooth: boolean;
@@ -24,8 +30,10 @@ export interface ProcessingSettings {
 
 export interface VectorSettings {
   mode: VectorMode;
+  outputMode: OutputMode;
   simplification: number;
   minArea: number;
+  smoothIterations: number;
   closePaths: boolean;
   joinDistance: number;
 }

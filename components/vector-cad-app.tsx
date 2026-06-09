@@ -6,12 +6,17 @@ import { processPixels } from "@/lib/image-processing/process";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
-import type { ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
+import type { OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 
 const MAX_FILE = 12 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
-const defaultProcessing: ProcessingSettings = { brightness: 0, contrast: 125, threshold: 160, invert: false, removeNoise: true, smooth: true, edgeDetect: false };
-const defaultVector: VectorSettings = { mode: "logo", simplification: 1.8, minArea: 12, closePaths: true, joinDistance: 2 };
+const defaultProcessing: ProcessingSettings = { brightness: 0, contrast: 125, threshold: 160, adaptiveThreshold: false, blurRadius: 1, morphologyRadius: 1, openingRadius: 0, minComponentArea: 8, invert: false, removeNoise: true, smooth: true, edgeDetect: false };
+const defaultVector: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 12, smoothIterations: 1, closePaths: true, joinDistance: 2 };
+const presets: Record<string, { processing: Partial<ProcessingSettings>; vector: Partial<VectorSettings> }> = {
+  fidelity: { processing: { blurRadius: 0, morphologyRadius: 0, openingRadius: 0, minComponentArea: 2 }, vector: { outputMode: "pixel", simplification: .35, smoothIterations: 0, joinDistance: 1 } },
+  cnc: { processing: { blurRadius: 1, morphologyRadius: 2, openingRadius: 0, minComponentArea: 20 }, vector: { outputMode: "cad", simplification: 2.5, smoothIterations: 1, joinDistance: 4, closePaths: true } },
+  logo: { processing: { blurRadius: 2, morphologyRadius: 1, openingRadius: 1, minComponentArea: 12 }, vector: { outputMode: "smooth", simplification: 1.8, smoothIterations: 2, joinDistance: 3 } },
+};
 
 function Slider({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
   return <label className="range-row text-xs text-[#aab8b1]"><span>{label}</span><b className="text-right text-[#e8efeb]">{value}</b><input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} /></label>;
@@ -106,17 +111,28 @@ export function VectorCadApp() {
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
           <Slider label="Threshold" value={processing.threshold} min={1} max={254} onChange={v => setProcessing({ ...processing, threshold: v })} />
+          <Slider label="Suavização da imagem" value={processing.blurRadius} min={0} max={3} onChange={v => setProcessing({ ...processing, blurRadius: v, smooth: v > 0 })} />
+          <Slider label="Fechar falhas / gaps" value={processing.morphologyRadius} min={0} max={3} onChange={v => setProcessing({ ...processing, morphologyRadius: v })} />
+          <Slider label="Opening / limpar manchas" value={processing.openingRadius} min={0} max={2} onChange={v => setProcessing({ ...processing, openingRadius: v })} />
+          <Slider label="Ruído mínimo" value={processing.minComponentArea} min={0} max={100} onChange={v => setProcessing({ ...processing, minComponentArea: v })} />
+          <Toggle label="Threshold adaptativo" checked={processing.adaptiveThreshold} onChange={v => setProcessing({ ...processing, adaptiveThreshold: v })} />
           <Toggle label="Remover ruído" checked={processing.removeNoise} onChange={v => setProcessing({ ...processing, removeNoise: v })} />
-          <Toggle label="Suavizar bordas" checked={processing.smooth} onChange={v => setProcessing({ ...processing, smooth: v })} />
           <Toggle label="Detectar linhas internas" checked={processing.edgeDetect} onChange={v => setProcessing({ ...processing, edgeDetect: v })} />
           <Toggle label="Inverter cores" checked={processing.invert} onChange={v => setProcessing({ ...processing, invert: v })} />
         </Section>
         <Section title="Vetorização" icon={<ScanLine size={14} />}>
+          <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de saída</label>
+          <div className="grid grid-cols-3 gap-1">{([["pixel", "Fiel"], ["smooth", "Suave"], ["cad", "CAD limpo"]] as [OutputMode, string][]).map(([value, label]) => <button key={value} onClick={() => setVector({ ...vector, outputMode: value })} className={`rounded-md px-1 py-2 text-[9px] font-bold ${vector.outputMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}</div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo</label>
           <select value={vector.mode} onChange={e => setVector({ ...vector, mode: e.target.value as VectorMode })} className="w-full text-xs"><option value="logo">Logo</option><option value="technical">Desenho técnico</option><option value="silhouette">Silhueta</option><option value="outline">Contorno externo</option><option value="precision">Alta precisão</option><option value="cnc">CNC / corte laser</option></select>
           <Slider label="Simplificação" value={vector.simplification} min={0} max={8} step={.1} onChange={v => setVector({ ...vector, simplification: v })} />
           <Slider label="Fragmento mínimo" value={vector.minArea} min={0} max={500} onChange={v => setVector({ ...vector, minArea: v })} />
+          <Slider label="Unir pontas próximas" value={vector.joinDistance} min={0} max={12} step={.5} onChange={v => setVector({ ...vector, joinDistance: v })} />
+          <Slider label="Suavização do vetor" value={vector.smoothIterations} min={0} max={3} onChange={v => setVector({ ...vector, smoothIterations: v })} />
           <Toggle label="Fechar contornos" checked={vector.closePaths} onChange={v => setVector({ ...vector, closePaths: v })} />
+        </Section>
+        <Section title="Presets" icon={<Sparkles size={14} />}>
+          <div className="grid grid-cols-3 gap-1">{([["fidelity", "Fidelidade"], ["cnc", "Corte/CNC"], ["logo", "Logo"]] as const).map(([value, label]) => <button key={value} onClick={() => { setProcessing(current => ({ ...current, ...presets[value].processing })); setVector(current => ({ ...current, ...presets[value].vector })); }} className="rounded-md bg-[#18201c] px-1 py-2 text-[9px] font-bold text-[#b9c5bf] hover:bg-[#29372f]">{label}</button>)}</div>
         </Section>
         <button onClick={() => { setProcessing(defaultProcessing); setVector(defaultVector); }} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[#34413b] py-2 text-xs text-[#a7b3ad]"><RotateCcw size={13} /> Restaurar ajustes</button>
       </aside>
@@ -143,7 +159,7 @@ export function VectorCadApp() {
           <Toggle label="Manter proporção" checked={locked} onChange={setLocked} />
         </Section>
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /></Section>
-        <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Compatibilidade máxima</b><br />O DXF usa entidades LINE universais, editáveis e organizadas em layers.</div>
+        <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
         <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button></div>
       </aside>
     </section>}

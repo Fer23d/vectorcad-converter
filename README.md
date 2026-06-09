@@ -9,7 +9,7 @@ Aplicativo web para transformar PNG, JPG, JPEG e WEBP em vetores editáveis para
 - **Next.js, React e TypeScript**: interface e rotas de backend em um único projeto.
 - **Tailwind CSS**: interface responsiva e consistente.
 - **Canvas API**: leitura, escala e pré-processamento instantâneo no navegador, sem enviar a imagem do usuário.
-- **Pipeline de contornos próprio, equivalente ao Potrace para imagens binárias**: extrai arestas dos pixels, costura contornos e aplica simplificação Ramer-Douglas-Peucker. A geometria resultante é compartilhada pelos exportadores, evitando divergência entre SVG e DXF.
+- **Pipeline de contornos próprio, equivalente ao Potrace para imagens binárias**: aplica blur, threshold adaptativo, closing/opening, remoção de componentes, união de pontas próximas, simplificação Ramer-Douglas-Peucker e suavização Chaikin.
 - **Exportadores SVG/DXF próprios**: mantêm o projeto leve e permitem controlar `viewBox`, unidades, layers e entidades CAD.
 
 ## Instalação e execução
@@ -39,14 +39,15 @@ O repositório inclui `vercel.json` e está pronto para deploy automático pela 
 
 1. Arraste uma imagem para a área de upload ou clique em **Enviar imagem**.
 2. Ajuste brilho, contraste e threshold. Ative detecção de linhas internas para desenhos técnicos.
-3. Escolha o modo de vetorização e ajuste simplificação e fragmento mínimo.
-4. Confira os previews Original, Processada e Vetor.
-5. Defina unidade, largura e altura reais.
-6. Exporte em DXF, SVG ou PNG preview.
+3. Escolha **Fiel ao pixel**, **Suavizado** ou **CAD limpo**, ou aplique um preset de Alta fidelidade, Corte/CNC ou Logo.
+4. Ajuste fechamento de gaps, simplificação, união de pontas e suavização vetorial.
+5. Confira os previews Original, Processada e Vetor.
+6. Defina unidade, largura e altura reais.
+7. Exporte em DXF, SVG ou PNG preview.
 
 ## DXF e AutoCAD
 
-O DXF é ASCII AutoCAD 2007 (`AC1021`) e usa entidades `LINE` universais e editáveis, para abrir também em CADs móveis, versões antigas e softwares CAM mais restritivos. A estrutura completa é gerada pela biblioteca `dxf-writer`, incluindo Model Space, Blocks, Objects, unidades, limites reais das entidades e layers compatíveis com leitores CAD rigorosos. Contornos maiores são colocados no layer `CONTOURS`; detalhes menores, em `DETAILS`; o layer `GUIDES` também é criado para uso posterior. No AutoCAD, use `PEDIT` + `JOIN` para unir segmentos quando necessário.
+O DXF é ASCII AutoCAD 2007 (`AC1021`) e usa entidades `LWPOLYLINE` fechadas ou abertas, com menos vértices e pontos suavizados. A estrutura completa é gerada pela biblioteca `dxf-writer`, incluindo Model Space, Blocks, Objects, unidades, limites reais das entidades e layers compatíveis com leitores CAD rigorosos.
 
 No AutoCAD, use **OPEN** ou **IMPORT**, selecione o `.dxf` e confirme a unidade usada na exportação. O desenho já abre centralizado; se uma configuração local do CAD substituir a viewport, execute `ZOOM` e depois `E` (Extents). Caso o desenho seja aberto sem unidade, use `-DWGUNITS` e selecione milímetros ou centímetros. Os contornos podem ser editados com `PEDIT`.
 

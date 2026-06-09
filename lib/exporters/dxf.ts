@@ -49,14 +49,7 @@ export function generateDxf(doc: VectorDocument): string {
 
   for (const { path, points } of paths) {
     drawing.setActiveLayer(path.layer);
-    const cadPoints = points.map(point => ({ x: point.x, y: height - point.y }));
-    for (let index = 1; index < cadPoints.length; index++) {
-      drawing.drawLine(cadPoints[index - 1].x, cadPoints[index - 1].y, cadPoints[index].x, cadPoints[index].y);
-    }
-    if (path.closed) {
-      const first = cadPoints[0], last = cadPoints[cadPoints.length - 1];
-      drawing.drawLine(last.x, last.y, first.x, first.y);
-    }
+    drawing.drawPolyline(points.map(point => [point.x, height - point.y]), path.closed);
   }
 
   if (paths.length) {
