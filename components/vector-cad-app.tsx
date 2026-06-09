@@ -75,7 +75,7 @@ export function VectorCadApp() {
     if (!finalDoc) return setMessage("Envie e vetorize uma imagem antes de exportar.");
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
     download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc), kind === "svg" ? "image/svg+xml" : "application/dxf");
-    setMessage(`Arquivo ${kind.toUpperCase()} gerado com sucesso.`);
+    setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
   };
   const exportPng = () => {
     const c = processedCanvas.current; if (!c) return;

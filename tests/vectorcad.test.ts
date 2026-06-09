@@ -39,6 +39,9 @@ describe("VectorCAD pipeline", () => {
     expect(dxf).toContain("LWPOLYLINE");
     expect(dxf).toContain("AC1015");
     expect(dxf).toContain("AcDbPolyline");
+    expect(dxf).toContain("*ACTIVE");
+    expect(dxf).toContain("$VIEWCTR");
+    expect(dxf).toContain("$VIEWSIZE");
     expect(dxf).toContain("CONTOURS");
     expect(dxf).toContain("DETAILS");
     expect(dxf).toContain("\r\n");
@@ -47,6 +50,21 @@ describe("VectorCAD pipeline", () => {
     expect(parsed?.entities[0].type).toBe("LWPOLYLINE");
     expect(parsed?.entities[0].layer).toBe("CONTOURS");
     expect(parsed?.entities[0].vertices).toHaveLength(4);
+  });
+
+  it("opens the CAD viewport centered on the exported geometry", () => {
+    const offset: VectorDocument = {
+      ...doc,
+      width: 1000,
+      height: 1000,
+      paths: [{ closed: true, layer: "CONTOURS", points: [{ x: 400, y: 400 }, { x: 500, y: 400 }, { x: 500, y: 500 }, { x: 400, y: 500 }, { x: 400, y: 400 }] }],
+    };
+    const dxf = generateDxf(offset);
+    const parsed = new DxfParser().parseSync(dxf);
+    expect(parsed?.header.$EXTMIN).toMatchObject({ x: 400, y: 500 });
+    expect(parsed?.header.$EXTMAX).toMatchObject({ x: 500, y: 600 });
+    expect(parsed?.header.$VIEWCTR).toMatchObject({ x: 450, y: 550 });
+    expect(parsed?.header.$VIEWSIZE).toBeGreaterThan(100);
   });
 
   it("does not export invalid CAD entities", () => {
