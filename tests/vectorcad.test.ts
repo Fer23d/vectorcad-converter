@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import DxfParser from "dxf-parser";
+import { Helper } from "dxf";
 import { removeIsolated } from "@/lib/image-processing/process";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -25,7 +26,9 @@ describe("VectorCAD pipeline", () => {
     const result = vectorizeBitmap(bitmap, 6, 6, { mode: "logo", simplification: 1.8, minArea: 1, closePaths: true, joinDistance: 1 });
     expect(result.paths[0].points.length).toBeGreaterThanOrEqual(4);
     expect(countDxfEntities(scaleDocument(result, 100, 100, "mm"))).toBe(1);
-    expect(new DxfParser().parseSync(generateDxf(scaleDocument(result, 100, 100, "mm")))?.entities).toHaveLength(1);
+    const entities = new DxfParser().parseSync(generateDxf(scaleDocument(result, 100, 100, "mm")))?.entities || [];
+    expect(entities.length).toBeGreaterThanOrEqual(4);
+    expect(entities.every(entity => entity.type === "LINE")).toBe(true);
   });
 
   it("generates a clean SVG path", () => {
@@ -34,22 +37,27 @@ describe("VectorCAD pipeline", () => {
     expect(svg).toContain('viewBox="0 0 10 10"');
   });
 
-  it("generates editable DXF LWPOLYLINE and CAD layers", () => {
+  it("generates universally compatible editable DXF lines and CAD layers", () => {
     const dxf = generateDxf(doc);
-    expect(dxf).toContain("LWPOLYLINE");
-    expect(dxf).toContain("AC1015");
-    expect(dxf).toContain("AcDbPolyline");
+    expect(dxf).toContain("\r\nLINE\r\n");
+    expect(dxf).toContain("AC1021");
+    expect(dxf).toContain("AcDbLine");
     expect(dxf).toContain("*ACTIVE");
     expect(dxf).toContain("$VIEWCTR");
     expect(dxf).toContain("$VIEWSIZE");
+    expect(dxf).toContain("BLOCK_RECORD");
+    expect(dxf).toContain("*Model_Space");
+    expect(dxf).toContain("OBJECTS");
     expect(dxf).toContain("CONTOURS");
     expect(dxf).toContain("DETAILS");
     expect(dxf).toContain("\r\n");
     const parsed = new DxfParser().parseSync(dxf);
-    expect(parsed?.entities).toHaveLength(1);
-    expect(parsed?.entities[0].type).toBe("LWPOLYLINE");
+    expect(parsed?.entities).toHaveLength(4);
+    expect(parsed?.entities[0].type).toBe("LINE");
     expect(parsed?.entities[0].layer).toBe("CONTOURS");
-    expect(parsed?.entities[0].vertices).toHaveLength(4);
+    const rendered = new Helper(dxf);
+    expect(rendered.toPolylines().polylines).toHaveLength(4);
+    expect(rendered.toSVG()).toContain("<svg");
   });
 
   it("opens the CAD viewport centered on the exported geometry", () => {

@@ -46,7 +46,7 @@ O repositório inclui `vercel.json` e está pronto para deploy automático pela 
 
 ## DXF e AutoCAD
 
-O DXF é ASCII AutoCAD 2000 (`AC1015`) e usa entidades `LWPOLYLINE`, que permanecem editáveis. O arquivo inclui unidades, limites reais das entidades, viewport ativa com enquadramento automático, subclass markers e layers compatíveis com leitores CAD rigorosos. Contornos maiores são colocados no layer `CONTOURS`; detalhes menores, em `DETAILS`; o layer `GUIDES` também é criado para uso posterior.
+O DXF é ASCII AutoCAD 2007 (`AC1021`) e usa entidades `LINE` universais e editáveis, para abrir também em CADs móveis, versões antigas e softwares CAM mais restritivos. A estrutura completa é gerada pela biblioteca `dxf-writer`, incluindo Model Space, Blocks, Objects, unidades, limites reais das entidades e layers compatíveis com leitores CAD rigorosos. Contornos maiores são colocados no layer `CONTOURS`; detalhes menores, em `DETAILS`; o layer `GUIDES` também é criado para uso posterior. No AutoCAD, use `PEDIT` + `JOIN` para unir segmentos quando necessário.
 
 No AutoCAD, use **OPEN** ou **IMPORT**, selecione o `.dxf` e confirme a unidade usada na exportação. O desenho já abre centralizado; se uma configuração local do CAD substituir a viewport, execute `ZOOM` e depois `E` (Extents). Caso o desenho seja aberto sem unidade, use `-DWGUNITS` e selecione milímetros ou centímetros. Os contornos podem ser editados com `PEDIT`.
 
