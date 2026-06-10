@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, ChevronDown, Crosshair, Download, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
+import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { processPixels } from "@/lib/image-processing/process";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -41,11 +43,14 @@ export function VectorCadApp() {
   const [realHeight, setRealHeight] = useState(100);
   const [locked, setLocked] = useState(true);
   const [activeView, setActiveView] = useState<"original" | "processed" | "vector">("vector");
-  const [zoom, setZoom] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
+  const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const maxControlsWidth = useCallback(() => Math.max(260, window.innerWidth - 300 - 270 - 8), []);
+  const panel = useResizablePanel({ initialSize: 280, minSize: 260, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width" });
+  const viewer = useZoomPan("vectorcad-preview-zoom");
 
   const loadFile = useCallback((file?: File) => {
     if (!file) return;
@@ -105,8 +110,8 @@ export function VectorCadApp() {
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
 
-    {source && <section className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[250px_1fr_270px]">
-      <aside className="border-r border-[#26312c] bg-[#0d1210] p-4">
+    {source && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px` } as React.CSSProperties}>
+      <aside className="controls-panel border-r border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Pré-processamento" icon={<WandSparkles size={14} />}>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
@@ -136,14 +141,15 @@ export function VectorCadApp() {
         </Section>
         <button onClick={() => { setProcessing(defaultProcessing); setVector(defaultVector); }} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[#34413b] py-2 text-xs text-[#a7b3ad]"><RotateCcw size={13} /> Restaurar ajustes</button>
       </aside>
+      <button type="button" aria-label="Redimensionar painel de controles" title="Arraste para redimensionar" onPointerDown={panel.startResize} className={`panel-resizer ${panel.resizing ? "is-resizing" : ""}`}><span /></button>
 
-      <div className="flex min-h-[600px] flex-col overflow-hidden">
+      <div className="preview-panel flex min-h-[600px] min-w-0 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#26312c] bg-[#0d1210] px-4 py-3">
           <div className="flex gap-1 rounded-lg bg-[#151c19] p-1">{(["original", "processed", "vector"] as const).map(v => <button key={v} onClick={() => setActiveView(v)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase ${activeView === v ? "bg-[#334039] text-white" : "text-[#7f8e86]"}`}>{v === "original" ? "Original" : v === "processed" ? "Processada" : "Vetor"}</button>)}</div>
-          <div className="flex items-center gap-2"><button onClick={() => setZoom(Math.max(.25, zoom - .25))} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-10 text-center text-[10px]">{Math.round(zoom * 100)}%</span><button onClick={() => setZoom(Math.min(4, zoom + .25))} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button onClick={() => setZoom(1)} className="rounded border border-[#34413b] p-1.5"><Maximize2 size={14} /></button></div>
+          <div className="flex items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button></div>
         </div>
-        <div className="checker relative flex flex-1 items-center justify-center overflow-auto p-8">
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: "center", width: source.width > source.height ? "min(85%,720px)" : "auto", height: source.height >= source.width ? "min(85%,720px)" : "auto", aspectRatio: `${source.width}/${source.height}` }} className="relative overflow-hidden bg-white shadow-2xl">
+        <div ref={previewViewport} onPointerDown={viewer.onPointerDown} onPointerMove={viewer.onPointerMove} onPointerUp={viewer.onPointerUp} onPointerCancel={viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex flex-1 items-center justify-center overflow-hidden p-6 ${viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
+          <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full`} />
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
@@ -152,7 +158,7 @@ export function VectorCadApp() {
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
       </div>
 
-      <aside className="border-l border-[#26312c] bg-[#0d1210] p-4">
+      <aside className="cad-panel border-l border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Configurações CAD" icon={<Settings2 size={14} />}>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Unidade de saída</label><div className="grid grid-cols-3 gap-1">{(["mm", "cm", "px"] as Unit[]).map(u => <button key={u} onClick={() => setUnit(u)} className={`rounded-md py-2 text-xs font-bold ${unit === u ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{u}</button>)}</div>
           <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#8d9a93]">Largura<input className="mt-1 w-full" type="number" min="0.1" value={realWidth} onChange={e => updateWidth(+e.target.value)} /></label><label className="text-[10px] text-[#8d9a93]">Altura<input className="mt-1 w-full" type="number" min="0.1" value={realHeight} onChange={e => updateHeight(+e.target.value)} /></label></div>

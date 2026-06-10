@@ -45,6 +45,14 @@ O repositório inclui `vercel.json` e está pronto para deploy automático pela 
 6. Defina unidade, largura e altura reais.
 7. Exporte em DXF, SVG ou PNG preview.
 
+### Preview, zoom e navegação
+
+- No desktop, arraste o divisor entre os ajustes e o preview para aumentar ou diminuir a área de visualização.
+- Use `+`, `-`, **Ajustar** e **100%** para controlar o zoom.
+- Com zoom acima de 100%, arraste a imagem para navegar pelos detalhes.
+- Segure `Ctrl` e use a roda do mouse para ampliar ou reduzir.
+- A largura do painel e o último zoom são mantidos no navegador.
+
 ## DXF e AutoCAD
 
 O DXF é ASCII AutoCAD 2007 (`AC1021`) e usa entidades `LWPOLYLINE` fechadas ou abertas, com menos vértices e pontos suavizados. A estrutura completa é gerada pela biblioteca `dxf-writer`, incluindo Model Space, Blocks, Objects, unidades, limites reais das entidades e layers compatíveis com leitores CAD rigorosos.
