@@ -13,6 +13,10 @@ import type { OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, 
 
 const MAX_FILE = 12 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
+const CONTROLS_MIN_WIDTH = 260;
+const CAD_MIN_WIDTH = 260;
+const PREVIEW_MIN_WIDTH = 300;
+const RESIZER_TOTAL_WIDTH = 16;
 const defaultProcessing: ProcessingSettings = { brightness: 0, contrast: 125, threshold: 160, adaptiveThreshold: false, blurRadius: 1, morphologyRadius: 1, openingRadius: 0, minComponentArea: 8, invert: false, removeNoise: true, smooth: true, edgeDetect: false };
 const defaultVector: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 12, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 const presets: Record<string, { processing: Partial<ProcessingSettings>; vector: Partial<VectorSettings> }> = {
@@ -50,8 +54,13 @@ export function VectorCadApp() {
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const maxControlsWidth = useCallback(() => Math.max(260, window.innerWidth - 300 - 270 - 8), []);
-  const panel = useResizablePanel({ initialSize: 280, minSize: 260, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width" });
+  const controlsSize = useRef(280), cadSize = useRef(270);
+  const updateControlsSize = useCallback((size: number) => { controlsSize.current = size; }, []);
+  const updateCadSize = useCallback((size: number) => { cadSize.current = size; }, []);
+  const maxControlsWidth = useCallback(() => Math.max(CONTROLS_MIN_WIDTH, window.innerWidth - PREVIEW_MIN_WIDTH - cadSize.current - RESIZER_TOTAL_WIDTH), []);
+  const maxCadWidth = useCallback(() => Math.max(CAD_MIN_WIDTH, window.innerWidth - PREVIEW_MIN_WIDTH - controlsSize.current - RESIZER_TOTAL_WIDTH), []);
+  const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
+  const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
 
   const loadFile = useCallback((file?: File) => {
@@ -117,7 +126,7 @@ export function VectorCadApp() {
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
 
-    {source && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px` } as React.CSSProperties}>
+    {source && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px`, "--cad-width": `${cadPanel.size}px` } as React.CSSProperties}>
       <aside className="controls-panel border-r border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Pré-processamento" icon={<WandSparkles size={14} />}>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
@@ -165,6 +174,7 @@ export function VectorCadApp() {
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
       </div>
 
+      <button type="button" aria-label="Redimensionar painel CAD" title="Arraste para redimensionar" onPointerDown={cadPanel.startResize} className={`panel-resizer panel-resizer-right ${cadPanel.resizing ? "is-resizing" : ""}`}><span /></button>
       <aside className="cad-panel border-l border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Configurações CAD" icon={<Settings2 size={14} />}>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Unidade de saída</label><div className="grid grid-cols-3 gap-1">{(["mm", "cm", "px"] as Unit[]).map(u => <button key={u} onClick={() => setUnit(u)} className={`rounded-md py-2 text-xs font-bold ${unit === u ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{u}</button>)}</div>

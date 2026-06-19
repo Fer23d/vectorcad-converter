@@ -7,25 +7,31 @@ interface ResizablePanelOptions {
   minSize: number;
   maxSize: () => number;
   storageKey: string;
+  edge?: "left" | "right";
+  onSizeChange?: (size: number) => void;
 }
 
-export function useResizablePanel({ initialSize, minSize, maxSize, storageKey }: ResizablePanelOptions) {
+export function useResizablePanel({ initialSize, minSize, maxSize, storageKey, edge = "left", onSizeChange }: ResizablePanelOptions) {
   const [size, setSize] = useState(initialSize);
   const [resizing, setResizing] = useState(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const saved = Number(localStorage.getItem(storageKey));
-      if (Number.isFinite(saved) && saved > 0) setSize(Math.max(minSize, Math.min(saved, maxSize())));
+      const next = Number.isFinite(saved) && saved > 0 ? Math.max(minSize, Math.min(saved, maxSize())) : initialSize;
+      setSize(next);
+      onSizeChange?.(next);
     });
     return () => cancelAnimationFrame(frame);
-  }, [maxSize, minSize, storageKey]);
+  }, [initialSize, maxSize, minSize, onSizeChange, storageKey]);
 
   useEffect(() => {
     if (!resizing) return;
     const onMove = (event: PointerEvent) => {
-      const next = Math.max(minSize, Math.min(event.clientX, maxSize()));
+      const pointerSize = edge === "right" ? window.innerWidth - event.clientX : event.clientX;
+      const next = Math.max(minSize, Math.min(pointerSize, maxSize()));
       setSize(next);
+      onSizeChange?.(next);
       localStorage.setItem(storageKey, String(Math.round(next)));
     };
     const onUp = () => setResizing(false);
@@ -39,10 +45,11 @@ export function useResizablePanel({ initialSize, minSize, maxSize, storageKey }:
       window.removeEventListener("pointercancel", onUp);
       document.body.classList.remove("resizing-panel");
     };
-  }, [maxSize, minSize, resizing, storageKey]);
+  }, [edge, maxSize, minSize, onSizeChange, resizing, storageKey]);
 
   const startResize = useCallback((event: React.PointerEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setResizing(true);
   }, []);
