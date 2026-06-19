@@ -9,7 +9,7 @@ import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-type SvgToCad3DViewerProps = {
+type SvgTo3DCadViewerProps = {
   svg: string;
   fileName?: string;
   unit?: string;
@@ -50,7 +50,7 @@ function disposeObject(object: THREE.Object3D) {
   });
 }
 
-export function enhanceMeshQuality(geometry: THREE.BufferGeometry) {
+export function enhanceGeometryQuality(geometry: THREE.BufferGeometry) {
   geometry.deleteAttribute("normal");
   const optimized = mergeVertices(geometry, 0.0001);
   optimized.computeVertexNormals();
@@ -81,7 +81,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
         bevelSegments: options.enhanced ? 2 : 0,
       });
       geometry.scale(1, -1, 1);
-      geometries.push(options.enhanced ? enhanceMeshQuality(geometry) : geometry);
+      geometries.push(options.enhanced ? enhanceGeometryQuality(geometry) : geometry);
     });
   });
 
@@ -90,7 +90,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
 
   const merged = mergeGeometries(geometries, false);
   geometries.forEach((geometry) => geometry.dispose());
-  const finalGeometry = enhanceMeshQuality(merged);
+  const finalGeometry = enhanceGeometryQuality(merged);
   finalGeometry.center();
 
   const material = new THREE.MeshStandardMaterial({
@@ -106,7 +106,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   return model;
 }
 
-export function SvgToCad3DViewer({ svg, fileName, unit = "mm" }: SvgToCad3DViewerProps) {
+export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);
@@ -245,20 +245,20 @@ export function SvgToCad3DViewer({ svg, fileName, unit = "mm" }: SvgToCad3DViewe
   return <section className="three-panel rounded-xl border border-[#324039] bg-[#111815] p-3">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div>
-        <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#eef6f0]"><Box size={14} /> SvgToCad3DViewer</h3>
+        <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#eef6f0]"><Box size={14} /> SvgTo3DCadViewer</h3>
         <p className="mt-1 text-[10px] text-[#87978f]">Extrusao CAD em mm a partir do SVG vetorizado.</p>
       </div>
-      <button type="button" onClick={resetCamera} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce]"><RotateCcw size={12} /> Reset View</button>
+      <button type="button" onClick={resetCamera} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce]"><RotateCcw size={12} /> Resetar câmera</button>
     </div>
 
     <label className="range-row mb-3 text-xs text-[#aab8b1]">
-      <span>Altura da extrusao ({unit})</span>
+      <span>Altura (mm)</span>
       <b className="text-right text-[#e8efeb]">{height}</b>
       <input type="range" min={1} max={80} step={1} value={height} onChange={(event) => setHeight(Number(event.target.value))} />
     </label>
 
     <label className="mb-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#26332e] bg-[#0d1411] px-3 py-2 text-xs text-[#bdc9c3]">
-      <span>Modo aprimorado (qualidade alta)</span>
+      <span>Modo qualidade alta</span>
       <button type="button" aria-pressed={enhanced} onClick={() => setEnhanced((value) => !value)} className={`h-5 w-9 rounded-full p-0.5 transition ${enhanced ? "bg-[#b7f34a]" : "bg-[#39443f]"}`}><span className={`block h-4 w-4 rounded-full bg-[#07100a] transition ${enhanced ? "translate-x-4" : ""}`} /></button>
     </label>
 
@@ -275,4 +275,5 @@ export function SvgToCad3DViewer({ svg, fileName, unit = "mm" }: SvgToCad3DViewe
   </section>;
 }
 
-export const SvgTo3DViewer = SvgToCad3DViewer;
+export const SvgToCad3DViewer = SvgTo3DCadViewer;
+export const SvgTo3DViewer = SvgTo3DCadViewer;
