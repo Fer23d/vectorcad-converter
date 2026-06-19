@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, ChevronDown, Crosshair, Download, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
+import { SvgTo3DViewer } from "@/components/svg-to-3d-viewer";
 import { processPixels } from "@/lib/image-processing/process";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -45,6 +46,7 @@ export function VectorCadApp() {
   const [activeView, setActiveView] = useState<"original" | "processed" | "vector">("vector");
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
+  const [show3d, setShow3d] = useState(false);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -90,6 +92,11 @@ export function VectorCadApp() {
   const exportPng = () => {
     const c = processedCanvas.current; if (!c) return;
     const a = document.createElement("a"); a.href = c.toDataURL("image/png"); a.download = "vectorcad-preview.png"; a.click();
+  };
+  const generate3d = () => {
+    if (!finalDoc || !svg) return setMessage("Vetorize uma imagem antes de gerar o modelo 3D.");
+    setShow3d(true);
+    setMessage("Modelo 3D pronto para preview. Ajuste a altura e exporte STL ou GLB.");
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
 
@@ -166,7 +173,8 @@ export function VectorCadApp() {
         </Section>
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
-        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button></div>
+        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar 3D</button></div>
+        {show3d && <div className="mt-5"><SvgTo3DViewer svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
     </section>}
     <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
