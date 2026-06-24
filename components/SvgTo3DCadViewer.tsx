@@ -12,6 +12,7 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
 type ModelStyle = (typeof styles)[number];
 type CameraView = "front" | "side" | "top" | "iso" | "perspective";
+type Cad2DView = "front" | "side" | "top";
 
 type SvgTo3DCadViewerProps = {
   svg: string;
@@ -28,7 +29,7 @@ type BuildOptions = {
 
 type ThreeState = {
   scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
+  camera: THREE.OrthographicCamera;
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
   model: THREE.Group;
@@ -61,6 +62,90 @@ const cameraViews: Record<CameraView, THREE.Vector3> = {
 
 function easeInOutQuad(value: number) {
   return value < 0.5 ? 2 * value * value : 1 - Math.pow(-2 * value + 2, 2) / 2;
+}
+
+function fitOrthographicCamera(camera: THREE.OrthographicCamera, width: number, height: number, radius: number) {
+  const aspect = Math.max(width, 1) / Math.max(height, 1);
+  const size = Math.max(radius * 2.6, 120);
+  camera.left = -size * aspect / 2;
+  camera.right = size * aspect / 2;
+  camera.top = size / 2;
+  camera.bottom = -size / 2;
+  camera.zoom = 1;
+  camera.updateProjectionMatrix();
+}
+
+function uniqueProjectedPoints(model: THREE.Group, view: Cad2DView) {
+  const points: Array<{ x: number; y: number }> = [];
+  const seen = new Set<string>();
+  model.updateMatrixWorld(true);
+
+  model.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const position = object.geometry.getAttribute("position");
+    if (!position) return;
+    const vertex = new THREE.Vector3();
+    for (let index = 0; index < position.count; index++) {
+      vertex.fromBufferAttribute(position, index).applyMatrix4(object.matrixWorld);
+      const projected = view === "front"
+        ? { x: vertex.x, y: -vertex.y }
+        : view === "side"
+          ? { x: vertex.z, y: -vertex.y }
+          : { x: vertex.x, y: -vertex.z };
+      const key = `${projected.x.toFixed(3)},${projected.y.toFixed(3)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        points.push(projected);
+      }
+    }
+  });
+
+  return points;
+}
+
+function convexHull(points: Array<{ x: number; y: number }>) {
+  if (points.length <= 3) return points;
+  const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  const cross = (origin: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+  const lower: Array<{ x: number; y: number }> = [];
+  const upper: Array<{ x: number; y: number }> = [];
+
+  sorted.forEach((point) => {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+    lower.push(point);
+  });
+  [...sorted].reverse().forEach((point) => {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+    upper.push(point);
+  });
+
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+function projectionPath(model: THREE.Group, view: Cad2DView) {
+  const hull = convexHull(uniqueProjectedPoints(model, view));
+  if (hull.length < 3) return { path: "", viewBox: "0 0 100 100" };
+  const minX = Math.min(...hull.map((point) => point.x));
+  const minY = Math.min(...hull.map((point) => point.y));
+  const maxX = Math.max(...hull.map((point) => point.x));
+  const maxY = Math.max(...hull.map((point) => point.y));
+  const padding = Math.max((maxX - minX + maxY - minY) * 0.04, 5);
+  const path = hull.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(3)} ${point.y.toFixed(3)}`).join(" ") + " Z";
+  return {
+    path,
+    viewBox: `${(minX - padding).toFixed(3)} ${(minY - padding).toFixed(3)} ${(maxX - minX + padding * 2).toFixed(3)} ${(maxY - minY + padding * 2).toFixed(3)}`,
+  };
+}
+
+function generateCad2DProjectionSvg(model: THREE.Group) {
+  const views: Cad2DView[] = ["front", "top", "side"];
+  const drawings = views.map((view, index) => {
+    const projection = projectionPath(model, view);
+    return `<svg x="${index * 260}" y="34" width="240" height="240" viewBox="${projection.viewBox}"><path d="${projection.path}" fill="none" stroke="#111827" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><text x="${index * 260 + 8}" y="22">${view.toUpperCase()} VIEW</text>`;
+  }).join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="780" height="290" viewBox="0 0 780 290"><rect width="100%" height="100%" fill="#ffffff"/><g font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#111827">${drawings}</g></svg>`;
 }
 
 function saveBlob(name: string, blob: Blob) {
@@ -330,6 +415,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     if (!current || !focus) return;
     const radius = focus.radius;
 
+    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, radius);
     current.controls.target.copy(focus.center);
     current.camera.near = Math.max(radius / 1000, 0.01);
     current.camera.far = radius * 1000;
@@ -349,6 +435,8 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       ? target.clone().add(new THREE.Vector3(focus.radius * 0.9, -focus.radius * 1.15, focus.radius * 1.1))
       : target.clone().add(base.multiplyScalar(distanceScale));
 
+    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, focus.radius);
+    current.controls.enableRotate = viewType === "iso" || viewType === "perspective";
     current.camera.near = Math.max(focus.radius / 1000, 0.01);
     current.camera.far = Math.max(focus.radius * 1000, 1000);
     current.camera.updateProjectionMatrix();
@@ -356,14 +444,19 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     setMessage(`Vista ${viewType} aplicada com transicao suave.`);
   }, [animateCameraTo, getModelFocus]);
 
+  const setCad2DView = useCallback((view: Cad2DView) => {
+    setCameraView(view);
+    setMessage(`CAD 2D ${view.toUpperCase()} VIEW ativo: camera ortografica sem perspectiva.`);
+  }, [setCameraView]);
+
   const autoFitView = useCallback(() => {
     const current = state.current;
     const focus = getModelFocus();
     if (!current || !focus) return;
     const direction = current.camera.position.clone().sub(current.controls.target).normalize();
     const safeDirection = direction.lengthSq() > 0 ? direction : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
-    const fov = THREE.MathUtils.degToRad(current.camera.fov);
-    const distance = Math.max((focus.radius / Math.sin(fov / 2)) * 1.15, 80);
+    const distance = Math.max(focus.radius * 4, 100);
+    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, focus.radius);
     current.camera.near = Math.max(focus.radius / 1000, 0.01);
     current.camera.far = Math.max(distance * 10, 1000);
     current.camera.updateProjectionMatrix();
@@ -394,7 +487,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     grid.position.z = -height / 2 - 0.05;
     scene.add(grid);
 
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100000);
+    const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 0.1, 100000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -417,8 +510,8 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       const width = Math.max(host.clientWidth, 1);
       const viewHeight = Math.max(host.clientHeight, 1);
       renderer.setSize(width, viewHeight, false);
-      camera.aspect = width / viewHeight;
-      camera.updateProjectionMatrix();
+      const focus = getModelFocus();
+      fitOrthographicCamera(camera, width, viewHeight, focus?.radius || 80);
     };
 
     const observer = new ResizeObserver(resize);
@@ -463,7 +556,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       host.replaceChildren();
       state.current = null;
     };
-  }, [aiClean, appliedStyle, enhanced, height, qualityRun, resetCamera, svg]);
+  }, [aiClean, appliedStyle, enhanced, getModelFocus, height, qualityRun, resetCamera, svg]);
 
   useEffect(() => {
     const current = state.current;
@@ -519,6 +612,13 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     );
   };
 
+  const exportCad2DSvg = () => {
+    const model = state.current?.model;
+    if (!model || model.children.length === 0) return setMessage("Gere um modelo 3D antes de exportar o CAD 2D.");
+    saveBlob(`${baseName(fileName)}-cad-2d.svg`, new Blob([generateCad2DProjectionSvg(model)], { type: "image/svg+xml" }));
+    setMessage("Export CAD 2D (SVG) gerado com front, top e side view.");
+  };
+
   return <section className="three-panel rounded-xl border border-[#324039] bg-[#111815] p-3">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div>
@@ -542,9 +642,9 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     <div className="relative">
       <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
       <div className="absolute left-2 top-2 z-10 grid max-w-[calc(100%-1rem)] grid-cols-3 gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/80 p-1 backdrop-blur">
-        <button type="button" onClick={() => setCameraView("front")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Front</button>
-        <button type="button" onClick={() => setCameraView("side")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Side</button>
-        <button type="button" onClick={() => setCameraView("top")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Top</button>
+        <button type="button" onClick={() => setCad2DView("front")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Front 2D</button>
+        <button type="button" onClick={() => setCad2DView("side")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Side 2D</button>
+        <button type="button" onClick={() => setCad2DView("top")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Top 2D</button>
         <button type="button" onClick={() => setCameraView("iso")} className="rounded bg-[#4b2c73] px-2 py-1 text-[9px] font-black text-white">Iso</button>
         <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-white px-2 py-1 text-[9px] font-black text-[#111713]">Reset</button>
         <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1 text-[9px] font-black text-[#b7f34a]">Auto Fit</button>
@@ -568,6 +668,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
         <button type="button" onClick={exportStl} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-2.5 text-xs font-black text-[#0a120c]"><Download size={14} /> Exportar STL</button>
         <button type="button" onClick={exportGlb} className="flex items-center justify-center gap-2 rounded-lg bg-white py-2.5 text-xs font-black text-[#111713]"><Download size={14} /> Exportar GLB</button>
       </div>
+      <button type="button" onClick={exportCad2DSvg} className="flex items-center justify-center gap-2 rounded-lg border border-[#6fb8ff]/60 bg-[#102033] py-2.5 text-xs font-black text-[#b9dcff]"><Download size={14} /> Export CAD 2D (SVG)</button>
     </div>
     <p className="mt-2 text-[10px] leading-4 text-[#8f9d96]">{message}</p>
   </section>;
