@@ -187,6 +187,10 @@ export function VectorCadApp() {
         {show3d && <div className="mt-5"><SvgTo3DCadViewer svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
     </section>}
+    <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
+      <div className="text-sm font-black uppercase tracking-[.22em] text-[#b7f34a]">shiftcore</div>
+      <div className="mt-1 text-[11px] text-[#8b9a92]">by Fernando Fernandes</div>
+    </footer>
     <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
   </main>;
 }
