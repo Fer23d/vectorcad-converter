@@ -11,6 +11,7 @@ import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferG
 
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
 type ModelStyle = (typeof styles)[number];
+type CameraView = "front" | "side" | "top" | "iso" | "perspective";
 
 type SvgTo3DCadViewerProps = {
   svg: string;
@@ -33,6 +34,15 @@ type ThreeState = {
   model: THREE.Group;
 };
 
+type CameraAnimation = {
+  fromPosition: THREE.Vector3;
+  toPosition: THREE.Vector3;
+  fromTarget: THREE.Vector3;
+  toTarget: THREE.Vector3;
+  startedAt: number;
+  duration: number;
+};
+
 const styleLabels: Record<ModelStyle, string> = {
   industrial: "Industrial",
   cad_clean: "CAD Clean",
@@ -40,6 +50,18 @@ const styleLabels: Record<ModelStyle, string> = {
   neon: "Neon",
   plastic: "Plastic",
 };
+
+const cameraViews: Record<CameraView, THREE.Vector3> = {
+  front: new THREE.Vector3(0, 0, 200),
+  side: new THREE.Vector3(200, 0, 0),
+  top: new THREE.Vector3(0, 200, 0),
+  iso: new THREE.Vector3(150, 150, 150),
+  perspective: new THREE.Vector3(150, -190, 180),
+};
+
+function easeInOutQuad(value: number) {
+  return value < 0.5 ? 2 * value * value : 1 - Math.pow(-2 * value + 2, 2) / 2;
+}
 
 function saveBlob(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -270,6 +292,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);
+  const cameraAnimation = useRef<CameraAnimation | null>(null);
   const [height, setHeight] = useState(5);
   const [enhanced, setEnhanced] = useState(false);
   const [aiClean, setAiClean] = useState(false);
@@ -278,20 +301,75 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
   const [qualityRun, setQualityRun] = useState(0);
   const [message, setMessage] = useState("Clique e arraste para girar. Use o scroll para aproximar.");
 
-  const resetCamera = useCallback(() => {
+  const getModelFocus = useCallback(() => {
     const current = state.current;
-    if (!current) return;
+    if (!current) return null;
     const box = new THREE.Box3().setFromObject(current.model);
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius, 10);
+    return { center: sphere.center, radius };
+  }, []);
 
-    current.controls.target.set(0, 0, 0);
+  const animateCameraTo = useCallback((toPosition: THREE.Vector3, toTarget = new THREE.Vector3(0, 0, 0), duration = 850) => {
+    const current = state.current;
+    if (!current) return;
+    current.controls.enabled = false;
+    cameraAnimation.current = {
+      fromPosition: current.camera.position.clone(),
+      toPosition,
+      fromTarget: current.controls.target.clone(),
+      toTarget,
+      startedAt: performance.now(),
+      duration,
+    };
+  }, []);
+
+  const resetCamera = useCallback(() => {
+    const current = state.current;
+    const focus = getModelFocus();
+    if (!current || !focus) return;
+    const radius = focus.radius;
+
+    current.controls.target.copy(focus.center);
     current.camera.near = Math.max(radius / 1000, 0.01);
     current.camera.far = radius * 1000;
-    current.camera.position.set(radius * 0.85, -radius * 1.1, radius * 1.15);
+    current.camera.position.copy(focus.center.clone().add(new THREE.Vector3(radius * 0.85, -radius * 1.1, radius * 1.15)));
     current.camera.updateProjectionMatrix();
     current.controls.update();
-  }, []);
+  }, [getModelFocus]);
+
+  const setCameraView = useCallback((viewType: CameraView) => {
+    const current = state.current;
+    const focus = getModelFocus();
+    if (!current || !focus) return;
+    const target = focus.center.clone();
+    const base = cameraViews[viewType].clone();
+    const distanceScale = Math.max(1, focus.radius / 80);
+    const toPosition = viewType === "perspective"
+      ? target.clone().add(new THREE.Vector3(focus.radius * 0.9, -focus.radius * 1.15, focus.radius * 1.1))
+      : target.clone().add(base.multiplyScalar(distanceScale));
+
+    current.camera.near = Math.max(focus.radius / 1000, 0.01);
+    current.camera.far = Math.max(focus.radius * 1000, 1000);
+    current.camera.updateProjectionMatrix();
+    animateCameraTo(toPosition, target, viewType === "perspective" ? 900 : 750);
+    setMessage(`Vista ${viewType} aplicada com transicao suave.`);
+  }, [animateCameraTo, getModelFocus]);
+
+  const autoFitView = useCallback(() => {
+    const current = state.current;
+    const focus = getModelFocus();
+    if (!current || !focus) return;
+    const direction = current.camera.position.clone().sub(current.controls.target).normalize();
+    const safeDirection = direction.lengthSq() > 0 ? direction : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
+    const fov = THREE.MathUtils.degToRad(current.camera.fov);
+    const distance = Math.max((focus.radius / Math.sin(fov / 2)) * 1.15, 80);
+    current.camera.near = Math.max(focus.radius / 1000, 0.01);
+    current.camera.far = Math.max(distance * 10, 1000);
+    current.camera.updateProjectionMatrix();
+    animateCameraTo(focus.center.clone().add(safeDirection.multiplyScalar(distance)), focus.center.clone(), 850);
+    setMessage("Auto Fit View aplicado ao modelo.");
+  }, [animateCameraTo, getModelFocus]);
 
   useEffect(() => {
     const host = mount.current;
@@ -349,6 +427,18 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     resetCamera();
 
     const animate = () => {
+      const animation = cameraAnimation.current;
+      if (animation) {
+        const progress = Math.min((performance.now() - animation.startedAt) / animation.duration, 1);
+        const eased = easeInOutQuad(progress);
+        camera.position.lerpVectors(animation.fromPosition, animation.toPosition, eased);
+        controls.target.lerpVectors(animation.fromTarget, animation.toTarget, eased);
+        camera.lookAt(controls.target);
+        if (progress >= 1) {
+          cameraAnimation.current = null;
+          controls.enabled = true;
+        }
+      }
       controls.update();
       renderer.render(scene, camera);
       frame.current = requestAnimationFrame(animate);
@@ -365,6 +455,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
 
     return () => {
       if (frame.current) cancelAnimationFrame(frame.current);
+      cameraAnimation.current = null;
       observer.disconnect();
       controls.dispose();
       disposeObject(model);
@@ -434,7 +525,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
         <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#eef6f0]"><Box size={14} /> SvgTo3DCadViewer</h3>
         <p className="mt-1 text-[10px] text-[#87978f]">Extrusao CAD em mm a partir do SVG vetorizado.</p>
       </div>
-      <button type="button" onClick={resetCamera} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce]"><RotateCcw size={12} /> Resetar câmera</button>
+      <button type="button" onClick={() => setCameraView("perspective")} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce]"><RotateCcw size={12} /> Resetar câmera</button>
     </div>
 
     <label className="range-row mb-3 text-xs text-[#aab8b1]">
@@ -448,7 +539,17 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       <button type="button" aria-pressed={enhanced} onClick={() => setEnhanced((value) => !value)} className={`h-5 w-9 rounded-full p-0.5 transition ${enhanced ? "bg-[#b7f34a]" : "bg-[#39443f]"}`}><span className={`block h-4 w-4 rounded-full bg-[#07100a] transition ${enhanced ? "translate-x-4" : ""}`} /></button>
     </label>
 
-    <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
+    <div className="relative">
+      <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
+      <div className="absolute left-2 top-2 z-10 grid max-w-[calc(100%-1rem)] grid-cols-3 gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/80 p-1 backdrop-blur">
+        <button type="button" onClick={() => setCameraView("front")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Front</button>
+        <button type="button" onClick={() => setCameraView("side")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Side</button>
+        <button type="button" onClick={() => setCameraView("top")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Top</button>
+        <button type="button" onClick={() => setCameraView("iso")} className="rounded bg-[#4b2c73] px-2 py-1 text-[9px] font-black text-white">Iso</button>
+        <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-white px-2 py-1 text-[9px] font-black text-[#111713]">Reset</button>
+        <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1 text-[9px] font-black text-[#b7f34a]">Auto Fit</button>
+      </div>
+    </div>
 
     <div className="mt-3 grid gap-2">
       <div className="rounded-xl border border-[#2b3832] bg-[#0d1411] p-3">
