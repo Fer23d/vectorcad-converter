@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local Vercel project link
 .vercel
+
+.env.local
+.env*.local
