@@ -8,6 +8,24 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "signup";
 
+function authMessage(mode: AuthMode, message: string) {
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("invalid login credentials")) {
+    return "Email ou senha incorretos. Se ainda nao criou conta, clique em Criar conta.";
+  }
+
+  if (mode === "signup" && lowerMessage.includes("already")) {
+    return "Esse email ja existe. Tente fazer login.";
+  }
+
+  if (lowerMessage.includes("email not confirmed")) {
+    return "Confirme seu email antes de entrar. Veja sua caixa de entrada.";
+  }
+
+  return message;
+}
+
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -37,18 +55,23 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     if (!client) return;
     setLoading(true);
 
-    const { error } = mode === "login"
+    const { data, error } = mode === "login"
       ? await client.auth.signInWithPassword({ email, password })
       : await client.auth.signUp({ email, password });
 
     setLoading(false);
     if (error) {
-      setMessage(mode === "signup" && error.message.toLowerCase().includes("already") ? "Esse email ja existe. Tente fazer login." : error.message);
+      setMessage(authMessage(mode, error.message));
       return;
     }
 
-    setMessage(mode === "signup" ? "Conta criada. Verifique seu email ou entre no dashboard." : "Login realizado.");
-    router.replace("/dashboard");
+    if (data.session) {
+      setMessage(mode === "signup" ? "Conta criada. Abrindo dashboard..." : "Login realizado.");
+      router.replace("/dashboard");
+      return;
+    }
+
+    setMessage("Conta criada. Confirme seu email antes de fazer login.");
   };
 
   return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] p-5">
