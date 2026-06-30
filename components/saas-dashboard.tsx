@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Clock3, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock3, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
@@ -24,6 +24,7 @@ const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
 export function SaasDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("editor");
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [projects, setProjects] = useState<CadProject[]>([]);
@@ -169,31 +170,42 @@ export function SaasDashboard() {
   }
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
-    <header className="sticky top-0 z-40 border-b border-[#26312c] bg-[#080c0b]/95 backdrop-blur">
-      <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-        <div>
+    <header className={`sticky top-0 z-40 border-b border-[#26312c] bg-[#080c0b]/95 backdrop-blur transition-all duration-200 ${headerCollapsed ? "shadow-lg shadow-black/20" : ""}`}>
+      <div className={`flex gap-3 px-3 transition-all duration-200 lg:px-5 ${headerCollapsed ? "min-h-12 flex-row items-center justify-between py-1.5" : "flex-col py-4 lg:flex-row lg:items-center lg:justify-between"}`}>
+        <div className={headerCollapsed ? "min-w-0" : ""}>
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#b7f34a] text-[#09120d]"><FolderOpen size={19} /></div>
-            <div>
-              <h1 className="text-sm font-black uppercase tracking-[.18em]">VectorCAD SaaS</h1>
-              <p className="mt-1 text-xs text-[#84938b]">{activeProject?.name || "Workspace sem projeto ativo"}</p>
+            <div className={`grid place-items-center rounded-xl bg-[#b7f34a] text-[#09120d] transition-all ${headerCollapsed ? "h-8 w-8" : "h-10 w-10"}`}><FolderOpen size={headerCollapsed ? 15 : 19} /></div>
+            <div className={headerCollapsed ? "hidden min-w-0 sm:block" : ""}>
+              <h1 className={`${headerCollapsed ? "text-[11px]" : "text-sm"} font-black uppercase tracking-[.18em]`}>VectorCAD SaaS</h1>
+              {!headerCollapsed && <p className="mt-1 text-xs text-[#84938b]">{activeProject?.name || "Workspace sem projeto ativo"}</p>}
             </div>
           </div>
         </div>
 
-        <nav className="flex w-full rounded-2xl border border-[#26312c] bg-[#101613] p-1 lg:w-auto">
-          {tabs.map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition lg:flex-none ${activeTab === tab.id ? "bg-[#b7f34a] text-[#09120d]" : "text-[#95a49c] hover:bg-[#18221d] hover:text-white"}`}>
+        <nav className={`flex rounded-2xl border border-[#26312c] bg-[#101613] p-1 transition-all ${headerCollapsed ? "w-auto flex-1 sm:flex-none" : "w-full lg:w-auto"}`}>
+          {tabs.map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-1 items-center justify-center gap-2 rounded-xl text-xs font-black transition lg:flex-none ${headerCollapsed ? "px-2.5 py-1.5 sm:px-3" : "px-4 py-2"} ${activeTab === tab.id ? "bg-[#b7f34a] text-[#09120d]" : "text-[#95a49c] hover:bg-[#18221d] hover:text-white"}`}>
             {tab.icon}
-            {tab.label}
+            <span className={headerCollapsed ? "hidden sm:inline" : ""}>{tab.label}</span>
           </button>)}
         </nav>
 
-        <div className="hidden items-center gap-2 text-xs text-[#b7f34a] xl:flex">
-          <ShieldCheck size={14} />
-          sessao protegida
+        <div className="flex items-center gap-2">
+          {!headerCollapsed && <div className="hidden items-center gap-2 text-xs text-[#b7f34a] xl:flex">
+            <ShieldCheck size={14} />
+            sessao protegida
+          </div>}
+          <button
+            type="button"
+            onClick={() => setHeaderCollapsed((value) => !value)}
+            aria-label={headerCollapsed ? "Expandir header" : "Recolher header"}
+            title={headerCollapsed ? "Expandir header" : "Recolher header"}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-[#34413b] text-[#b7f34a] transition hover:border-[#b7f34a] hover:bg-[#162219]"
+          >
+            {headerCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+          </button>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-t border-[#1a241f] px-4 py-2 text-xs text-[#8c9a93] lg:px-6">
+      <div className={`flex flex-wrap items-center gap-2 overflow-hidden border-t border-[#1a241f] px-4 text-xs text-[#8c9a93] transition-all duration-200 lg:px-6 ${headerCollapsed ? "max-h-0 py-0 opacity-0" : "max-h-16 py-2 opacity-100"}`}>
         <span className="rounded-full bg-[#111915] px-3 py-1 text-[#b7f34a]">{sortedProjects.length} projetos</span>
         <span className="min-w-0 flex-1 truncate">{status}</span>
         <span className="hidden text-[#6f7f76] md:inline">{user.email}</span>
@@ -229,7 +241,7 @@ export function SaasDashboard() {
       </div>}
     </section>}
 
-    {activeTab === "editor" && <section className="editor-tab min-h-[calc(100vh-121px)]">
+    {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       <VectorCadApp />
     </section>}
 
