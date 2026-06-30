@@ -1,3 +1,3 @@
-import { VectorCadApp } from "@/components/vector-cad-app";
+import { SaasDashboard } from "@/components/saas-dashboard";
 
-export default function Home() { return <VectorCadApp />; }
+export default function Home() { return <SaasDashboard />; }
