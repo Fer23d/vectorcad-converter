@@ -3,18 +3,27 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Clock3, FilePlus2, FolderOpen, LogOut, ShieldCheck } from "lucide-react";
+import { Clock3, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
+
+type DashboardTab = "projects" | "editor" | "profile";
 
 const emptyProjectData: CadProjectData = {
   notes: "",
   editorMode: "cad2d",
 };
 
+const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
+  { id: "projects", label: "Projetos", icon: <FolderOpen size={15} /> },
+  { id: "editor", label: "Editor", icon: <Wrench size={15} /> },
+  { id: "profile", label: "Perfil", icon: <UserRound size={15} /> },
+];
+
 export function SaasDashboard() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<DashboardTab>("editor");
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [projects, setProjects] = useState<CadProject[]>([]);
@@ -37,7 +46,7 @@ export function SaasDashboard() {
     }
 
     setProjects((data || []) as CadProject[]);
-    setStatus(data?.length ? "Projetos carregados. O conversor esta pronto para uso." : "Conversor pronto. Crie um projeto para salvar seu workspace.");
+    setStatus(data?.length ? "Projetos carregados. Editor pronto para uso." : "Editor pronto. Crie um projeto para salvar seu workspace.");
   }, []);
 
   const openProject = useCallback(async (projectId: string) => {
@@ -59,6 +68,7 @@ export function SaasDashboard() {
     const nextData = { ...(project.data || emptyProjectData), lastOpenedAt: updatedAt };
 
     setActiveProject({ ...project, data: nextData, updated_at: updatedAt });
+    setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
 
     await supabase
@@ -91,6 +101,7 @@ export function SaasDashboard() {
 
     setProjects((current) => [data as CadProject, ...current]);
     setActiveProject(data as CadProject);
+    setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
   }, [projects.length, user]);
 
@@ -157,42 +168,99 @@ export function SaasDashboard() {
     </main>;
   }
 
-  return <main className="flex min-h-screen flex-col bg-[#080c0b] text-[#e8efeb] lg:flex-row">
-    <aside id="sidebar" className="flex max-h-[42vh] w-full shrink-0 flex-col border-b border-[#26312c] bg-[#0d1210] lg:max-h-none lg:w-[310px] lg:border-b-0 lg:border-r">
-      <div className="border-b border-[#26312c] p-4">
-        <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><FolderOpen size={18} /></div>
-          <div>
-            <div className="text-xs font-black uppercase tracking-[.18em]">Projetos CAD</div>
-            <div className="text-[10px] text-[#84938b]">{user.email}</div>
+  return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
+    <header className="sticky top-0 z-40 border-b border-[#26312c] bg-[#080c0b]/95 backdrop-blur">
+      <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#b7f34a] text-[#09120d]"><FolderOpen size={19} /></div>
+            <div>
+              <h1 className="text-sm font-black uppercase tracking-[.18em]">VectorCAD SaaS</h1>
+              <p className="mt-1 text-xs text-[#84938b]">{activeProject?.name || "Workspace sem projeto ativo"}</p>
+            </div>
           </div>
         </div>
-        <button onClick={createProject} className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-2.5 text-xs font-black text-[#09120d]"><FilePlus2 size={14} /> Novo Projeto</button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
-        {sortedProjects.map((project) => <button key={project.id} onClick={() => openProject(project.id)} className={`mb-2 w-full rounded-xl border p-3 text-left transition ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#111815] hover:border-[#53625b]"}`}>
-          <div className="text-sm font-bold">{project.name}</div>
-          <div className="mt-1 flex items-center gap-1 text-[10px] text-[#819087]"><Clock3 size={11} /> {new Date(project.updated_at).toLocaleString("pt-BR")}</div>
-        </button>)}
-        {!sortedProjects.length && <div className="rounded-xl border border-dashed border-[#34413b] p-4 text-center text-xs text-[#8b9a92]">Nenhum projeto salvo. O conversor ja esta liberado.</div>}
-      </div>
+        <nav className="flex w-full rounded-2xl border border-[#26312c] bg-[#101613] p-1 lg:w-auto">
+          {tabs.map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition lg:flex-none ${activeTab === tab.id ? "bg-[#b7f34a] text-[#09120d]" : "text-[#95a49c] hover:bg-[#18221d] hover:text-white"}`}>
+            {tab.icon}
+            {tab.label}
+          </button>)}
+        </nav>
 
-      <button onClick={signOut} className="m-3 flex items-center justify-center gap-2 rounded-lg border border-[#34413b] py-2 text-xs text-[#a7b3ad]"><LogOut size={14} /> Sair</button>
-    </aside>
-
-    <section id="main" className="flex min-w-0 flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-[#26312c] px-5 py-4">
-        <div>
-          <h1 className="text-lg font-black">{activeProject?.name || "Workspace VectorCAD"}</h1>
-          <p className="text-xs text-[#8c9a93]">{status}</p>
+        <div className="hidden items-center gap-2 text-xs text-[#b7f34a] xl:flex">
+          <ShieldCheck size={14} />
+          sessao protegida
         </div>
-        <div className="flex items-center gap-2 text-xs text-[#b7f34a]"><ShieldCheck size={14} /> sessao protegida</div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <VectorCadApp />
       </div>
-    </section>
+      <div className="flex flex-wrap items-center gap-2 border-t border-[#1a241f] px-4 py-2 text-xs text-[#8c9a93] lg:px-6">
+        <span className="rounded-full bg-[#111915] px-3 py-1 text-[#b7f34a]">{sortedProjects.length} projetos</span>
+        <span className="min-w-0 flex-1 truncate">{status}</span>
+        <span className="hidden text-[#6f7f76] md:inline">{user.email}</span>
+      </div>
+    </header>
+
+    {activeTab === "projects" && <section className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-[#26312c] bg-[#101613] p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-black tracking-[-.03em]">Projetos</h2>
+          <p className="mt-1 text-sm text-[#8c9a93]">Crie, abra e organize seus trabalhos CAD salvos no Supabase.</p>
+        </div>
+        <button onClick={createProject} className="flex items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-5 py-3 text-xs font-black text-[#09120d]"><FilePlus2 size={15} /> Novo Projeto</button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {sortedProjects.map((project) => <button key={project.id} onClick={() => openProject(project.id)} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#b7f34a] ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-black">{project.name}</div>
+              <div className="mt-2 flex items-center gap-1 text-[10px] text-[#819087]"><Clock3 size={11} /> {new Date(project.updated_at).toLocaleString("pt-BR")}</div>
+            </div>
+            <span className="rounded-full border border-[#34413b] px-2 py-1 text-[10px] uppercase text-[#9aaaa2]">{project.type}</span>
+          </div>
+          <p className="mt-4 text-xs text-[#8c9a93]">Abrir no editor</p>
+        </button>)}
+      </div>
+
+      {!sortedProjects.length && <div className="rounded-3xl border border-dashed border-[#34413b] bg-[#101613] p-10 text-center">
+        <FolderOpen className="mx-auto text-[#b7f34a]" />
+        <h3 className="mt-4 text-lg font-black">Nenhum projeto salvo ainda</h3>
+        <p className="mt-2 text-sm text-[#8c9a93]">O editor ja esta liberado. Crie um projeto para organizar seus arquivos.</p>
+      </div>}
+    </section>}
+
+    {activeTab === "editor" && <section className="editor-tab min-h-[calc(100vh-121px)]">
+      <VectorCadApp />
+    </section>}
+
+    {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
+      <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
+        <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-6">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><UserRound size={22} /></div>
+            <div>
+              <h2 className="text-xl font-black">Perfil</h2>
+              <p className="text-sm text-[#8c9a93]">{user.email}</p>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-3 text-sm">
+            <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
+              <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
+              <div className="mt-2 break-all text-xs text-[#dbe5df]">{user.id}</div>
+            </div>
+            <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
+              <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Projetos vinculados</div>
+              <div className="mt-2 text-2xl font-black text-[#b7f34a]">{sortedProjects.length}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-6">
+          <div className="flex items-center gap-2 text-sm font-black"><Settings size={16} /> Configuracoes futuras</div>
+          <p className="mt-3 text-sm leading-6 text-[#8c9a93]">Este espaco fica reservado para preferencias, assinatura, billing e configuracoes de exportacao.</p>
+          <button onClick={signOut} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[#34413b] py-3 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]"><LogOut size={15} /> Sair da conta</button>
+        </div>
+      </div>
+    </section>}
   </main>;
 }
