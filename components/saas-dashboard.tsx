@@ -171,8 +171,8 @@ export function SaasDashboard() {
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <header className={`sticky top-0 z-40 border-b border-[#26312c] bg-[#080c0b]/95 backdrop-blur transition-all duration-200 ${headerCollapsed ? "shadow-lg shadow-black/20" : ""}`}>
-      <div className={`flex gap-3 px-3 transition-all duration-200 lg:px-5 ${headerCollapsed ? "min-h-12 flex-row items-center justify-between py-1.5" : "flex-col py-4 lg:flex-row lg:items-center lg:justify-between"}`}>
-        <div className={headerCollapsed ? "min-w-0" : ""}>
+      <div className={`grid gap-3 px-3 transition-all duration-200 lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:px-5 ${headerCollapsed ? "min-h-12 grid-cols-[auto_1fr_auto] py-1.5" : "grid-cols-1 py-4"}`}>
+        <div className={headerCollapsed ? "min-w-0 lg:justify-self-start" : "lg:justify-self-start"}>
           <div className="flex items-center gap-3">
             <div className={`grid place-items-center rounded-xl bg-[#b7f34a] text-[#09120d] transition-all ${headerCollapsed ? "h-8 w-8" : "h-10 w-10"}`}><FolderOpen size={headerCollapsed ? 15 : 19} /></div>
             <div className={headerCollapsed ? "hidden min-w-0 sm:block" : ""}>
@@ -182,14 +182,14 @@ export function SaasDashboard() {
           </div>
         </div>
 
-        <nav className={`flex rounded-2xl border border-[#26312c] bg-[#101613] p-1 transition-all ${headerCollapsed ? "w-auto flex-1 sm:flex-none" : "w-full lg:w-auto"}`}>
+        <nav className={`flex rounded-2xl border border-[#26312c] bg-[#101613] p-1 transition-all lg:justify-self-center ${headerCollapsed ? "w-full sm:w-auto" : "w-full lg:w-auto"}`}>
           {tabs.map((tab) => <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-1 items-center justify-center gap-2 rounded-xl text-xs font-black transition lg:flex-none ${headerCollapsed ? "px-2.5 py-1.5 sm:px-3" : "px-4 py-2"} ${activeTab === tab.id ? "bg-[#b7f34a] text-[#09120d]" : "text-[#95a49c] hover:bg-[#18221d] hover:text-white"}`}>
             {tab.icon}
             <span className={headerCollapsed ? "hidden sm:inline" : ""}>{tab.label}</span>
           </button>)}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2 lg:justify-self-end">
           {!headerCollapsed && <div className="hidden items-center gap-2 text-xs text-[#b7f34a] xl:flex">
             <ShieldCheck size={14} />
             sessao protegida
