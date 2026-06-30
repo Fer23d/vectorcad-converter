@@ -20,7 +20,7 @@ function authMessage(mode: AuthMode, message: string) {
   }
 
   if (lowerMessage.includes("email not confirmed")) {
-    return "Confirme seu email antes de entrar. Veja sua caixa de entrada.";
+    return "A confirmacao de email ainda esta ativa no Supabase. Desative em Auth > Sign In / Providers para liberar login imediato.";
   }
 
   return message;
@@ -71,7 +71,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       return;
     }
 
-    setMessage("Conta criada. Confirme seu email antes de fazer login.");
+    setMessage("Conta criada, mas o Supabase ainda exige confirmacao de email. Desative essa opcao no painel para login imediato.");
   };
 
   return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] p-5">
