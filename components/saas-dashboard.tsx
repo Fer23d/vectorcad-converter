@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Box, Clock3, FilePlus2, FolderOpen, LogOut, Save, ShieldCheck, Sparkles } from "lucide-react";
+import { Clock3, FilePlus2, FolderOpen, LogOut, Save, ShieldCheck, Sparkles } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import type { CadProject, CadProjectData } from "@/types/project";
 
@@ -16,10 +17,9 @@ function projectData(project: CadProject | null): CadProjectData {
 }
 
 export function SaasDashboard() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [projects, setProjects] = useState<CadProject[]>([]);
   const [activeProject, setActiveProject] = useState<CadProject | null>(null);
   const [draft, setDraft] = useState<CadProjectData>(emptyProjectData);
@@ -123,7 +123,7 @@ export function SaasDashboard() {
       setUser(data.user);
       setAuthLoading(false);
       if (data.user) loadProjects(data.user.id);
-      else setStatus("Faca login para acessar seus projetos.");
+      else router.replace("/login");
     });
 
     const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
@@ -131,10 +131,11 @@ export function SaasDashboard() {
       setActiveProject(null);
       setProjects([]);
       if (session?.user) loadProjects(session.user.id);
+      else router.replace("/login");
     });
 
     return () => listener.subscription.unsubscribe();
-  }, [loadProjects]);
+  }, [loadProjects, router]);
 
   useEffect(() => {
     const client = supabase;
@@ -159,21 +160,13 @@ export function SaasDashboard() {
     return () => window.clearTimeout(timer);
   }, [activeProject, autoSave, draft]);
 
-  const signIn = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!supabase) return;
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setAuthLoading(false);
-    if (error) setStatus(`Login falhou: ${error.message}`);
-  };
-
   const signOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
     setUser(null);
     setActiveProject(null);
     setProjects([]);
+    router.replace("/login");
   };
 
   const sortedProjects = useMemo(() => [...projects].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [projects]);
@@ -187,17 +180,7 @@ export function SaasDashboard() {
     </main>;
   }
 
-  if (!user) {
-    return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] p-5">
-      <form onSubmit={signIn} className="w-full max-w-sm rounded-2xl border border-[#33413a] bg-[#101613] p-6 text-[#e8efeb] shadow-2xl">
-        <div className="mb-6 flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.16em]">VECTORCAD</div><div className="text-[10px] text-[#84938b]">Dashboard SaaS</div></div></div>
-        <label className="mb-3 block text-xs text-[#aab8b1]">Email<input value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full" type="email" required /></label>
-        <label className="mb-4 block text-xs text-[#aab8b1]">Senha<input value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1 w-full" type="password" required /></label>
-        <button disabled={authLoading} className="w-full rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#09120d] disabled:opacity-60">{authLoading ? "Entrando..." : "Entrar"}</button>
-        <p className="mt-4 text-center text-[11px] text-[#8c9a93]">{status}</p>
-      </form>
-    </main>;
-  }
+  if (authLoading || !user) return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]"><div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">Carregando sessao...</div></main>;
 
   return <main className="flex min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <aside id="sidebar" className="flex w-[310px] shrink-0 flex-col border-r border-[#26312c] bg-[#0d1210]">
