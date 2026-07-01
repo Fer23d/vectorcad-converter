@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { ChevronDown, ChevronUp, Clock3, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock3, Copy, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
@@ -41,6 +41,8 @@ export function SaasDashboard() {
   const [profileLastName, setProfileLastName] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [showUserId, setShowUserId] = useState(false);
+  const [userIdCopied, setUserIdCopied] = useState(false);
 
   const canUseSupabase = isSupabaseConfigured && supabase;
 
@@ -170,6 +172,14 @@ export function SaasDashboard() {
   };
 
   const profileFullName = [profileFirstName, profileLastName].map((part) => part.trim()).filter(Boolean).join(" ");
+  const hiddenUserId = "••••••••-••••-••••-••••-••••••••••••";
+
+  const copyUserId = async () => {
+    if (!user) return;
+    await navigator.clipboard.writeText(user.id);
+    setUserIdCopied(true);
+    window.setTimeout(() => setUserIdCopied(false), 1600);
+  };
 
   const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -294,7 +304,8 @@ export function SaasDashboard() {
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><UserRound size={22} /></div>
             <div>
-              <h2 className="text-xl font-black">{profileFullName || "Perfil"}</h2>
+              <h2 className="text-2xl font-bold tracking-[-.03em]">{profileFirstName.trim() || "Perfil"}</h2>
+              {profileLastName.trim() && <div className="mt-0.5 text-lg font-semibold text-[#cfd9d3]">{profileLastName.trim()}</div>}
               <p className="text-sm text-[#8c9a93]">{user.email}</p>
             </div>
           </div>
@@ -310,7 +321,17 @@ export function SaasDashboard() {
             </form>
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
-              <div className="mt-2 break-all text-xs text-[#dbe5df]">{user.id}</div>
+              <div className="relative mt-3 w-full">
+                <input readOnly value={showUserId ? user.id : hiddenUserId} className="w-full rounded-xl border border-[#34423c] bg-[#080c0b] px-4 py-3 pr-24 font-mono text-xs text-[#dbe5df] outline-none" />
+                <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                  <button type="button" onClick={() => setShowUserId((value) => !value)} aria-label={showUserId ? "Ocultar User ID" : "Mostrar User ID"} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
+                    {showUserId ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button type="button" onClick={copyUserId} aria-label="Copiar User ID" className="flex h-8 w-8 items-center justify-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
+                    {userIdCopied ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Projetos vinculados</div>
