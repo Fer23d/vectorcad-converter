@@ -87,6 +87,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   };
 
   const inputClass = "mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20";
+  const passwordInputClass = "w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 pr-12 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20";
 
   return <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10">
     <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613]/95 p-8 text-[#e8efeb] shadow-2xl shadow-black/40 backdrop-blur">
@@ -97,9 +98,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       </div>}
       <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Email<input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} type="email" placeholder="voce@email.com" required /></label>
       <label className="mb-5 block text-xs font-bold text-[#aab8b1]">Senha
-        <div className="relative">
-          <input value={password} onChange={(event) => setPassword(event.target.value)} className={`${inputClass} pr-12`} type={showPassword ? "text" : "password"} placeholder="Sua senha" required minLength={6} />
-          <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
+        <div className="relative mt-2 w-full">
+          <input value={password} onChange={(event) => setPassword(event.target.value)} className={passwordInputClass} type={showPassword ? "text" : "password"} placeholder="Sua senha" required minLength={6} />
+          <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
             {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
         </div>
