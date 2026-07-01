@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Box } from "lucide-react";
+import { Box, Eye, EyeOff } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "signup";
@@ -32,6 +32,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [message, setMessage] = useState(isSupabaseConfigured ? mode === "login" ? "Faca login para acessar seus projetos." : "Crie sua conta para iniciar o VectorCAD." : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
 
@@ -85,18 +86,27 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setMessage("Conta criada, mas o Supabase ainda exige confirmacao de email. Desative essa opcao no painel para login imediato.");
   };
 
-  return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] p-5">
-    <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-[#33413a] bg-[#101613] p-6 text-[#e8efeb] shadow-2xl">
-      <div className="mb-6 flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.16em]">VECTORCAD</div><div className="text-[10px] text-[#84938b]">{mode === "login" ? "Login SaaS" : "Criar conta"}</div></div></div>
-      {mode === "signup" && <div className="mb-3 grid grid-cols-2 gap-2">
-        <label className="block text-xs text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className="mt-1 w-full" type="text" required /></label>
-        <label className="block text-xs text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className="mt-1 w-full" type="text" required /></label>
+  const inputClass = "mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20";
+
+  return <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10">
+    <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613]/95 p-8 text-[#e8efeb] shadow-2xl shadow-black/40 backdrop-blur">
+      <div className="mb-7 flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div><div><div className="text-base font-black tracking-[.18em]">VECTORCAD</div><div className="mt-1 text-[11px] text-[#84938b]">{mode === "login" ? "Acesse seu workspace SaaS" : "Crie sua conta profissional"}</div></div></div>
+      {mode === "signup" && <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs font-bold text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={inputClass} type="text" placeholder="Fernando" required /></label>
+        <label className="block text-xs font-bold text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className={inputClass} type="text" placeholder="Fernandes" required /></label>
       </div>}
-      <label className="mb-3 block text-xs text-[#aab8b1]">Email<input value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 w-full" type="email" required /></label>
-      <label className="mb-4 block text-xs text-[#aab8b1]">Senha<input value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1 w-full" type="password" required minLength={6} /></label>
-      <button disabled={loading || !isSupabaseConfigured} className="w-full rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#09120d] disabled:opacity-60">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>
-      <p className="mt-4 text-center text-[11px] text-[#8c9a93]">{message}</p>
-      <div className="mt-5 text-center text-xs text-[#aab8b1]">
+      <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Email<input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} type="email" placeholder="voce@email.com" required /></label>
+      <label className="mb-5 block text-xs font-bold text-[#aab8b1]">Senha
+        <div className="relative">
+          <input value={password} onChange={(event) => setPassword(event.target.value)} className={`${inputClass} pr-12`} type={showPassword ? "text" : "password"} placeholder="Sua senha" required minLength={6} />
+          <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
+            {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+          </button>
+        </div>
+      </label>
+      <button disabled={loading || !isSupabaseConfigured} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:opacity-60">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>
+      <p className="mt-5 rounded-2xl border border-[#26312c] bg-[#0b100e] px-4 py-3 text-center text-xs leading-5 text-[#8c9a93]">{message}</p>
+      <div className="mt-6 text-center text-sm text-[#aab8b1]">
         {mode === "login" ? <>Nao tem conta? <Link className="font-bold text-[#b7f34a]" href="/signup">Criar conta</Link></> : <>Ja tem conta? <Link className="font-bold text-[#b7f34a]" href="/login">Entrar</Link></>}
       </div>
     </form>
