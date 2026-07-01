@@ -77,6 +77,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       return;
     }
 
+    if (mode === "signup" && data.session?.access_token) {
+      fetch("/api/email/welcome", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      }).catch(() => null);
+    }
+
     if (data.session) {
       setMessage(mode === "signup" ? "Conta criada. Abrindo dashboard..." : "Login realizado.");
       router.replace("/dashboard");
