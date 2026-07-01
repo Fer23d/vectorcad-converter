@@ -15,6 +15,13 @@ const emptyProjectData: CadProjectData = {
   editorMode: "cad2d",
 };
 
+function metadataName(user: User | null) {
+  return {
+    firstName: String(user?.user_metadata?.first_name || ""),
+    lastName: String(user?.user_metadata?.last_name || ""),
+  };
+}
+
 const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
   { id: "projects", label: "Projetos", icon: <FolderOpen size={15} /> },
   { id: "editor", label: "Editor", icon: <Wrench size={15} /> },
@@ -30,6 +37,10 @@ export function SaasDashboard() {
   const [projects, setProjects] = useState<CadProject[]>([]);
   const [activeProject, setActiveProject] = useState<CadProject | null>(null);
   const [status, setStatus] = useState("Conectando ao Supabase...");
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
 
   const canUseSupabase = isSupabaseConfigured && supabase;
 
@@ -112,6 +123,9 @@ export function SaasDashboard() {
 
     client.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      const name = metadataName(data.user);
+      setProfileFirstName(name.firstName);
+      setProfileLastName(name.lastName);
       setAuthLoading(false);
       if (data.user) loadProjects(data.user.id);
       else router.replace("/login");
@@ -119,6 +133,9 @@ export function SaasDashboard() {
 
     const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
+      const name = metadataName(session?.user || null);
+      setProfileFirstName(name.firstName);
+      setProfileLastName(name.lastName);
       setActiveProject(null);
       setProjects([]);
       if (session?.user) loadProjects(session.user.id);
@@ -150,6 +167,32 @@ export function SaasDashboard() {
     setActiveProject(null);
     setProjects([]);
     router.replace("/login");
+  };
+
+  const profileFullName = [profileFirstName, profileLastName].map((part) => part.trim()).filter(Boolean).join(" ");
+
+  const saveProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!supabase) return;
+
+    setProfileSaving(true);
+    setProfileMessage("");
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        first_name: profileFirstName.trim(),
+        last_name: profileLastName.trim(),
+      },
+    });
+
+    setProfileSaving(false);
+    if (error) {
+      setProfileMessage(`Nao foi possivel salvar perfil: ${error.message}`);
+      return;
+    }
+
+    setUser(data.user);
+    setProfileMessage("Perfil atualizado com sucesso.");
   };
 
   const sortedProjects = useMemo(() => [...projects].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [projects]);
@@ -208,7 +251,7 @@ export function SaasDashboard() {
       <div className={`flex flex-wrap items-center gap-2 overflow-hidden border-t border-[#1a241f] px-4 text-xs text-[#8c9a93] transition-all duration-200 lg:px-6 ${headerCollapsed ? "max-h-0 py-0 opacity-0" : "max-h-16 py-2 opacity-100"}`}>
         <span className="rounded-full bg-[#111915] px-3 py-1 text-[#b7f34a]">{sortedProjects.length} projetos</span>
         <span className="min-w-0 flex-1 truncate">{status}</span>
-        <span className="hidden text-[#6f7f76] md:inline">{user.email}</span>
+        <span className="hidden text-[#6f7f76] md:inline">{profileFullName || user.email}</span>
       </div>
     </header>
 
@@ -251,11 +294,20 @@ export function SaasDashboard() {
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><UserRound size={22} /></div>
             <div>
-              <h2 className="text-xl font-black">Perfil</h2>
+              <h2 className="text-xl font-black">{profileFullName || "Perfil"}</h2>
               <p className="text-sm text-[#8c9a93]">{user.email}</p>
             </div>
           </div>
           <div className="mt-6 grid gap-3 text-sm">
+            <form onSubmit={saveProfile} className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
+              <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Dados pessoais</div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-[#aab8b1]">Nome<input value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} className="mt-1 w-full" type="text" /></label>
+                <label className="text-xs text-[#aab8b1]">Sobrenome<input value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} className="mt-1 w-full" type="text" /></label>
+              </div>
+              <button disabled={profileSaving} className="mt-4 rounded-xl bg-[#b7f34a] px-4 py-2 text-xs font-black text-[#09120d] disabled:opacity-60">{profileSaving ? "Salvando..." : "Salvar perfil"}</button>
+              {profileMessage && <p className="mt-3 text-xs text-[#8c9a93]">{profileMessage}</p>}
+            </form>
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
               <div className="mt-2 break-all text-xs text-[#dbe5df]">{user.id}</div>
