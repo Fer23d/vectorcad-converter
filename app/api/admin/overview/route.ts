@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
+import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -82,9 +82,11 @@ export async function GET(request: Request) {
     const companyInfo = resolveCompany(profile?.company || appUser?.company || String(user.user_metadata?.company || ""));
     const individualPlan = normalizeCompanyPlan(appUser?.plan || String(user.user_metadata?.plan || ""));
     const individualPremium = Boolean(appUser?.is_premium || user.user_metadata?.is_premium);
-    const companyPremium = isPremiumCompany(companyInfo.name) || normalizeCompanyPlan(companyInfo.plan) === "empresarial";
-    const premium = companyPremium || individualPremium || planHasPremiumAccess(individualPlan);
-    const effectivePlan = companyPremium ? normalizeCompanyPlan("empresarial") : individualPremium && individualPlan === "free" ? normalizeCompanyPlan("pro") : individualPlan;
+    const effectivePlan = resolveUserPlan(
+      { plan: individualPlan, is_premium: individualPremium },
+      { name: companyInfo.name, plan: companyInfo.plan },
+    );
+    const premium = planHasPremiumAccess(effectivePlan);
 
     return {
       id: user.id,
@@ -92,6 +94,7 @@ export async function GET(request: Request) {
       company: companyInfo.name,
       company_id: companyInfo.id,
       companyPlan: companyInfo.plan,
+      userPlan: individualPlan,
       plan: effectivePlan,
       is_premium: premium,
       premium,
@@ -105,11 +108,15 @@ export async function GET(request: Request) {
     company: userCompanyById.get(project.user_id) || resolveCompany(profilesByUserId.get(project.user_id)?.company).name,
   }));
   const usersWithLogin = users.filter((user) => Boolean(user.last_sign_in_at));
-  const companyCounts = users.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
+  const companyCounts = users.reduce<Record<string, { total: number; premium: number; enterprise: number; pro: number; plus: number; free: number }>>((totals, user) => {
     const company = user.company || "Sem empresa";
-    totals[company] ||= { total: 0, premium: 0 };
+    totals[company] ||= { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
     totals[company].total += 1;
     if (user.premium) totals[company].premium += 1;
+    if (user.plan === "empresarial") totals[company].enterprise += 1;
+    else if (user.plan === "pro") totals[company].pro += 1;
+    else if (user.plan === "plus") totals[company].plus += 1;
+    else totals[company].free += 1;
     return totals;
   }, {});
   const companies = companiesError
@@ -119,6 +126,10 @@ export async function GET(request: Request) {
       plan: normalizeCompanyPlan(isPremiumCompany(name) ? "empresarial" : "free"),
       user_count: counts.total,
       premium_users: counts.premium,
+      enterprise_users: counts.enterprise,
+      pro_users: counts.pro,
+      plus_users: counts.plus,
+      free_users: counts.free,
       created_at: null,
       updated_at: null,
     }))
@@ -127,6 +138,10 @@ export async function GET(request: Request) {
       plan: normalizeCompanyPlan(company.plan),
       user_count: companyCounts[company.name]?.total || 0,
       premium_users: companyCounts[company.name]?.premium || 0,
+      enterprise_users: companyCounts[company.name]?.enterprise || 0,
+      pro_users: companyCounts[company.name]?.pro || 0,
+      plus_users: companyCounts[company.name]?.plus || 0,
+      free_users: companyCounts[company.name]?.free || 0,
     }));
   const smAUsers = users.filter((user) => isPremiumCompany(user.company));
   const usersWithoutCompany = users.filter((user) => !user.company);

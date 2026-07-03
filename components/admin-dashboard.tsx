@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, PlusCircle, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
 import { isAdminUser } from "@/lib/admin";
-import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
+import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AdminOverview = {
@@ -14,7 +14,7 @@ type AdminOverview = {
     activeUsers: number;
     smaUsers: number;
   };
-  companyCounts: Record<string, { total: number; premium: number }>;
+  companyCounts: Record<string, { total: number; premium: number; enterprise?: number; pro?: number; plus?: number; free?: number }>;
   companies: AdminCompany[];
   adminLogs: AdminLog[];
   smAUsers: AdminUser[];
@@ -40,6 +40,10 @@ type AdminCompany = {
   plan: CompanyPlan;
   user_count: number;
   premium_users: number;
+  enterprise_users?: number;
+  pro_users?: number;
+  plus_users?: number;
+  free_users?: number;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -60,6 +64,7 @@ type AdminUser = {
   company: string | null;
   company_id?: string | null;
   companyPlan?: CompanyPlan;
+  userPlan?: CompanyPlan;
   plan?: CompanyPlan;
   is_premium?: boolean;
   premium: boolean;
@@ -235,22 +240,28 @@ export function AdminDashboard() {
     };
     const normalizedUsers = nextUsers.map((user) => {
       const company = resolveUserCompany(user.company);
-      const companyPremium = isPremiumCompany(company.name) || planHasPremiumAccess(company.plan);
-      const premium = companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan) || user.premium;
+      const userPlan = normalizeCompanyPlan(user.userPlan || user.plan);
+      const effectivePlan = resolveUserPlan({ plan: userPlan, is_premium: user.is_premium }, { name: company.name, plan: company.plan });
+      const premium = planHasPremiumAccess(effectivePlan);
       return {
         ...user,
         company: company.name,
         companyPlan: company.plan,
+        userPlan,
         premium,
         is_premium: premium,
-        plan: companyPremium ? normalizeCompanyPlan("empresarial") : user.plan,
+        plan: effectivePlan,
       };
     });
-    const companyCounts = normalizedUsers.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
+    const companyCounts = normalizedUsers.reduce<Record<string, { total: number; premium: number; enterprise: number; pro: number; plus: number; free: number }>>((totals, user) => {
       const company = user.company || "Sem empresa";
-      totals[company] ||= { total: 0, premium: 0 };
+      totals[company] ||= { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
       totals[company].total += 1;
       if (user.premium) totals[company].premium += 1;
+      if (user.plan === "empresarial") totals[company].enterprise += 1;
+      else if (user.plan === "pro") totals[company].pro += 1;
+      else if (user.plan === "plus") totals[company].plus += 1;
+      else totals[company].free += 1;
       return totals;
     }, {});
     const companyByUserId = new Map(normalizedUsers.map((user) => [user.id, user.company]));
@@ -259,6 +270,10 @@ export function AdminDashboard() {
       plan: normalizeCompanyPlan(company.plan),
       user_count: companyCounts[company.name]?.total || 0,
       premium_users: companyCounts[company.name]?.premium || 0,
+      enterprise_users: companyCounts[company.name]?.enterprise || 0,
+      pro_users: companyCounts[company.name]?.pro || 0,
+      plus_users: companyCounts[company.name]?.plus || 0,
+      free_users: companyCounts[company.name]?.free || 0,
     }));
 
     return {
@@ -282,8 +297,7 @@ export function AdminDashboard() {
     const previousOverview = overview;
     const normalizedCompany = company?.trim() || null;
     const selectedPlan = overview.companies.find((item) => item.name === normalizedCompany || item.id === normalizedCompany)?.plan;
-    const companyPremium = isPremiumCompany(normalizedCompany) || planHasPremiumAccess(selectedPlan);
-    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, companyPlan: normalizeCompanyPlan(selectedPlan), premium: companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan), is_premium: companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan), plan: companyPremium ? normalizeCompanyPlan("empresarial") : user.plan } : user);
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, companyPlan: normalizeCompanyPlan(selectedPlan) } : user);
 
     setCompanySavingUserId(targetUser.id);
     setOverview(rebuildOverviewUsers(overview, nextUsers));
@@ -573,6 +587,9 @@ export function AdminDashboard() {
                   <div className="truncate text-sm font-black text-[#e8efeb]">{company.name}</div>
                   {(planHasPremiumAccess(company.plan) || isPremiumCompany(company.name)) && <div className="mt-2 inline-flex rounded-full bg-[#b7f34a] px-2 py-1 text-[10px] font-black uppercase text-[#09120d]">EMPRESARIAL</div>}
                   <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuarios · {company.premium_users} premium</div>
+                  <div className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#6f7d75]">
+                    {company.enterprise_users || 0} empresarial · {company.pro_users || 0} pro · {company.plus_users || 0} plus · {company.free_users || 0} free
+                  </div>
                 </div>
                 <CreditCard className="text-[#b7f34a]" size={16} />
               </div>
@@ -622,6 +639,9 @@ export function AdminDashboard() {
               <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
               <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company]?.total || 0} usuarios</div>
               <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company]?.premium || 0} premium</div>
+              <div className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#6f7d75]">
+                {overview.companyCounts[company]?.enterprise || 0} empresarial · {overview.companyCounts[company]?.pro || 0} pro · {overview.companyCounts[company]?.plus || 0} plus · {overview.companyCounts[company]?.free || 0} free
+              </div>
             </div>)}
           </div>
         </section>
@@ -682,7 +702,8 @@ export function AdminDashboard() {
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {premiumByCompany.length ? premiumByCompany.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
               <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
-              <div className="mt-2 text-2xl font-black text-[#b7f34a]">{overview.companyCounts[company].premium}</div>
+              <div className="mt-2 text-2xl font-black text-[#b7f34a]">{overview.companyCounts[company]?.premium || 0}</div>
+              <div className="mt-1 text-xs text-[#7c8b83]">{overview.companyCounts[company]?.enterprise || 0} empresarial</div>
             </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa premium encontrada.</div>}
           </div>
         </section>

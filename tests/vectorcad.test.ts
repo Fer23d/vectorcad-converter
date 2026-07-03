@@ -7,7 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
-import { daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
+import { daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
 const doc: VectorDocument = {
@@ -140,5 +140,14 @@ describe("VectorCAD pipeline", () => {
     expect(planAllowsDxf("plus")).toBe(false);
     expect(planAllowsDxf("pro")).toBe(true);
     expect(dailyUsageLimitForPlan("empresarial")).toBeNull();
+  });
+
+  it("resolves the effective SaaS plan with company override", () => {
+    expect(resolveUserPlan({ plan: "free" }, { plan: "empresarial" })).toBe("empresarial");
+    expect(resolveUserPlan({ plan: "pro" }, { plan: "free" })).toBe("pro");
+    expect(resolveUserPlan({ plan: "plus" }, { plan: "free" })).toBe("plus");
+    expect(resolveUserPlan({ plan: "free", is_premium: true }, { plan: "free" })).toBe("pro");
+    expect(resolveUserPlan({ plan: "free" }, { name: "SM&A", plan: "free" })).toBe("empresarial");
+    expect(resolveUserPlan({ plan: null }, { plan: null })).toBe("free");
   });
 });

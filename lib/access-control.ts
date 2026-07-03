@@ -36,6 +36,22 @@ export function planHasPremiumAccess(plan?: string | null) {
   return normalized === "pro" || normalized === "empresarial";
 }
 
+export function resolveUserPlan(
+  user?: { plan?: string | null; is_premium?: boolean | null } | null,
+  company?: { plan?: string | null; name?: string | null } | null,
+): CompanyPlan {
+  const companyPlan = normalizeCompanyPlan(company?.plan);
+  if (companyPlan === "empresarial" || isPremiumCompany(company?.name)) return "empresarial";
+
+  const userPlan = normalizeCompanyPlan(user?.plan);
+  if (userPlan === "empresarial") return "empresarial";
+  if (userPlan === "pro") return "pro";
+  if (user?.is_premium) return "pro";
+  if (userPlan === "plus") return "plus";
+
+  return "free";
+}
+
 export function planRemovesAds(plan?: string | null) {
   const normalized = normalizeCompanyPlan(plan);
   return normalized === "plus" || normalized === "pro" || normalized === "empresarial";
@@ -78,6 +94,5 @@ export function shouldShowAds(profile?: Pick<UserAccessProfile, "company" | "pla
 }
 
 export function resolveEffectivePlan(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium"> | null): CompanyPlan {
-  if (profile?.is_premium || isPremiumCompany(profile?.company) || normalizeCompanyPlan(profile?.plan) === "empresarial") return "empresarial";
-  return normalizeCompanyPlan(profile?.plan);
+  return resolveUserPlan(profile, { name: profile?.company, plan: isPremiumCompany(profile?.company) ? "empresarial" : null });
 }
