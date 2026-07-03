@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { Building2, Check, Crown, Loader2, ShieldCheck, Sparkles, Zap } from "lucide-react";
 import { getBillingPlan, type BillablePlan } from "@/lib/billing";
 import { normalizeCompanyPlan, type CompanyPlan } from "@/lib/access-control";
@@ -18,12 +18,24 @@ const planIcons: Record<string, React.ReactNode> = {
   empresarial: <Building2 size={20} />,
 };
 
+type HighlightBox = {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  visible: boolean;
+};
+
 export function PricingPage() {
   const [state, setState] = useState<PaymentState>("idle");
   const [loadingPlan, setLoadingPlan] = useState<BillablePlan | null>(null);
   const [message, setMessage] = useState("Escolha o plano ideal para o seu fluxo CAD.");
   const [signedIn, setSignedIn] = useState(false);
   const [currentPlan, setCurrentPlan] = useState<CompanyPlan>("free");
+  const [activePlan, setActivePlan] = useState<CompanyPlan>("pro");
+  const [highlightBox, setHighlightBox] = useState<HighlightBox>({ width: 0, height: 0, x: 0, y: 0, visible: false });
+  const gridRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     const client = supabase;
@@ -82,6 +94,29 @@ export function PricingPage() {
     }
   };
 
+  const moveHighlight = useCallback((plan: CompanyPlan) => {
+    const grid = gridRef.current;
+    const card = cardRefs.current[plan];
+    if (!grid || !card) return;
+
+    const gridRect = grid.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    setHighlightBox({
+      width: cardRect.width,
+      height: cardRect.height,
+      x: cardRect.left - gridRect.left,
+      y: cardRect.top - gridRect.top,
+      visible: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    moveHighlight(activePlan);
+    const onResize = () => moveHighlight(activePlan);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [activePlan, moveHighlight]);
+
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10 text-[#e8efeb]">
     <section className="mx-auto max-w-7xl">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -93,22 +128,35 @@ export function PricingPage() {
         <Link href={signedIn ? "/dashboard" : "/login"} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">{signedIn ? "Voltar ao app" : "Entrar"}</Link>
       </header>
 
-      <div className="mt-10 grid gap-4 lg:grid-cols-4">
+      <div ref={gridRef} className="pricing-grid relative mt-10 grid gap-4 lg:grid-cols-4">
+        <div
+          aria-hidden="true"
+          className={`pricing-moving-highlight ${highlightBox.visible ? "opacity-100" : "opacity-0"}`}
+          style={{
+            width: highlightBox.width,
+            height: highlightBox.height,
+            transform: `translate3d(${highlightBox.x}px, ${highlightBox.y}px, 0)`,
+          }}
+        />
         {planOrder.map((planId) => {
           const plan = getBillingPlan(planId);
           const highlighted = plan.id === "pro";
           const current = normalizeCompanyPlan(currentPlan) === plan.id;
           const billable = plan.id !== "free";
           const checkoutPlan = plan.id as BillablePlan;
+          const active = activePlan === plan.id;
 
           return <PlanCard
             key={plan.id}
+            ref={(element) => { cardRefs.current[plan.id] = element; }}
             title={plan.title}
             price={plan.priceLabel}
             icon={planIcons[plan.id]}
             features={plan.features}
             highlighted={highlighted}
             current={current}
+            active={active}
+            onHover={() => setActivePlan(plan.id)}
             action={billable ? <button
               disabled={state === "loading" || !isSupabaseConfigured}
               onClick={() => subscribePlan(checkoutPlan)}
@@ -124,12 +172,30 @@ export function PricingPage() {
   </main>;
 }
 
-function PlanCard({ title, price, features, icon, highlighted, current, action }: { title: string; price: string; features: string[]; icon: React.ReactNode; highlighted?: boolean; current?: boolean; action?: React.ReactNode }) {
-  return <article className={`relative rounded-3xl border p-6 ${highlighted ? "border-[#b7f34a] bg-[#142016]" : "border-[#26312c] bg-[#101613]"}`}>
+type PlanCardProps = {
+  title: string;
+  price: string;
+  features: string[];
+  icon: React.ReactNode;
+  highlighted?: boolean;
+  current?: boolean;
+  active?: boolean;
+  action?: React.ReactNode;
+  onHover?: () => void;
+};
+
+const PlanCard = forwardRef<HTMLDivElement, PlanCardProps>(function PlanCard({ title, price, features, icon, highlighted, current, active, action, onHover }, ref) {
+  return <article
+    ref={ref}
+    onMouseEnter={onHover}
+    onFocus={onHover}
+    className={`pricing-card group relative rounded-3xl border p-6 ${highlighted ? "pricing-card-pro border-[#b7f34a] bg-[#142016]" : "border-[#26312c] bg-[#101613]"} ${active ? "pricing-card-active" : ""}`}
+  >
+    <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(circle_at_50%_0%,rgba(183,243,74,.14),transparent_45%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
     <div className="flex items-center justify-between">
       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]">{icon}</div>
       <div className="flex flex-col items-end gap-2">
-        {highlighted && <span className="rounded-full bg-[#b7f34a] px-3 py-1 text-[10px] font-black uppercase text-[#09120d]">Mais usado</span>}
+        {highlighted && <span className="pricing-pro-badge rounded-full bg-[#b7f34a] px-3 py-1 text-[10px] font-black uppercase text-[#09120d]">Mais usado</span>}
         {current && <span className="rounded-full border border-[#b7f34a]/50 px-3 py-1 text-[10px] font-black uppercase text-[#b7f34a]">Plano atual</span>}
       </div>
     </div>
@@ -140,4 +206,4 @@ function PlanCard({ title, price, features, icon, highlighted, current, action }
     </ul>
     {action}
   </article>;
-}
+});

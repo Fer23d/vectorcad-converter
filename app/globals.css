@@ -29,9 +29,87 @@ select, input[type="number"] { background: #0d1311; border: 1px solid #34423c; b
 .three-viewport canvas { display: block; height: 100% !important; width: 100% !important; }
 .three-panel input[type="range"] { width: 100%; }
 .resizing-panel, .resizing-panel * { cursor: col-resize !important; user-select: none !important; }
+.pricing-grid { perspective: 1200px; }
+.pricing-moving-highlight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border-radius: 24px;
+  border: 1px solid rgba(163,255,79,.85);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(163,255,79,.22), transparent 48%),
+    linear-gradient(135deg, rgba(163,255,79,.12), rgba(70,255,190,.04));
+  box-shadow: 0 0 0 1px rgba(163,255,79,.32), 0 18px 70px rgba(163,255,79,.18), inset 0 0 34px rgba(163,255,79,.08);
+  filter: blur(.1px);
+  pointer-events: none;
+  transition: transform 420ms cubic-bezier(.2,.8,.2,1), width 420ms cubic-bezier(.2,.8,.2,1), height 420ms cubic-bezier(.2,.8,.2,1), opacity 220ms ease;
+  will-change: transform, width, height;
+}
+.pricing-moving-highlight::after {
+  content: "";
+  position: absolute;
+  inset: -22px;
+  z-index: -1;
+  border-radius: 34px;
+  background: radial-gradient(circle at 50% 40%, rgba(163,255,79,.2), transparent 58%);
+  filter: blur(22px);
+}
+.pricing-card {
+  z-index: 1;
+  overflow: hidden;
+  transform: translateZ(0);
+  transition: transform 300ms ease, border-color 300ms ease, box-shadow 300ms ease, background 300ms ease, filter 300ms ease;
+  will-change: transform;
+}
+.pricing-card:hover,
+.pricing-card:focus-within,
+.pricing-card-active {
+  transform: translateY(-6px) scale(1.02);
+  border-color: #a3ff4f;
+  background: linear-gradient(180deg, rgba(23,39,24,.98), rgba(12,18,15,.98));
+  box-shadow: 0 20px 60px rgba(0,0,0,.34), 0 0 42px rgba(163,255,79,.16);
+}
+.pricing-card-pro {
+  animation: pricing-slow-glow 4.8s ease-in-out infinite;
+}
+.pricing-card-pro::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(120deg, rgba(163,255,79,.15), rgba(163,255,79,.9), rgba(79,255,199,.22), rgba(163,255,79,.15));
+  background-size: 220% 220%;
+  animation: pricing-gradient-border 6s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.pricing-pro-badge {
+  animation: pricing-badge-pulse 2.2s ease-in-out infinite;
+  box-shadow: 0 0 0 rgba(183,243,74,.0);
+}
+@keyframes pricing-slow-glow {
+  0%, 100% { box-shadow: 0 14px 50px rgba(0,0,0,.22), 0 0 24px rgba(183,243,74,.1); }
+  50% { box-shadow: 0 18px 64px rgba(0,0,0,.28), 0 0 42px rgba(183,243,74,.22); }
+}
+@keyframes pricing-gradient-border {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 220% 50%; }
+}
+@keyframes pricing-badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(183,243,74,.25); }
+  50% { transform: scale(1.045); box-shadow: 0 0 0 7px rgba(183,243,74,0); }
+}
 @media (max-width: 1023px) {
   .workspace-layout { display: block; }
   .panel-resizer { display: none; }
   .controls-panel, .cad-panel { max-height: none; }
   .preview-panel { min-height: 70vh; }
+  .pricing-moving-highlight { display: none; }
+  .pricing-card:hover,
+  .pricing-card:focus-within,
+  .pricing-card-active { transform: translateY(-3px) scale(1.01); }
 }
