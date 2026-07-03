@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAdminUser } from "@/lib/admin";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
   }
 
-  if (userData.user.user_metadata?.role !== "admin") {
+  if (!isAdminUser(userData.user.id)) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 
@@ -50,14 +51,21 @@ export async function GET(request: Request) {
     id: user.id,
     email: user.email || "sem email",
     created_at: user.created_at,
+    last_sign_in_at: user.last_sign_in_at || null,
   }));
   const projects = projectsData || [];
+  const usersWithLogin = users.filter((user) => Boolean(user.last_sign_in_at));
+  const latestLogins = [...usersWithLogin]
+    .sort((a, b) => new Date(b.last_sign_in_at || 0).getTime() - new Date(a.last_sign_in_at || 0).getTime())
+    .slice(0, 5);
 
   return NextResponse.json({
     stats: {
       totalUsers: users.length,
       totalProjects: projects.length,
+      activeUsers: usersWithLogin.length,
     },
+    latestLogins,
     users,
     projects,
   });
