@@ -7,7 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
-import { isPremiumCompany, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
+import { daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
 const doc: VectorDocument = {
@@ -128,5 +128,17 @@ describe("VectorCAD pipeline", () => {
     expect(userHasPremiumAccess({ company: "sm&a" })).toBe(true);
     expect(shouldShowAds({ company: "SM&A" })).toBe(false);
     expect(shouldShowAds({ company: null })).toBe(true);
+  });
+
+  it("applies monetization limits by plan", () => {
+    expect(dailyUsageLimitForPlan("free")).toBe(3);
+    expect(daily3dLimitForPlan("free")).toBe(0);
+    expect(shouldShowAds({ company: null, plan: "free" })).toBe(true);
+    expect(dailyUsageLimitForPlan("plus")).toBe(15);
+    expect(daily3dLimitForPlan("plus")).toBe(1);
+    expect(shouldShowAds({ company: null, plan: "plus" })).toBe(false);
+    expect(planAllowsDxf("plus")).toBe(false);
+    expect(planAllowsDxf("pro")).toBe(true);
+    expect(dailyUsageLimitForPlan("empresarial")).toBeNull();
   });
 });

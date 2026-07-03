@@ -5,6 +5,7 @@ import { Box, ChevronDown, Crosshair, Download, FileImage, Layers3, Maximize2, M
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -51,6 +52,7 @@ export function VectorCadApp() {
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const [show3d, setShow3d] = useState(false);
+  const [usageInfo, setUsageInfo] = useState<{ plan: string; usage: number; usageLimit: number | null; export3d: number; export3dLimit: number | null; adsVisible: boolean } | null>(null);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -63,15 +65,44 @@ export function VectorCadApp() {
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
 
-  const loadFile = useCallback((file?: File) => {
+  const consumeUsage = useCallback(async (action: "vectorize" | "export3d" | "export_dxf") => {
+    if (!isSupabaseConfigured || !supabase) return true;
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) {
+      setMessage("Faca login para usar o VectorCAD.");
+      return false;
+    }
+
+    const response = await fetch("/api/usage/consume", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setMessage(payload.error || "Nao foi possivel validar seu plano.");
+      return false;
+    }
+
+    setUsageInfo(payload);
+    return true;
+  }, []);
+
+  const loadFile = useCallback(async (file?: File) => {
     if (!file) return;
     if (!ACCEPTED.includes(file.type)) return setMessage("Formato inválido. Envie PNG, JPG, JPEG ou WEBP.");
     if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
+    const allowed = await consumeUsage("vectorize");
+    if (!allowed) return;
     const url = URL.createObjectURL(file), image = new Image();
     image.onload = () => { setSource(image); setFileName(file.name); setRealHeight(Number((100 * image.height / image.width).toFixed(2))); setMessage("Imagem carregada. Ajuste o limiar para refinar os contornos."); URL.revokeObjectURL(url); };
     image.onerror = () => setMessage("Não foi possível processar essa imagem. Tente outro arquivo.");
     image.src = url;
-  }, []);
+  }, [consumeUsage]);
 
   useEffect(() => {
     if (!source) return;
@@ -92,8 +123,12 @@ export function VectorCadApp() {
   const svg = finalDoc ? generateSvg(finalDoc) : "";
   const updateWidth = (v: number) => { setRealWidth(v); if (locked && source) setRealHeight(Number((v * source.height / source.width).toFixed(2))); };
   const updateHeight = (v: number) => { setRealHeight(v); if (locked && source) setRealWidth(Number((v * source.width / source.height).toFixed(2))); };
-  const exportFile = (kind: "svg" | "dxf") => {
+  const exportFile = async (kind: "svg" | "dxf") => {
     if (!finalDoc) return setMessage("Envie e vetorize uma imagem antes de exportar.");
+    if (kind === "dxf") {
+      const allowed = await consumeUsage("export_dxf");
+      if (!allowed) return;
+    }
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
     download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc), kind === "svg" ? "image/svg+xml" : "application/dxf");
     setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
@@ -102,8 +137,10 @@ export function VectorCadApp() {
     const c = processedCanvas.current; if (!c) return;
     const a = document.createElement("a"); a.href = c.toDataURL("image/png"); a.download = "vectorcad-preview.png"; a.click();
   };
-  const generate3d = () => {
+  const generate3d = async () => {
     if (!finalDoc || !svg) return setMessage("Vetorize uma imagem antes de gerar o modelo 3D.");
+    const allowed = await consumeUsage("export3d");
+    if (!allowed) return;
     setShow3d(true);
     setMessage("Modelo 3D CAD pronto para preview. Ajuste a altura e exporte STL ou GLB.");
   };
@@ -112,7 +149,7 @@ export function VectorCadApp() {
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
       <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.16em]">VECTORCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">CONVERTER</div></div></div>
-      <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> Motor vetorial pronto</div>
+      <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
 
@@ -171,7 +208,7 @@ export function VectorCadApp() {
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
           </div>
         </div>
-        <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
+        <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span>{usageInfo?.adsVisible && <span className="hidden rounded-full bg-[#1b231f] px-2 py-1 text-[#ffcc66] md:inline">Anuncios ativos</span>}<span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
       </div>
 
       <button type="button" aria-label="Redimensionar painel CAD" title="Arraste para redimensionar" onPointerDown={cadPanel.startResize} className={`panel-resizer panel-resizer-right ${cadPanel.resizing ? "is-resizing" : ""}`}><span /></button>

@@ -20,37 +20,6 @@ create index if not exists profiles_plan_idx
 create index if not exists profiles_payment_status_idx
   on public.profiles (payment_status);
 
-create table if not exists public.subscriptions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  email text,
-  plan text not null default 'free' check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise')),
-  status text not null default 'active',
-  payment_provider text default 'mercadopago',
-  external_id text unique,
-  amount numeric(10,2) not null default 25.90,
-  currency text not null default 'BRL',
-  raw jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.subscriptions
-  add column if not exists payment_provider text default 'mercadopago',
-  add column if not exists external_id text,
-  add column if not exists amount numeric(10,2) not null default 25.90,
-  add column if not exists currency text not null default 'BRL',
-  add column if not exists raw jsonb not null default '{}'::jsonb;
-
-alter table public.subscriptions
-  alter column status set default 'active';
-
-alter table public.subscriptions
-  drop constraint if exists subscriptions_plan_check;
-
-alter table public.subscriptions
-  add constraint subscriptions_plan_check check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise'));
-
 create table if not exists public.users (
   id uuid primary key references auth.users(id) on delete cascade,
   email text,
@@ -87,25 +56,17 @@ create policy "Service role can manage billing users"
   using (true)
   with check (true);
 
-create index if not exists subscriptions_user_id_idx
-  on public.subscriptions (user_id, updated_at desc);
+alter table public.companies
+  drop constraint if exists companies_plan_check;
 
-create unique index if not exists subscriptions_external_id_idx
-  on public.subscriptions (external_id)
-  where external_id is not null;
+alter table public.companies
+  add constraint companies_plan_check check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise'));
 
-alter table public.subscriptions enable row level security;
+alter table public.subscriptions
+  drop constraint if exists subscriptions_plan_check;
 
-drop policy if exists "Users can read their own subscriptions" on public.subscriptions;
-create policy "Users can read their own subscriptions"
-  on public.subscriptions
-  for select
-  using (auth.uid() = user_id);
+alter table public.subscriptions
+  add constraint subscriptions_plan_check check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise'));
 
-drop policy if exists "Service role can manage subscriptions" on public.subscriptions;
-create policy "Service role can manage subscriptions"
-  on public.subscriptions
-  for all
-  to service_role
-  using (true)
-  with check (true);
+alter table public.subscriptions
+  alter column amount set default 25.90;

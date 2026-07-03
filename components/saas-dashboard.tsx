@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
 import { normalizeCompany, normalizeCompanyPlan, shouldShowAds, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
+import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
@@ -19,6 +20,9 @@ type UserProfile = {
   plan: CompanyPlan;
   is_premium: boolean;
   payment_status: string | null;
+  usage_count_today?: number | null;
+  export3d_count_today?: number | null;
+  last_usage_reset?: string | null;
 };
 
 const emptyProjectData: CadProjectData = {
@@ -63,7 +67,9 @@ export function SaasDashboard() {
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
   const adsVisible = shouldShowAds(profile);
-  const planLabel = profile?.plan === "enterprise" ? "Enterprise" : profile?.plan === "pro" ? "PRO" : premiumAccess ? "Premium" : "Free";
+  const effectivePlan = profile?.plan || "free";
+  const planConfig = getBillingPlan(effectivePlan);
+  const planLabel = planConfig.title;
 
   const loadProjects = useCallback(async (userId: string) => {
     if (!supabase) return;
@@ -102,6 +108,8 @@ export function SaasDashboard() {
         plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(currentUser.user_metadata?.is_premium),
         payment_status: String(currentUser.user_metadata?.payment_status || "none"),
+        usage_count_today: 0,
+        export3d_count_today: 0,
       });
       setProfileCompany(metadataCompany || "");
       return;
@@ -117,6 +125,9 @@ export function SaasDashboard() {
         plan: normalizeCompanyPlan(profileRow.plan || String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(profileRow.is_premium || currentUser.user_metadata?.is_premium),
         payment_status: profileRow.payment_status || String(currentUser.user_metadata?.payment_status || "none"),
+        usage_count_today: Number(profileRow.usage_count_today || 0),
+        export3d_count_today: Number(profileRow.export3d_count_today || 0),
+        last_usage_reset: typeof profileRow.last_usage_reset === "string" ? profileRow.last_usage_reset : null,
       };
       setProfile(nextProfile);
       setProfileFirstName(nextProfile.name || "");
@@ -133,6 +144,8 @@ export function SaasDashboard() {
       plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
       is_premium: Boolean(currentUser.user_metadata?.is_premium),
       payment_status: String(currentUser.user_metadata?.payment_status || "none"),
+      usage_count_today: 0,
+      export3d_count_today: 0,
     };
     await supabase.from("profiles").upsert(createdProfile, { onConflict: "user_id" });
     setProfile(createdProfile);
@@ -326,6 +339,9 @@ export function SaasDashboard() {
       plan: profile?.plan || normalizeCompanyPlan(String(data.user.user_metadata?.plan || "free")),
       is_premium: Boolean(profile?.is_premium || data.user.user_metadata?.is_premium),
       payment_status: profile?.payment_status || String(data.user.user_metadata?.payment_status || "none"),
+      usage_count_today: profile?.usage_count_today || 0,
+      export3d_count_today: profile?.export3d_count_today || 0,
+      last_usage_reset: profile?.last_usage_reset || null,
     };
     await supabase.from("profiles").upsert(nextProfile, { onConflict: "user_id" });
     setProfile(nextProfile);
@@ -374,7 +390,7 @@ export function SaasDashboard() {
             <ShieldCheck size={14} />
             sessao protegida
           </div>}
-          {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Assinar PRO</button>}
+          {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
           <button
             type="button"
             onClick={() => setHeaderCollapsed((value) => !value)}
@@ -471,8 +487,12 @@ export function SaasDashboard() {
             <div className={`rounded-2xl border p-4 ${premiumAccess ? "border-[#b7f34a]/60 bg-[#172314]" : "border-[#26312c] bg-[#0b100e]"}`}>
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Controle de acesso</div>
               <div className="mt-2 flex items-center gap-2 text-lg font-black"><Crown size={17} className={premiumAccess ? "text-[#b7f34a]" : "text-[#6f7f76]"} /> Plano {planLabel}</div>
-              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: anuncios ocultos, DXF e recursos PRO liberados." : adsVisible ? "Conta free: anuncios e limites free podem ser exibidos para esta conta." : "Anuncios ocultos para esta conta."}</p>
-              {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="mt-4 w-full rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Assinar Plano PRO</button>}
+              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: anuncios ocultos, DXF e recursos PRO liberados." : adsVisible ? "Conta com anuncios e limites diarios conforme o plano." : "Anuncios ocultos para esta conta."}</p>
+              <div className="mt-3 grid gap-2 text-xs text-[#8c9a93]">
+                <div>Uso hoje: <b className="text-[#e8efeb]">{profile?.usage_count_today || 0}</b>{planConfig.usageLimit === null ? " / ilimitado" : ` / ${planConfig.usageLimit}`}</div>
+                <div>3D hoje: <b className="text-[#e8efeb]">{profile?.export3d_count_today || 0}</b>{planConfig.export3dLimit === null ? " / ilimitado" : ` / ${planConfig.export3dLimit}`}</div>
+              </div>
+              {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="mt-4 w-full rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Ver planos</button>}
               {profile?.payment_status && <div className="mt-3 text-[10px] uppercase tracking-[.14em] text-[#728178]">Pagamento: {profile.payment_status}</div>}
             </div>
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">

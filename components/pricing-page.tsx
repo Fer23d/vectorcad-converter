@@ -2,84 +2,136 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Check, Crown, Loader2, ShieldCheck, Sparkles } from "lucide-react";
+import { Building2, Check, Crown, Loader2, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { getBillingPlan, type BillablePlan } from "@/lib/billing";
+import { normalizeCompanyPlan, type CompanyPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type PaymentState = "idle" | "loading" | "error";
 
+const planOrder: CompanyPlan[] = ["free", "plus", "pro", "empresarial"];
+
+const planIcons: Record<string, React.ReactNode> = {
+  free: <ShieldCheck size={20} />,
+  plus: <Zap size={20} />,
+  pro: <Crown size={20} />,
+  empresarial: <Building2 size={20} />,
+};
+
 export function PricingPage() {
   const [state, setState] = useState<PaymentState>("idle");
+  const [loadingPlan, setLoadingPlan] = useState<BillablePlan | null>(null);
   const [message, setMessage] = useState("Escolha o plano ideal para o seu fluxo CAD.");
   const [signedIn, setSignedIn] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<CompanyPlan>("free");
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
+    const client = supabase;
+    if (!client) return;
+    client.auth.getSession().then(async ({ data }) => {
+      const session = data.session;
+      setSignedIn(Boolean(session));
+      if (!session) return;
+
+      const fallbackPlan = normalizeCompanyPlan(String(session.user.user_metadata?.plan || "free"));
+      const { data: profile } = await client
+        .from("profiles")
+        .select("plan,is_premium")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      setCurrentPlan(profile?.is_premium ? "pro" : normalizeCompanyPlan(profile?.plan || fallbackPlan));
+    });
   }, []);
 
-  const subscribePro = async () => {
-    if (!supabase) return;
+  const subscribePlan = async (plan: BillablePlan) => {
+    const client = supabase;
+    if (!client) return;
     setState("loading");
+    setLoadingPlan(plan);
     setMessage("Criando checkout seguro no Mercado Pago...");
 
-    const { data } = await supabase.auth.getSession();
+    const { data } = await client.auth.getSession();
     if (!data.session) {
       setState("error");
-      setMessage("Faça login antes de assinar o PRO.");
+      setLoadingPlan(null);
+      setMessage("Faca login antes de assinar.");
       return;
     }
 
-    const response = await fetch("/api/payment/create", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${data.session.access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ plan: "pro" }),
-    });
-    const payload = await response.json().catch(() => ({}));
+    try {
+      const response = await fetch("/api/payment/create", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ plan }),
+      });
+      const payload = await response.json().catch(() => ({}));
 
-    if (!response.ok || !payload.init_point) {
-      setState("error");
-      setMessage(payload.error || "Não foi possível abrir o checkout.");
-      return;
+      if (!response.ok || !payload.init_point) {
+        setState("error");
+        setMessage(payload.error || "Nao foi possivel abrir o checkout.");
+        return;
+      }
+
+      window.location.href = payload.init_point;
+    } finally {
+      setLoadingPlan(null);
     }
-
-    window.location.href = payload.init_point;
   };
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10 text-[#e8efeb]">
-    <section className="mx-auto max-w-6xl">
+    <section className="mx-auto max-w-7xl">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-xs font-black uppercase tracking-[.22em] text-[#b7f34a]">VectorCAD Billing</div>
-          <h1 className="mt-3 text-4xl font-black tracking-[-.05em] md:text-5xl">Planos para converter sem limite</h1>
+          <h1 className="mt-3 text-4xl font-black tracking-[-.05em] md:text-5xl">Planos para converter sem travar</h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[#9caaa3]">{message}</p>
         </div>
         <Link href={signedIn ? "/dashboard" : "/login"} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">{signedIn ? "Voltar ao app" : "Entrar"}</Link>
       </header>
 
-      <div className="mt-10 grid gap-4 lg:grid-cols-3">
-        <PlanCard title="FREE" price="R$0" icon={<ShieldCheck size={20} />} features={["Projetos básicos", "Preview SVG", "Exportação limitada", "Anúncios ativos"]} />
-        <PlanCard
-          title="PRO"
-          price="R$29/mês"
-          highlighted
-          icon={<Crown size={20} />}
-          features={["Sem anúncios", "Exportação DXF liberada", "Recursos premium", "Pagamentos mensais via Mercado Pago"]}
-          action={<button disabled={state === "loading" || !isSupabaseConfigured} onClick={subscribePro} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-4 py-3 text-sm font-black text-[#09120d] transition hover:brightness-105 disabled:opacity-60">{state === "loading" ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />} Assinar Plano PRO</button>}
-        />
-        <PlanCard title="ENTERPRISE" price="Sob consulta" icon={<Sparkles size={20} />} features={["Plano por empresa", "SM&A enterprise", "Prioridade", "Gestão B2B no admin"]} />
+      <div className="mt-10 grid gap-4 lg:grid-cols-4">
+        {planOrder.map((planId) => {
+          const plan = getBillingPlan(planId);
+          const highlighted = plan.id === "pro";
+          const current = normalizeCompanyPlan(currentPlan) === plan.id;
+          const billable = plan.id !== "free";
+          const checkoutPlan = plan.id as BillablePlan;
+
+          return <PlanCard
+            key={plan.id}
+            title={plan.title}
+            price={plan.priceLabel}
+            icon={planIcons[plan.id]}
+            features={plan.features}
+            highlighted={highlighted}
+            current={current}
+            action={billable ? <button
+              disabled={state === "loading" || !isSupabaseConfigured}
+              onClick={() => subscribePlan(checkoutPlan)}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-4 py-3 text-sm font-black text-[#09120d] transition hover:brightness-105 disabled:opacity-60"
+            >
+              {loadingPlan === checkoutPlan ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+              {plan.id === "empresarial" ? "Plano Empresarial" : `Assinar ${plan.title}`}
+            </button> : <Link href={signedIn ? "/dashboard" : "/signup"} className="mt-6 flex w-full items-center justify-center rounded-xl border border-[#34413b] px-4 py-3 text-sm font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Comecar gratis</Link>}
+          />;
+        })}
       </div>
     </section>
   </main>;
 }
 
-function PlanCard({ title, price, features, icon, highlighted, action }: { title: string; price: string; features: string[]; icon: React.ReactNode; highlighted?: boolean; action?: React.ReactNode }) {
-  return <article className={`rounded-3xl border p-6 ${highlighted ? "border-[#b7f34a] bg-[#142016]" : "border-[#26312c] bg-[#101613]"}`}>
+function PlanCard({ title, price, features, icon, highlighted, current, action }: { title: string; price: string; features: string[]; icon: React.ReactNode; highlighted?: boolean; current?: boolean; action?: React.ReactNode }) {
+  return <article className={`relative rounded-3xl border p-6 ${highlighted ? "border-[#b7f34a] bg-[#142016]" : "border-[#26312c] bg-[#101613]"}`}>
     <div className="flex items-center justify-between">
       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]">{icon}</div>
-      {highlighted && <span className="rounded-full bg-[#b7f34a] px-3 py-1 text-[10px] font-black uppercase text-[#09120d]">Mais usado</span>}
+      <div className="flex flex-col items-end gap-2">
+        {highlighted && <span className="rounded-full bg-[#b7f34a] px-3 py-1 text-[10px] font-black uppercase text-[#09120d]">Mais usado</span>}
+        {current && <span className="rounded-full border border-[#b7f34a]/50 px-3 py-1 text-[10px] font-black uppercase text-[#b7f34a]">Plano atual</span>}
+      </div>
     </div>
     <h2 className="mt-5 text-xl font-black">{title}</h2>
     <div className="mt-2 text-3xl font-black tracking-[-.04em]">{price}</div>

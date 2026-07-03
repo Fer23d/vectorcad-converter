@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany } from "@/lib/access-control";
+import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -70,6 +70,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (profileError && profileError.code !== "42P01") {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+
+  const billingPlan = isPremiumCompany(company) ? "empresarial" : normalizeCompanyPlan(String(existingMetadata.plan || "free"));
+  const { error: publicUserError } = await adminClient
+    .from("users")
+    .upsert({
+      id,
+      email: userData.user.email || null,
+      company,
+      is_premium: isPremiumCompany(company) || Boolean(existingMetadata.is_premium),
+      plan: billingPlan,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+
+  if (publicUserError && publicUserError.code !== "42P01" && publicUserError.code !== "42703" && publicUserError.code !== "PGRST205") {
+    return NextResponse.json({ error: publicUserError.message }, { status: 500 });
   }
 
   await logAdminAction(

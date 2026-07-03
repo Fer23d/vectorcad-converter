@@ -1,4 +1,5 @@
 import { normalizeCompanyPlan } from "@/lib/access-control";
+import { getBillingPlan, type BillablePlan } from "@/lib/billing";
 
 const MERCADOPAGO_API_BASE = "https://api.mercadopago.com";
 
@@ -9,14 +10,7 @@ function cleanEnv(value: string | undefined) {
 export const mercadoPagoAccessToken = cleanEnv(process.env.MERCADOPAGO_ACCESS_TOKEN);
 export const mercadoPagoPublicKey = cleanEnv(process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY);
 
-export const PRO_PLAN = {
-  id: "pro",
-  title: "VectorCAD PRO",
-  price: 29,
-  currency: "BRL",
-  frequency: 1,
-  frequencyType: "months",
-} as const;
+export const PRO_PLAN = getBillingPlan("pro");
 
 export function isMercadoPagoConfigured() {
   return Boolean(mercadoPagoAccessToken);
@@ -44,12 +38,18 @@ export async function mercadoPagoRequest<T>(path: string, init?: RequestInit): P
   return payload as T;
 }
 
-export function paymentStatusToPlan(status?: string | null) {
+export function paymentStatusToPlan(status?: string | null, requestedPlan?: string | null) {
   const approvedStatuses = new Set(["authorized", "approved"]);
   const normalizedStatus = status || "pending";
+  const normalizedPlan = normalizeCompanyPlan(requestedPlan || "pro");
+  const safePlan = normalizedPlan === "free" ? "pro" : normalizedPlan;
   return {
-    plan: approvedStatuses.has(normalizedStatus) ? normalizeCompanyPlan("pro") : normalizeCompanyPlan("free"),
-    isPremium: approvedStatuses.has(normalizedStatus),
+    plan: approvedStatuses.has(normalizedStatus) ? safePlan : normalizeCompanyPlan("free"),
+    isPremium: approvedStatuses.has(normalizedStatus) && (safePlan === "pro" || safePlan === "empresarial"),
     paymentStatus: normalizedStatus,
   };
+}
+
+export function getMercadoPagoPlan(plan: BillablePlan) {
+  return getBillingPlan(plan);
 }

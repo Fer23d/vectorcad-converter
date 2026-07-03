@@ -1,7 +1,7 @@
 create table if not exists public.companies (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
-  plan text not null default 'free' check (plan in ('free', 'pro', 'enterprise')),
+  plan text not null default 'free' check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

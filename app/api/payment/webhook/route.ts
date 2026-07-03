@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
-import { mercadoPagoRequest, paymentStatusToPlan, PRO_PLAN } from "@/lib/mercadopago";
+import { mercadoPagoRequest, paymentStatusToPlan } from "@/lib/mercadopago";
+import { getBillingPlan } from "@/lib/billing";
 
 type MercadoPagoPreapproval = {
   id: string;
@@ -8,6 +9,11 @@ type MercadoPagoPreapproval = {
   external_reference?: string;
   payer_email?: string;
   reason?: string;
+  metadata?: {
+    plan?: string;
+    user_id?: string;
+    email?: string;
+  };
 };
 
 type MercadoPagoPayment = {
@@ -20,6 +26,7 @@ type MercadoPagoPayment = {
   metadata?: {
     user_id?: string;
     email?: string;
+    plan?: string;
   };
 };
 
@@ -33,12 +40,14 @@ async function upsertProAccess(input: {
   email?: string | null;
   providerSubscriptionId?: string | null;
   status: string;
+  requestedPlan?: string | null;
   raw: unknown;
 }) {
   if (!isSupabaseAdminConfigured) return;
 
   const adminClient = createSupabaseAdminClient();
-  const { plan, isPremium, paymentStatus } = paymentStatusToPlan(input.status);
+  const { plan, isPremium, paymentStatus } = paymentStatusToPlan(input.status, input.requestedPlan);
+  const billingPlan = getBillingPlan(plan);
   let userId = input.userId || null;
   const email = input.email || null;
 
@@ -80,16 +89,31 @@ async function upsertProAccess(input: {
       email,
       payment_provider: "mercadopago",
       external_id: input.providerSubscriptionId,
-      plan: PRO_PLAN.id,
+      plan,
       status: paymentStatus,
-      amount: PRO_PLAN.price,
-      currency: PRO_PLAN.currency,
+      amount: billingPlan.price,
+      currency: billingPlan.currency,
       raw: input.raw,
       updated_at: new Date().toISOString(),
     }, { onConflict: "external_id" });
 
     if (subscriptionError && !isMissingTableOrColumn(subscriptionError)) {
       throw subscriptionError;
+    }
+  }
+
+  if (email) {
+    const { error: publicUserError } = await adminClient.from("users").upsert({
+      id: userId,
+      email,
+      plan,
+      is_premium: isPremium,
+      payment_status: paymentStatus,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+
+    if (publicUserError && !isMissingTableOrColumn(publicUserError)) {
+      throw publicUserError;
     }
   }
 }
@@ -112,6 +136,7 @@ export async function POST(request: Request) {
         email: subscription.payer_email,
         providerSubscriptionId: subscription.id,
         status: subscription.status,
+        requestedPlan: subscription.metadata?.plan,
         raw: subscription,
       });
     } else if (topic === "payment") {
@@ -121,6 +146,7 @@ export async function POST(request: Request) {
         email: payment.payer?.email || payment.metadata?.email,
         providerSubscriptionId: String(payment.id),
         status: payment.status,
+        requestedPlan: payment.metadata?.plan,
         raw: payment,
       });
     }

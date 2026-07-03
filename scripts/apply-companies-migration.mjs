@@ -9,7 +9,8 @@ if (!password) {
   process.exit(1);
 }
 
-const sql = fs.readFileSync("supabase/migrations/20260703203000_create_companies.sql", "utf8");
+const sqlPath = process.argv[2] || "supabase/migrations/20260703203000_create_companies.sql";
+const sql = fs.readFileSync(sqlPath, "utf8");
 
 const configs = [
   {
@@ -54,13 +55,13 @@ for (const config of configs) {
   try {
     console.log(`Trying ${config.name}...`);
     await applyMigration(config);
-    console.log("companies migration applied");
+      console.log(`migration applied: ${sqlPath}`);
     process.exit(0);
   } catch (error) {
     errors.push(`${config.name}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-console.error("Could not apply companies migration.");
+console.error(`Could not apply migration: ${sqlPath}`);
 for (const error of errors) console.error(`- ${error}`);
 process.exit(1);
