@@ -4,11 +4,19 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Check, ChevronDown, ChevronUp, Clock3, Copy, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { normalizeCompany, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
+
+type UserProfile = {
+  user_id: string;
+  name: string | null;
+  surname: string | null;
+  company: string | null;
+};
 
 const emptyProjectData: CadProjectData = {
   notes: "",
@@ -39,12 +47,16 @@ export function SaasDashboard() {
   const [status, setStatus] = useState("Conectando ao Supabase...");
   const [profileFirstName, setProfileFirstName] = useState("");
   const [profileLastName, setProfileLastName] = useState("");
+  const [profileCompany, setProfileCompany] = useState("");
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [showUserId, setShowUserId] = useState(false);
   const [userIdCopied, setUserIdCopied] = useState(false);
 
   const canUseSupabase = isSupabaseConfigured && supabase;
+  const premiumAccess = userHasPremiumAccess(profile);
+  const adsVisible = shouldShowAds(profile);
 
   const loadProjects = useCallback(async (userId: string) => {
     if (!supabase) return;
@@ -61,6 +73,48 @@ export function SaasDashboard() {
 
     setProjects((data || []) as CadProject[]);
     setStatus(data?.length ? "Projetos carregados. Editor pronto para uso." : "Editor pronto. Crie um projeto para salvar seu workspace.");
+  }, []);
+
+  const loadProfile = useCallback(async (currentUser: User) => {
+    if (!supabase) return;
+    const fallback = metadataName(currentUser);
+    const metadataCompany = normalizeCompany(String(currentUser.user_metadata?.company || ""));
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("user_id,name,surname,company")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+
+    if (error) {
+      setProfile({
+        user_id: currentUser.id,
+        name: fallback.firstName || null,
+        surname: fallback.lastName || null,
+        company: metadataCompany,
+      });
+      setProfileCompany(metadataCompany || "");
+      return;
+    }
+
+    const nextProfile = data as UserProfile | null;
+    if (nextProfile) {
+      setProfile(nextProfile);
+      setProfileFirstName(nextProfile.name || fallback.firstName);
+      setProfileLastName(nextProfile.surname || fallback.lastName);
+      setProfileCompany(nextProfile.company || "");
+      return;
+    }
+
+    const createdProfile = {
+      user_id: currentUser.id,
+      name: fallback.firstName || null,
+      surname: fallback.lastName || null,
+      company: metadataCompany,
+    };
+    await supabase.from("profiles").upsert(createdProfile, { onConflict: "user_id" });
+    setProfile(createdProfile);
+    setProfileCompany(metadataCompany || "");
   }, []);
 
   const openProject = useCallback(async (projectId: string) => {
@@ -129,7 +183,10 @@ export function SaasDashboard() {
       setProfileFirstName(name.firstName);
       setProfileLastName(name.lastName);
       setAuthLoading(false);
-      if (data.user) loadProjects(data.user.id);
+      if (data.user) {
+        loadProjects(data.user.id);
+        loadProfile(data.user);
+      }
       else router.replace("/login");
     });
 
@@ -138,14 +195,19 @@ export function SaasDashboard() {
       const name = metadataName(session?.user || null);
       setProfileFirstName(name.firstName);
       setProfileLastName(name.lastName);
+      setProfile(null);
+      setProfileCompany("");
       setActiveProject(null);
       setProjects([]);
-      if (session?.user) loadProjects(session.user.id);
+      if (session?.user) {
+        loadProjects(session.user.id);
+        loadProfile(session.user);
+      }
       else router.replace("/login");
     });
 
     return () => listener.subscription.unsubscribe();
-  }, [loadProjects, router]);
+  }, [loadProfile, loadProjects, router]);
 
   useEffect(() => {
     const client = supabase;
@@ -192,6 +254,7 @@ export function SaasDashboard() {
       data: {
         first_name: profileFirstName.trim(),
         last_name: profileLastName.trim(),
+        company: normalizeCompany(profileCompany),
       },
     });
 
@@ -202,6 +265,14 @@ export function SaasDashboard() {
     }
 
     setUser(data.user);
+    const nextProfile = {
+      user_id: user?.id || data.user.id,
+      name: profileFirstName.trim() || null,
+      surname: profileLastName.trim() || null,
+      company: normalizeCompany(profileCompany),
+    };
+    await supabase.from("profiles").upsert(nextProfile, { onConflict: "user_id" });
+    setProfile(nextProfile);
     setProfileMessage("Perfil atualizado com sucesso.");
   };
 
@@ -260,6 +331,7 @@ export function SaasDashboard() {
       </div>
       <div className={`flex flex-wrap items-center gap-2 overflow-hidden border-t border-[#1a241f] px-4 text-xs text-[#8c9a93] transition-all duration-200 lg:px-6 ${headerCollapsed ? "max-h-0 py-0 opacity-0" : "max-h-16 py-2 opacity-100"}`}>
         <span className="rounded-full bg-[#111915] px-3 py-1 text-[#b7f34a]">{sortedProjects.length} projetos</span>
+        <span className={`rounded-full px-3 py-1 ${premiumAccess ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{premiumAccess ? "Premium SM&A" : "Plano free"}</span>
         <span className="min-w-0 flex-1 truncate">{status}</span>
         <span className="hidden text-[#6f7f76] md:inline">{profileFullName || user.email}</span>
       </div>
@@ -316,9 +388,15 @@ export function SaasDashboard() {
                 <label className="text-xs text-[#aab8b1]">Nome<input value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} className="mt-1 w-full" type="text" /></label>
                 <label className="text-xs text-[#aab8b1]">Sobrenome<input value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} className="mt-1 w-full" type="text" /></label>
               </div>
+              <label className="mt-3 block text-xs text-[#aab8b1]">Empresa<input value={profileCompany} onChange={(event) => setProfileCompany(event.target.value)} className="mt-1 w-full" type="text" placeholder="SM&A" /></label>
               <button disabled={profileSaving} className="mt-4 rounded-xl bg-[#b7f34a] px-4 py-2 text-xs font-black text-[#09120d] disabled:opacity-60">{profileSaving ? "Salvando..." : "Salvar perfil"}</button>
               {profileMessage && <p className="mt-3 text-xs text-[#8c9a93]">{profileMessage}</p>}
             </form>
+            <div className={`rounded-2xl border p-4 ${premiumAccess ? "border-[#b7f34a]/60 bg-[#172314]" : "border-[#26312c] bg-[#0b100e]"}`}>
+              <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Controle de acesso</div>
+              <div className="mt-2 text-lg font-black">{premiumAccess ? "Premium automatico" : "Acesso free"}</div>
+              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Empresa SM&A detectada: anuncios ocultos e limites free desativados." : adsVisible ? "Anuncios e limites free podem ser exibidos para esta conta." : "Anuncios ocultos para esta conta."}</p>
+            </div>
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
               <div className="relative mt-3 w-full">

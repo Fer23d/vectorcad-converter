@@ -7,6 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
+import { isPremiumCompany, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
 const doc: VectorDocument = {
@@ -120,5 +121,12 @@ describe("VectorCAD pipeline", () => {
     const scaled = scaleDocument(doc, 100, 50, "mm");
     expect(scaled.paths[0].points[2]).toEqual({ x: 100, y: 50 });
     expect(scaled.unit).toBe("mm");
+  });
+
+  it("grants premium access and hides ads for SM&A users", () => {
+    expect(isPremiumCompany("SM&A")).toBe(true);
+    expect(userHasPremiumAccess({ company: "sm&a" })).toBe(true);
+    expect(shouldShowAds({ company: "SM&A" })).toBe(false);
+    expect(shouldShowAds({ company: null })).toBe(true);
   });
 });

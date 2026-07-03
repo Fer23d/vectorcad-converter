@@ -11,27 +11,38 @@ type AdminOverview = {
     totalUsers: number;
     totalProjects: number;
     activeUsers: number;
+    smaUsers: number;
   };
+  companyCounts: Record<string, { total: number; premium: number }>;
+  smAUsers: AdminUser[];
+  usersWithoutCompany: AdminUser[];
   latestLogins: {
     id: string;
     email: string;
+    company: string | null;
+    premium: boolean;
     created_at: string;
     last_sign_in_at: string | null;
   }[];
-  users: {
-    id: string;
-    email: string;
-    created_at: string;
-    last_sign_in_at: string | null;
-  }[];
+  users: AdminUser[];
   projects: {
     id: string;
     name: string;
     user_id: string;
+    company: string | null;
     type: string;
     created_at: string;
     updated_at: string;
   }[];
+};
+
+type AdminUser = {
+  id: string;
+  email: string;
+  company: string | null;
+  premium: boolean;
+  created_at: string;
+  last_sign_in_at: string | null;
 };
 
 function formatDate(value: string) {
@@ -47,6 +58,7 @@ export function AdminDashboard() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [message, setMessage] = useState("Validando acesso admin...");
   const [loading, setLoading] = useState(true);
+  const [companyFilter, setCompanyFilter] = useState("all");
 
   useEffect(() => {
     const client = supabase;
@@ -105,6 +117,11 @@ export function AdminDashboard() {
     </main>;
   }
 
+  const companies = Object.keys(overview.companyCounts).sort((a, b) => a.localeCompare(b));
+  const filteredUsers = overview.users.filter((user) => companyFilter === "all" || (user.company || "Sem empresa") === companyFilter);
+  const filteredProjects = overview.projects.filter((project) => companyFilter === "all" || (project.company || "Sem empresa") === companyFilter);
+  const premiumByCompany = companies.filter((company) => overview.companyCounts[company]?.premium > 0);
+
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <header className="border-b border-[#26312c] bg-[#0d1210] px-5 py-5">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -126,9 +143,32 @@ export function AdminDashboard() {
         <StatCard icon={<UsersRound size={20} />} label="Total de usuarios" value={overview.stats.totalUsers} />
         <StatCard icon={<FolderOpen size={20} />} label="Total de projetos" value={overview.stats.totalProjects} />
         <StatCard icon={<Activity size={20} />} label="Usuarios ativos" value={overview.stats.activeUsers} />
+        <StatCard icon={<ShieldCheck size={20} />} label="Usuarios SM&A" value={overview.stats.smaUsers} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-[.14em]">Filtro por empresa</h2>
+              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuarios e projetos por tenant/company.</p>
+            </div>
+            <label className="text-xs font-bold text-[#aab8b1]">Empresa
+              <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className="mt-1 min-w-56 rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
+                <option value="all">Todas as empresas</option>
+                {companies.map((company) => <option key={company} value={company}>{company}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {companies.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+              <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
+              <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company].total} usuarios</div>
+              <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company].premium} premium</div>
+            </div>)}
+          </div>
+        </section>
+
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -145,14 +185,35 @@ export function AdminDashboard() {
           </div>
         </section>
 
+        <section className="rounded-3xl border border-[#b7f34a]/40 bg-[#101613] p-5">
+          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios SM&A</h2>
+          <UserList users={overview.smAUsers} empty="Nenhum usuario SM&A ainda." />
+        </section>
+
+        <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
+          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios sem empresa</h2>
+          <UserList users={overview.usersWithoutCompany} empty="Todos os usuarios possuem empresa." />
+        </section>
+
+        <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
+          <h2 className="text-sm font-black uppercase tracking-[.14em]">Premium por empresa</h2>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {premiumByCompany.length ? premiumByCompany.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+              <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
+              <div className="mt-2 text-2xl font-black text-[#b7f34a]">{overview.companyCounts[company].premium}</div>
+            </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa premium encontrada.</div>}
+          </div>
+        </section>
+
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>ID</th><th>Criado em</th><th>Ultimo login</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>ID</th><th>Criado em</th><th>Ultimo login</th></tr></thead>
               <tbody>
-                {overview.users.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
+                {filteredUsers.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{user.email}</td>
+                  <td className="text-[#9aa8a1]"><CompanyBadge company={user.company} premium={user.premium} /></td>
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{user.id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(user.created_at)}</td>
                   <td className="text-[#9aa8a1]">{formatOptionalDate(user.last_sign_in_at)}</td>
@@ -166,10 +227,11 @@ export function AdminDashboard() {
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Projetos</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[620px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>User ID</th><th>Criado em</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>Empresa</th><th>User ID</th><th>Criado em</th></tr></thead>
               <tbody>
-                {overview.projects.map((project) => <tr key={project.id} className="border-t border-[#26312c]">
+                {filteredProjects.map((project) => <tr key={project.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{project.name}</td>
+                  <td className="text-[#9aa8a1]"><CompanyBadge company={project.company} /></td>
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{project.user_id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(project.created_at)}</td>
                 </tr>)}
@@ -180,6 +242,19 @@ export function AdminDashboard() {
       </div>
     </section>
   </main>;
+}
+
+function CompanyBadge({ company, premium }: { company: string | null; premium?: boolean }) {
+  return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ${premium ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{company || "Sem empresa"}</span>;
+}
+
+function UserList({ users, empty }: { users: AdminUser[]; empty: string }) {
+  return <div className="mt-4 grid gap-2">
+    {users.length ? users.map((user) => <div key={user.id} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+      <div className="truncate text-sm font-black text-[#e8efeb]">{user.email}</div>
+      <div className="mt-2 flex items-center gap-2 text-xs text-[#8c9a93]"><CompanyBadge company={user.company} premium={user.premium} /> {formatOptionalDate(user.last_sign_in_at)}</div>
+    </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">{empty}</div>}
+  </div>;
 }
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {

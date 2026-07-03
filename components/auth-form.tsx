@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Box, Eye, EyeOff } from "lucide-react";
+import { normalizeCompany } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "signup";
@@ -30,6 +31,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -67,6 +69,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           data: {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
+            company: normalizeCompany(company),
           },
         },
       });
@@ -78,6 +81,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     }
 
     if (mode === "signup" && data.session?.access_token) {
+      if (data.user) {
+        await client.from("profiles").upsert({
+          user_id: data.user.id,
+          name: firstName.trim() || null,
+          surname: lastName.trim() || null,
+          company: normalizeCompany(company),
+        }, { onConflict: "user_id" });
+      }
+
       fetch("/api/email/welcome", {
         method: "POST",
         headers: { Authorization: `Bearer ${data.session.access_token}` },
@@ -103,6 +115,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         <label className="block text-xs font-bold text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={inputClass} type="text" placeholder="Fernando" required /></label>
         <label className="block text-xs font-bold text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className={inputClass} type="text" placeholder="Fernandes" required /></label>
       </div>}
+      {mode === "signup" && <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Empresa <span className="text-[#66756d]">(opcional)</span><input value={company} onChange={(event) => setCompany(event.target.value)} className={inputClass} type="text" placeholder="SM&A" /></label>}
       <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Email<input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} type="email" placeholder="voce@email.com" required /></label>
       <label className="mb-5 block text-xs font-bold text-[#aab8b1]">Senha
         <div className="relative mt-2 w-full">
