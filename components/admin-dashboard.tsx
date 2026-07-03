@@ -28,15 +28,10 @@ type AdminOverview = {
     last_sign_in_at: string | null;
   }[];
   users: AdminUser[];
-  projects: {
-    id: string;
-    name: string;
-    user_id: string;
-    company: string | null;
-    type: string;
-    created_at: string;
-    updated_at: string;
-  }[];
+  projects: AdminProject[];
+  filteredUsers?: AdminUser[];
+  filteredProjects?: AdminProject[];
+  activeCompanyFilter?: string;
 };
 
 type AdminCompany = {
@@ -63,9 +58,23 @@ type AdminUser = {
   id: string;
   email: string;
   company: string | null;
+  company_id?: string | null;
+  companyPlan?: CompanyPlan;
+  plan?: CompanyPlan;
+  is_premium?: boolean;
   premium: boolean;
   created_at: string;
   last_sign_in_at: string | null;
+};
+
+type AdminProject = {
+  id: string;
+  name: string;
+  user_id: string;
+  company: string | null;
+  type: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type CollapsedSections = {
@@ -87,6 +96,9 @@ export function AdminDashboard() {
   const [message, setMessage] = useState("Validando acesso admin...");
   const [loading, setLoading] = useState(true);
   const [companyFilter, setCompanyFilter] = useState("all");
+  const [backendFilteredUsers, setBackendFilteredUsers] = useState<AdminUser[] | null>(null);
+  const [backendFilteredProjects, setBackendFilteredProjects] = useState<AdminProject[] | null>(null);
+  const [companyFilterLoading, setCompanyFilterLoading] = useState(false);
   const [adminToken, setAdminToken] = useState("");
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [deleteCompanyTarget, setDeleteCompanyTarget] = useState<AdminCompany | null>(null);
@@ -111,6 +123,11 @@ export function AdminDashboard() {
   const [newCompanyPlan, setNewCompanyPlan] = useState<CompanyPlan>("free");
   const [savingCompany, setSavingCompany] = useState(false);
   const [savingPlanCompanyId, setSavingPlanCompanyId] = useState<string | null>(null);
+
+  const showToast = (text: string) => {
+    setToastMessage(text);
+    window.setTimeout(() => setToastMessage(""), 2600);
+  };
 
   useEffect(() => {
     const client = supabase;
@@ -149,15 +166,54 @@ export function AdminDashboard() {
       }
 
       setOverview(payload as AdminOverview);
+      setBackendFilteredUsers(payload.filteredUsers || null);
+      setBackendFilteredProjects(payload.filteredProjects || null);
       setMessage("Painel admin carregado.");
       setLoading(false);
     });
   }, [router]);
 
-  const showToast = (text: string) => {
-    setToastMessage(text);
-    window.setTimeout(() => setToastMessage(""), 2600);
-  };
+  useEffect(() => {
+    if (!adminToken || !overview) return;
+
+    if (companyFilter === "all") {
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/admin/overview?company=${encodeURIComponent(companyFilter)}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setBackendFilteredUsers(null);
+          setBackendFilteredProjects(null);
+          setMessage(payload.error || "Nao foi possivel filtrar por empresa.");
+          showToast(payload.error || "Nao foi possivel filtrar por empresa.");
+          return;
+        }
+
+        setBackendFilteredUsers(payload.filteredUsers || payload.users || []);
+        setBackendFilteredProjects(payload.filteredProjects || payload.projects || []);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const errorMessage = error instanceof Error ? `Nao foi possivel filtrar por empresa: ${error.message}` : "Nao foi possivel filtrar por empresa.";
+        setBackendFilteredUsers(null);
+        setBackendFilteredProjects(null);
+        setMessage(errorMessage);
+        showToast(errorMessage);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyFilterLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adminToken, companyFilter, overview]);
 
   const setSectionCollapsed = (section: "sma" | "noCompany", collapsed: boolean) => {
     setCollapsedSections((current) => {
@@ -168,18 +224,39 @@ export function AdminDashboard() {
   };
 
   const rebuildOverviewUsers = (current: AdminOverview, nextUsers: AdminUser[], nextCompanies = current.companies): AdminOverview => {
-    const planByCompany = new Map(nextCompanies.map((company) => [company.name, company.plan]));
-    const companyCounts = nextUsers.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
+    const companyByName = new Map(nextCompanies.map((company) => [company.name, company]));
+    const companyById = new Map(nextCompanies.map((company) => [company.id, company]));
+    const resolveUserCompany = (companyValue?: string | null) => {
+      const normalized = companyValue?.trim() || null;
+      if (!normalized) return { name: null as string | null, plan: normalizeCompanyPlan("free") };
+      const company = companyById.get(normalized) || companyByName.get(normalized);
+      if (company) return { name: company.name, plan: normalizeCompanyPlan(company.plan) };
+      return { name: normalized, plan: normalizeCompanyPlan(isPremiumCompany(normalized) ? "empresarial" : "free") };
+    };
+    const normalizedUsers = nextUsers.map((user) => {
+      const company = resolveUserCompany(user.company);
+      const companyPremium = isPremiumCompany(company.name) || planHasPremiumAccess(company.plan);
+      const premium = companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan) || user.premium;
+      return {
+        ...user,
+        company: company.name,
+        companyPlan: company.plan,
+        premium,
+        is_premium: premium,
+        plan: companyPremium ? normalizeCompanyPlan("empresarial") : user.plan,
+      };
+    });
+    const companyCounts = normalizedUsers.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
       const company = user.company || "Sem empresa";
-      const premium = user.premium || planHasPremiumAccess(planByCompany.get(company));
       totals[company] ||= { total: 0, premium: 0 };
       totals[company].total += 1;
-      if (premium) totals[company].premium += 1;
+      if (user.premium) totals[company].premium += 1;
       return totals;
     }, {});
-    const companyByUserId = new Map(nextUsers.map((user) => [user.id, user.company]));
+    const companyByUserId = new Map(normalizedUsers.map((user) => [user.id, user.company]));
     const companies = nextCompanies.map((company) => ({
       ...company,
+      plan: normalizeCompanyPlan(company.plan),
       user_count: companyCounts[company.name]?.total || 0,
       premium_users: companyCounts[company.name]?.premium || 0,
     }));
@@ -188,14 +265,14 @@ export function AdminDashboard() {
       ...current,
       stats: {
         ...current.stats,
-        smaUsers: nextUsers.filter((user) => isPremiumCompany(user.company)).length,
+        smaUsers: normalizedUsers.filter((user) => isPremiumCompany(user.company)).length,
       },
       companies,
       companyCounts,
-      users: nextUsers,
-      smAUsers: nextUsers.filter((user) => isPremiumCompany(user.company)),
-      usersWithoutCompany: nextUsers.filter((user) => !user.company),
-      latestLogins: current.latestLogins.map((login) => nextUsers.find((user) => user.id === login.id) || login),
+      users: normalizedUsers,
+      smAUsers: normalizedUsers.filter((user) => isPremiumCompany(user.company)),
+      usersWithoutCompany: normalizedUsers.filter((user) => !user.company),
+      latestLogins: current.latestLogins.map((login) => normalizedUsers.find((user) => user.id === login.id) || login),
       projects: current.projects.map((project) => ({ ...project, company: companyByUserId.get(project.user_id) || null })),
     };
   };
@@ -204,8 +281,9 @@ export function AdminDashboard() {
     if (!adminToken || !overview) return false;
     const previousOverview = overview;
     const normalizedCompany = company?.trim() || null;
-    const selectedPlan = overview.companies.find((item) => item.name === normalizedCompany)?.plan;
-    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, premium: isPremiumCompany(normalizedCompany) || planHasPremiumAccess(selectedPlan) } : user);
+    const selectedPlan = overview.companies.find((item) => item.name === normalizedCompany || item.id === normalizedCompany)?.plan;
+    const companyPremium = isPremiumCompany(normalizedCompany) || planHasPremiumAccess(selectedPlan);
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, companyPlan: normalizeCompanyPlan(selectedPlan), premium: companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan), is_premium: companyPremium || Boolean(user.is_premium) || planHasPremiumAccess(user.plan), plan: companyPremium ? normalizeCompanyPlan("empresarial") : user.plan } : user);
 
     setCompanySavingUserId(targetUser.id);
     setOverview(rebuildOverviewUsers(overview, nextUsers));
@@ -448,11 +526,12 @@ export function AdminDashboard() {
     </main>;
   }
 
-  const companyNames = Object.keys(overview.companyCounts).sort((a, b) => a.localeCompare(b));
+  const companyNames = Array.from(new Set([...overview.companies.map((company) => company.name), ...Object.keys(overview.companyCounts)])).sort((a, b) => a.localeCompare(b));
   const adminCompanies = [...overview.companies].sort((a, b) => a.name.localeCompare(b.name));
-  const filteredUsers = overview.users.filter((user) => companyFilter === "all" || (user.company || "Sem empresa") === companyFilter);
-  const filteredProjects = overview.projects.filter((project) => companyFilter === "all" || (project.company || "Sem empresa") === companyFilter);
-  const premiumByCompany = companyNames.filter((company) => overview.companyCounts[company]?.premium > 0);
+  const filteredUsers = companyFilter === "all" ? overview.users : backendFilteredUsers || overview.users.filter((user) => (user.company || "Sem empresa") === companyFilter);
+  const filteredProjects = companyFilter === "all" ? overview.projects : backendFilteredProjects || overview.projects.filter((project) => (project.company || "Sem empresa") === companyFilter);
+  const premiumCompanyNames = new Set(overview.companies.filter((company) => planHasPremiumAccess(company.plan) || isPremiumCompany(company.name)).map((company) => company.name));
+  const premiumByCompany = companyNames.filter((company) => (overview.companyCounts[company]?.premium || 0) > 0 || premiumCompanyNames.has(company));
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <header className="border-b border-[#26312c] bg-[#0d1210] px-5 py-5">
@@ -492,6 +571,7 @@ export function AdminDashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="truncate text-sm font-black text-[#e8efeb]">{company.name}</div>
+                  {(planHasPremiumAccess(company.plan) || isPremiumCompany(company.name)) && <div className="mt-2 inline-flex rounded-full bg-[#b7f34a] px-2 py-1 text-[10px] font-black uppercase text-[#09120d]">EMPRESARIAL</div>}
                   <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuarios · {company.premium_users} premium</div>
                 </div>
                 <CreditCard className="text-[#b7f34a]" size={16} />
@@ -522,20 +602,26 @@ export function AdminDashboard() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-sm font-black uppercase tracking-[.14em]">Filtro por empresa</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuarios e projetos por tenant/company.</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuarios e projetos no backend por tenant/company.</p>
             </div>
             <label className="text-xs font-bold text-[#aab8b1]">Empresa
-              <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className="mt-1 min-w-56 rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
+              <select value={companyFilter} onChange={(event) => {
+                setBackendFilteredUsers(null);
+                setBackendFilteredProjects(null);
+                setCompanyFilterLoading(event.target.value !== "all");
+                setCompanyFilter(event.target.value);
+              }} className="mt-1 min-w-56 rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
                 <option value="all">Todas as empresas</option>
                 {companyNames.map((company) => <option key={company} value={company}>{company}</option>)}
               </select>
+              {companyFilterLoading && <span className="mt-2 block text-[10px] font-bold uppercase tracking-[.14em] text-[#b7f34a]">Atualizando filtro...</span>}
             </label>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {companyNames.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
               <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
-              <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company].total} usuarios</div>
-              <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company].premium} premium</div>
+              <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company]?.total || 0} usuarios</div>
+              <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company]?.premium || 0} premium</div>
             </div>)}
           </div>
         </section>
@@ -605,11 +691,12 @@ export function AdminDashboard() {
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>ID</th><th>Criado em</th><th>Ultimo login</th><th>Acoes</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>Plano</th><th>ID</th><th>Criado em</th><th>Ultimo login</th><th>Acoes</th></tr></thead>
               <tbody>
                 {filteredUsers.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{user.email}</td>
                   <td className="text-[#9aa8a1]"><CompanyBadge company={user.company} premium={user.premium} /></td>
+                  <td className="text-[#9aa8a1]"><PlanBadge plan={user.plan || (user.premium ? "empresarial" : "free")} premium={user.premium} /></td>
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{user.id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(user.created_at)}</td>
                   <td className="text-[#9aa8a1]">{formatOptionalDate(user.last_sign_in_at)}</td>
@@ -755,6 +842,12 @@ export function AdminDashboard() {
 
 function CompanyBadge({ company, premium }: { company: string | null; premium?: boolean }) {
   return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ${premium ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{company || "Sem empresa"}</span>;
+}
+
+function PlanBadge({ plan, premium }: { plan: CompanyPlan; premium?: boolean }) {
+  const normalizedPlan = normalizeCompanyPlan(plan);
+  const highlighted = premium || planHasPremiumAccess(normalizedPlan);
+  return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ${highlighted ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{normalizedPlan}</span>;
 }
 
 function CollapsibleSection({ title, collapsed, onToggle, children, accent = false }: { title: string; collapsed: boolean; onToggle: () => void; children: React.ReactNode; accent?: boolean }) {
