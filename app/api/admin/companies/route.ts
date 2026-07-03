@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany } from "@/lib/access-control";
+import { normalizeCompany, normalizeCompanyPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -14,7 +14,7 @@ async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdmin
   if (error && error.code !== "42P01") throw error;
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
     return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
   }
@@ -39,51 +39,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 });
   }
 
-  const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const company = normalizeCompany(typeof body.company === "string" ? body.company : null);
+  const name = normalizeCompany(typeof body.name === "string" ? body.name : null);
+  const plan = normalizeCompanyPlan(typeof body.plan === "string" ? body.plan : "free");
+
+  if (!name) {
+    return NextResponse.json({ error: "Nome da empresa e obrigatorio." }, { status: 400 });
+  }
+
   const adminClient = createSupabaseAdminClient();
+  const { data, error } = await adminClient
+    .from("companies")
+    .insert([{ name, plan }])
+    .select("id,name,plan,created_at,updated_at")
+    .single();
 
-  const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(id);
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: userError?.message || "Usuario nao encontrado." }, { status: 404 });
+  if (error) {
+    if (error.code === "42P01") {
+      return NextResponse.json({ error: "Tabela companies nao existe. Execute supabase/enterprise.sql no Supabase." }, { status: 500 });
+    }
+
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const existingMetadata = userData.user.user_metadata || {};
-  const { error: metadataError } = await adminClient.auth.admin.updateUserById(id, {
-    user_metadata: { ...existingMetadata, company },
-  });
-
-  if (metadataError) {
-    return NextResponse.json({ error: metadataError.message }, { status: 500 });
-  }
-
-  const { error: profileError } = await adminClient
-    .from("profiles")
-    .upsert({
-      user_id: id,
-      name: existingMetadata.first_name || null,
-      surname: existingMetadata.last_name || null,
-      company,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
-
-  if (profileError && profileError.code !== "42P01") {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
-  }
-
-  await logAdminAction(
-    adminClient,
-    adminData.user.id,
-    company ? "user.company_add" : "user.company_remove",
-    "user",
-    id,
-    { email: userData.user.email, company },
-  );
+  await logAdminAction(adminClient, adminData.user.id, "company.create", "company", data.id, { name, plan });
 
   return NextResponse.json({
-    id,
-    company,
-    premium: isPremiumCompany(company),
+    ...data,
+    plan,
+    user_count: 0,
+    premium_users: 0,
   });
 }

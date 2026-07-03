@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, ChevronDown, ChevronUp, Clock3, FolderOpen, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
+import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, PlusCircle, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany } from "@/lib/access-control";
+import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AdminOverview = {
@@ -15,6 +15,8 @@ type AdminOverview = {
     smaUsers: number;
   };
   companyCounts: Record<string, { total: number; premium: number }>;
+  companies: AdminCompany[];
+  adminLogs: AdminLog[];
   smAUsers: AdminUser[];
   usersWithoutCompany: AdminUser[];
   latestLogins: {
@@ -35,6 +37,26 @@ type AdminOverview = {
     created_at: string;
     updated_at: string;
   }[];
+};
+
+type AdminCompany = {
+  id: string;
+  name: string;
+  plan: CompanyPlan;
+  user_count: number;
+  premium_users: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type AdminLog = {
+  id: string;
+  admin_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
 };
 
 type AdminUser = {
@@ -81,6 +103,11 @@ export function AdminDashboard() {
   const [companyInput, setCompanyInput] = useState("SM&A");
   const [companySavingUserId, setCompanySavingUserId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
+  const [createCompanyOpen, setCreateCompanyOpen] = useState(false);
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [newCompanyPlan, setNewCompanyPlan] = useState<CompanyPlan>("free");
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [savingPlanCompanyId, setSavingPlanCompanyId] = useState<string | null>(null);
 
   useEffect(() => {
     const client = supabase;
@@ -137,15 +164,22 @@ export function AdminDashboard() {
     });
   };
 
-  const rebuildOverviewUsers = (current: AdminOverview, nextUsers: AdminUser[]): AdminOverview => {
+  const rebuildOverviewUsers = (current: AdminOverview, nextUsers: AdminUser[], nextCompanies = current.companies): AdminOverview => {
+    const planByCompany = new Map(nextCompanies.map((company) => [company.name, company.plan]));
     const companyCounts = nextUsers.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
       const company = user.company || "Sem empresa";
+      const premium = user.premium || planHasPremiumAccess(planByCompany.get(company));
       totals[company] ||= { total: 0, premium: 0 };
       totals[company].total += 1;
-      if (user.premium) totals[company].premium += 1;
+      if (premium) totals[company].premium += 1;
       return totals;
     }, {});
     const companyByUserId = new Map(nextUsers.map((user) => [user.id, user.company]));
+    const companies = nextCompanies.map((company) => ({
+      ...company,
+      user_count: companyCounts[company.name]?.total || 0,
+      premium_users: companyCounts[company.name]?.premium || 0,
+    }));
 
     return {
       ...current,
@@ -153,6 +187,7 @@ export function AdminDashboard() {
         ...current.stats,
         smaUsers: nextUsers.filter((user) => isPremiumCompany(user.company)).length,
       },
+      companies,
       companyCounts,
       users: nextUsers,
       smAUsers: nextUsers.filter((user) => isPremiumCompany(user.company)),
@@ -166,7 +201,8 @@ export function AdminDashboard() {
     if (!adminToken || !overview) return;
     const previousOverview = overview;
     const normalizedCompany = company?.trim() || null;
-    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, premium: isPremiumCompany(normalizedCompany) } : user);
+    const selectedPlan = overview.companies.find((item) => item.name === normalizedCompany)?.plan;
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, premium: isPremiumCompany(normalizedCompany) || planHasPremiumAccess(selectedPlan) } : user);
 
     setCompanySavingUserId(targetUser.id);
     setOverview(rebuildOverviewUsers(overview, nextUsers));
@@ -191,6 +227,94 @@ export function AdminDashboard() {
 
     showToast(normalizedCompany ? `Usuario movido para ${normalizedCompany}.` : "Usuario removido da empresa.");
     setMessage("Empresa do usuario atualizada.");
+  };
+
+  const createCompany = async () => {
+    if (!adminToken || !overview) return;
+    const name = newCompanyName.trim();
+    if (!name) {
+      setMessage("Informe o nome da empresa.");
+      return;
+    }
+
+    setSavingCompany(true);
+    const response = await fetch("/api/admin/companies", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, plan: newCompanyPlan }),
+    });
+
+    setSavingCompany(false);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage(payload.error || "Nao foi possivel criar a empresa.");
+      return;
+    }
+
+    const company = payload as AdminCompany;
+    setOverview({
+      ...overview,
+      companies: [company, ...overview.companies.filter((item) => item.name !== company.name)],
+      companyCounts: { ...overview.companyCounts, [company.name]: overview.companyCounts[company.name] || { total: 0, premium: 0 } },
+      adminLogs: [{
+        id: crypto.randomUUID(),
+        admin_id: "local",
+        action: "company.create",
+        target_type: "company",
+        target_id: company.id,
+        metadata: { name: company.name, plan: company.plan },
+        created_at: new Date().toISOString(),
+      }, ...overview.adminLogs],
+    });
+    setCreateCompanyOpen(false);
+    setNewCompanyName("");
+    setNewCompanyPlan("free");
+    showToast(`Empresa ${company.name} criada.`);
+  };
+
+  const updateCompanyPlan = async (company: AdminCompany, plan: CompanyPlan) => {
+    if (!adminToken || !overview) return;
+    const nextPlan = normalizeCompanyPlan(plan);
+    const previousOverview = overview;
+    const nextCompanies = overview.companies.map((item) => item.id === company.id ? { ...item, plan: nextPlan, updated_at: new Date().toISOString() } : item);
+
+    setSavingPlanCompanyId(company.id);
+    setOverview(rebuildOverviewUsers(overview, overview.users, nextCompanies));
+
+    const response = await fetch(`/api/admin/companies/${encodeURIComponent(company.id)}/plan`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: company.name, plan: nextPlan }),
+    });
+
+    setSavingPlanCompanyId(null);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setOverview(previousOverview);
+      setMessage(payload.error || "Nao foi possivel atualizar o plano da empresa.");
+      return;
+    }
+
+    setOverview((current) => current ? {
+      ...current,
+      companies: current.companies.map((item) => item.id === company.id ? { ...item, ...payload, plan: nextPlan } : item),
+      adminLogs: [{
+        id: crypto.randomUUID(),
+        admin_id: "local",
+        action: "company.plan_update",
+        target_type: "company",
+        target_id: company.id,
+        metadata: { name: company.name, plan: nextPlan },
+        created_at: new Date().toISOString(),
+      }, ...current.adminLogs],
+    } : current);
+    showToast(`Plano de ${company.name} atualizado.`);
   };
 
   const deleteAdminProject = async (projectId: string, projectName: string) => {
@@ -238,10 +362,11 @@ export function AdminDashboard() {
     </main>;
   }
 
-  const companies = Object.keys(overview.companyCounts).sort((a, b) => a.localeCompare(b));
+  const companyNames = Object.keys(overview.companyCounts).sort((a, b) => a.localeCompare(b));
+  const adminCompanies = [...overview.companies].sort((a, b) => a.name.localeCompare(b.name));
   const filteredUsers = overview.users.filter((user) => companyFilter === "all" || (user.company || "Sem empresa") === companyFilter);
   const filteredProjects = overview.projects.filter((project) => companyFilter === "all" || (project.company || "Sem empresa") === companyFilter);
-  const premiumByCompany = companies.filter((company) => overview.companyCounts[company]?.premium > 0);
+  const premiumByCompany = companyNames.filter((company) => overview.companyCounts[company]?.premium > 0);
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <header className="border-b border-[#26312c] bg-[#0d1210] px-5 py-5">
@@ -269,6 +394,37 @@ export function AdminDashboard() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-[.14em]"><Building2 size={16} /> Empresas</h2>
+              <p className="mt-1 text-xs text-[#7c8b83]">Gestao de tenants, planos e base B2B.</p>
+            </div>
+            <button type="button" onClick={() => setCreateCompanyOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d]"><PlusCircle size={15} /> Criar Empresa</button>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {adminCompanies.length ? adminCompanies.map((company) => <div key={company.id} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="truncate text-sm font-black text-[#e8efeb]">{company.name}</div>
+                  <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuarios · {company.premium_users} premium</div>
+                </div>
+                <CreditCard className="text-[#b7f34a]" size={16} />
+              </div>
+              <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Plano
+                <select
+                  value={company.plan}
+                  disabled={savingPlanCompanyId === company.id}
+                  onChange={(event) => updateCompanyPlan(company, normalizeCompanyPlan(event.target.value))}
+                  className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#080c0b] px-3 py-2 text-xs font-black text-[#eef5f1] outline-none focus:border-[#b7f34a] disabled:opacity-60"
+                >
+                  {COMPANY_PLANS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </label>
+            </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa criada ainda.</div>}
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-sm font-black uppercase tracking-[.14em]">Filtro por empresa</h2>
@@ -277,12 +433,12 @@ export function AdminDashboard() {
             <label className="text-xs font-bold text-[#aab8b1]">Empresa
               <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)} className="mt-1 min-w-56 rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
                 <option value="all">Todas as empresas</option>
-                {companies.map((company) => <option key={company} value={company}>{company}</option>)}
+                {companyNames.map((company) => <option key={company} value={company}>{company}</option>)}
               </select>
             </label>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {companies.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+            {companyNames.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
               <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
               <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company].total} usuarios</div>
               <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company].premium} premium</div>
@@ -406,12 +562,49 @@ export function AdminDashboard() {
         <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Empresa
           <select value={companyInput} onChange={(event) => setCompanyInput(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
             <option value="SM&A">SM&A</option>
-            {companies.filter((company) => company !== "Sem empresa" && company !== "SM&A").map((company) => <option key={company} value={company}>{company}</option>)}
+            {companyNames.filter((company) => company !== "Sem empresa" && company !== "SM&A").map((company) => <option key={company} value={company}>{company}</option>)}
           </select>
         </label>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={() => setCompanyModalUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
           <button type="button" onClick={() => updateUserCompany(companyModalUser, companyInput)} className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Confirmar</button>
+        </div>
+      </div>
+    </div>}
+
+    <section className="mx-auto max-w-7xl px-5 pb-8">
+      <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
+        <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-[.14em]"><ScrollText size={16} /> Logs de admin</h2>
+        <div className="mt-4 grid gap-3">
+          {overview.adminLogs.length ? overview.adminLogs.map((log) => <div key={log.id} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-black text-[#e8efeb]">{log.action}</div>
+                <div className="mt-1 text-xs text-[#8c9a93]">{log.target_type} · {log.target_id}</div>
+              </div>
+              <div className="text-xs text-[#7c8b83]">{formatDate(log.created_at)}</div>
+            </div>
+          </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhum log registrado ainda.</div>}
+        </div>
+      </div>
+    </section>
+
+    {createCompanyOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><Building2 size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Criar Empresa</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">Crie um tenant B2B com plano inicial.</p>
+        <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Nome da empresa
+          <input value={newCompanyName} onChange={(event) => setNewCompanyName(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]" placeholder="SM&A" />
+        </label>
+        <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Plano inicial
+          <select value={newCompanyPlan} onChange={(event) => setNewCompanyPlan(normalizeCompanyPlan(event.target.value))} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
+            {COMPANY_PLANS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+          </select>
+        </label>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => setCreateCompanyOpen(false)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
+          <button type="button" disabled={savingCompany} onClick={createCompany} className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105 disabled:opacity-60">{savingCompany ? "Criando..." : "Criar empresa"}</button>
         </div>
       </div>
     </div>}
