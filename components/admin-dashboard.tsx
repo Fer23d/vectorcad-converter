@@ -100,6 +100,7 @@ export function AdminDashboard() {
     }
   });
   const [companyModalUser, setCompanyModalUser] = useState<AdminUser | null>(null);
+  const [removeCompanyUser, setRemoveCompanyUser] = useState<AdminUser | null>(null);
   const [companyInput, setCompanyInput] = useState("SM&A");
   const [companySavingUserId, setCompanySavingUserId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
@@ -198,7 +199,7 @@ export function AdminDashboard() {
   };
 
   const updateUserCompany = async (targetUser: AdminUser, company: string | null) => {
-    if (!adminToken || !overview) return;
+    if (!adminToken || !overview) return false;
     const previousOverview = overview;
     const normalizedCompany = company?.trim() || null;
     const selectedPlan = overview.companies.find((item) => item.name === normalizedCompany)?.plan;
@@ -208,25 +209,42 @@ export function AdminDashboard() {
     setOverview(rebuildOverviewUsers(overview, nextUsers));
     setCompanyModalUser(null);
 
-    const response = await fetch(`/api/admin/users/${targetUser.id}/company`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ company: normalizedCompany }),
-    });
+    try {
+      const response = await fetch(`/api/admin/users/${targetUser.id}/company`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ company: normalizedCompany }),
+      });
 
-    setCompanySavingUserId(null);
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        setOverview(previousOverview);
+        setMessage(payload.error || "Nao foi possivel atualizar empresa do usuario.");
+        showToast(payload.error || "Nao foi possivel atualizar empresa do usuario.");
+        return false;
+      }
+
+      showToast(normalizedCompany ? `Usuario movido para ${normalizedCompany}.` : "Usuario removido da empresa.");
+      setMessage(normalizedCompany ? "Empresa do usuario atualizada." : "Usuario removido da empresa.");
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? `Nao foi possivel atualizar empresa do usuario: ${error.message}` : "Nao foi possivel atualizar empresa do usuario.";
       setOverview(previousOverview);
-      setMessage(payload.error || "Nao foi possivel atualizar empresa do usuario.");
-      return;
+      setMessage(errorMessage);
+      showToast(errorMessage);
+      return false;
+    } finally {
+      setCompanySavingUserId(null);
     }
+  };
 
-    showToast(normalizedCompany ? `Usuario movido para ${normalizedCompany}.` : "Usuario removido da empresa.");
-    setMessage("Empresa do usuario atualizada.");
+  const confirmRemoveUserCompany = async () => {
+    if (!removeCompanyUser) return;
+    const removed = await updateUserCompany(removeCompanyUser, null);
+    if (removed) setRemoveCompanyUser(null);
   };
 
   const createCompany = async () => {
@@ -493,7 +511,7 @@ export function AdminDashboard() {
             actionIcon={<XCircle size={13} />}
             actionTone="danger"
             loadingUserId={companySavingUserId}
-            onAction={(user) => updateUserCompany(user, null)}
+            onAction={(user) => setRemoveCompanyUser(user)}
           />
         </CollapsibleSection>
 
@@ -529,7 +547,7 @@ export function AdminDashboard() {
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>ID</th><th>Criado em</th><th>Ultimo login</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>ID</th><th>Criado em</th><th>Ultimo login</th><th>Acoes</th></tr></thead>
               <tbody>
                 {filteredUsers.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{user.email}</td>
@@ -537,6 +555,16 @@ export function AdminDashboard() {
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{user.id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(user.created_at)}</td>
                   <td className="text-[#9aa8a1]">{formatOptionalDate(user.last_sign_in_at)}</td>
+                  <td>
+                    {user.company ? <button
+                      type="button"
+                      disabled={companySavingUserId === user.id}
+                      onClick={() => setRemoveCompanyUser(user)}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-[#ff8f8f] transition hover:bg-[#2a1111] disabled:opacity-50"
+                    >
+                      <XCircle size={12} /> Remover
+                    </button> : <span className="text-[10px] font-bold text-[#5f6b65]">Sem empresa</span>}
+                  </td>
                 </tr>)}
               </tbody>
             </table>
@@ -586,6 +614,23 @@ export function AdminDashboard() {
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={() => setCompanyModalUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
           <button type="button" onClick={() => updateUserCompany(companyModalUser, companyInput)} className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Confirmar</button>
+        </div>
+      </div>
+    </div>}
+
+    {removeCompanyUser && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#4a2a2a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><XCircle size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Remover da empresa</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">
+          Deseja remover <span className="font-bold text-[#e8efeb]">{removeCompanyUser.email}</span> da empresa <span className="font-bold text-[#e8efeb]">{removeCompanyUser.company}</span>?
+        </p>
+        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">O usuario sera movido automaticamente para a lista SEM EMPRESA.</p>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={() => setRemoveCompanyUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
+          <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={confirmRemoveUserCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
+            {companySavingUserId === removeCompanyUser.id ? "Removendo..." : "Confirmar remocao"}
+          </button>
         </div>
       </div>
     </div>}
