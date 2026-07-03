@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, Clock3, FolderOpen, ShieldAlert, ShieldCheck, Trash2, UsersRound } from "lucide-react";
+import { Activity, ChevronDown, ChevronUp, Clock3, FolderOpen, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
 import { isAdminUser } from "@/lib/admin";
+import { isPremiumCompany } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AdminOverview = {
@@ -45,6 +46,11 @@ type AdminUser = {
   last_sign_in_at: string | null;
 };
 
+type CollapsedSections = {
+  sma: boolean;
+  noCompany: boolean;
+};
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString("pt-BR");
 }
@@ -61,6 +67,20 @@ export function AdminDashboard() {
   const [companyFilter, setCompanyFilter] = useState("all");
   const [adminToken, setAdminToken] = useState("");
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<CollapsedSections>(() => {
+    if (typeof window === "undefined") return { sma: false, noCompany: false };
+    const savedCollapse = window.localStorage.getItem("vectorcad-admin-collapse");
+    if (!savedCollapse) return { sma: false, noCompany: false };
+    try {
+      return { sma: false, noCompany: false, ...JSON.parse(savedCollapse) };
+    } catch {
+      return { sma: false, noCompany: false };
+    }
+  });
+  const [companyModalUser, setCompanyModalUser] = useState<AdminUser | null>(null);
+  const [companyInput, setCompanyInput] = useState("SM&A");
+  const [companySavingUserId, setCompanySavingUserId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
 
   useEffect(() => {
     const client = supabase;
@@ -104,6 +124,75 @@ export function AdminDashboard() {
     });
   }, [router]);
 
+  const showToast = (text: string) => {
+    setToastMessage(text);
+    window.setTimeout(() => setToastMessage(""), 2600);
+  };
+
+  const setSectionCollapsed = (section: "sma" | "noCompany", collapsed: boolean) => {
+    setCollapsedSections((current) => {
+      const next = { ...current, [section]: collapsed };
+      window.localStorage.setItem("vectorcad-admin-collapse", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const rebuildOverviewUsers = (current: AdminOverview, nextUsers: AdminUser[]): AdminOverview => {
+    const companyCounts = nextUsers.reduce<Record<string, { total: number; premium: number }>>((totals, user) => {
+      const company = user.company || "Sem empresa";
+      totals[company] ||= { total: 0, premium: 0 };
+      totals[company].total += 1;
+      if (user.premium) totals[company].premium += 1;
+      return totals;
+    }, {});
+    const companyByUserId = new Map(nextUsers.map((user) => [user.id, user.company]));
+
+    return {
+      ...current,
+      stats: {
+        ...current.stats,
+        smaUsers: nextUsers.filter((user) => isPremiumCompany(user.company)).length,
+      },
+      companyCounts,
+      users: nextUsers,
+      smAUsers: nextUsers.filter((user) => isPremiumCompany(user.company)),
+      usersWithoutCompany: nextUsers.filter((user) => !user.company),
+      latestLogins: current.latestLogins.map((login) => nextUsers.find((user) => user.id === login.id) || login),
+      projects: current.projects.map((project) => ({ ...project, company: companyByUserId.get(project.user_id) || null })),
+    };
+  };
+
+  const updateUserCompany = async (targetUser: AdminUser, company: string | null) => {
+    if (!adminToken || !overview) return;
+    const previousOverview = overview;
+    const normalizedCompany = company?.trim() || null;
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: normalizedCompany, premium: isPremiumCompany(normalizedCompany) } : user);
+
+    setCompanySavingUserId(targetUser.id);
+    setOverview(rebuildOverviewUsers(overview, nextUsers));
+    setCompanyModalUser(null);
+
+    const response = await fetch(`/api/admin/users/${targetUser.id}/company`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ company: normalizedCompany }),
+    });
+
+    setCompanySavingUserId(null);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setOverview(previousOverview);
+      setMessage(payload.error || "Nao foi possivel atualizar empresa do usuario.");
+      return;
+    }
+
+    showToast(normalizedCompany ? `Usuario movido para ${normalizedCompany}.` : "Usuario removido da empresa.");
+    setMessage("Empresa do usuario atualizada.");
+  };
+
   const deleteAdminProject = async (projectId: string, projectName: string) => {
     if (!adminToken || !overview) return;
     if (!window.confirm(`Tem certeza que deseja excluir o projeto "${projectName}"?`)) return;
@@ -130,6 +219,7 @@ export function AdminDashboard() {
     }
 
     setMessage("Projeto excluido com sucesso.");
+    showToast("Projeto excluido com sucesso.");
   };
 
   if (loading) {
@@ -216,15 +306,40 @@ export function AdminDashboard() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-[#b7f34a]/40 bg-[#101613] p-5">
-          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios SM&A</h2>
-          <UserList users={overview.smAUsers} empty="Nenhum usuario SM&A ainda." />
-        </section>
+        <CollapsibleSection
+          title="Usuarios SM&A"
+          collapsed={collapsedSections.sma}
+          onToggle={() => setSectionCollapsed("sma", !collapsedSections.sma)}
+          accent
+        >
+          <UserList
+            users={overview.smAUsers}
+            empty="Nenhum usuario SM&A ainda."
+            actionLabel="Remover da empresa"
+            actionIcon={<XCircle size={13} />}
+            actionTone="danger"
+            loadingUserId={companySavingUserId}
+            onAction={(user) => updateUserCompany(user, null)}
+          />
+        </CollapsibleSection>
 
-        <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
-          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios sem empresa</h2>
-          <UserList users={overview.usersWithoutCompany} empty="Todos os usuarios possuem empresa." />
-        </section>
+        <CollapsibleSection
+          title="Usuarios sem empresa"
+          collapsed={collapsedSections.noCompany}
+          onToggle={() => setSectionCollapsed("noCompany", !collapsedSections.noCompany)}
+        >
+          <UserList
+            users={overview.usersWithoutCompany}
+            empty="Todos os usuarios possuem empresa."
+            actionLabel="Adicionar a empresa"
+            actionIcon={<UserPlus size={13} />}
+            loadingUserId={companySavingUserId}
+            onAction={(user) => {
+              setCompanyInput("SM&A");
+              setCompanyModalUser(user);
+            }}
+          />
+        </CollapsibleSection>
 
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Premium por empresa</h2>
@@ -282,6 +397,28 @@ export function AdminDashboard() {
         </section>
       </div>
     </section>
+
+    {companyModalUser && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><UserPlus size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Adicionar a empresa</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">Selecione a empresa para vincular <span className="font-bold text-[#e8efeb]">{companyModalUser.email}</span>.</p>
+        <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Empresa
+          <select value={companyInput} onChange={(event) => setCompanyInput(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#b7f34a]">
+            <option value="SM&A">SM&A</option>
+            {companies.filter((company) => company !== "Sem empresa" && company !== "SM&A").map((company) => <option key={company} value={company}>{company}</option>)}
+          </select>
+        </label>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => setCompanyModalUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
+          <button type="button" onClick={() => updateUserCompany(companyModalUser, companyInput)} className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Confirmar</button>
+        </div>
+      </div>
+    </div>}
+
+    {toastMessage && <div className="fixed bottom-5 right-5 z-50 rounded-2xl border border-[#b7f34a]/40 bg-[#101613] px-4 py-3 text-sm font-bold text-[#e8efeb] shadow-2xl shadow-black/40">
+      <span className="text-[#b7f34a]">✓</span> {toastMessage}
+    </div>}
   </main>;
 }
 
@@ -289,11 +426,31 @@ function CompanyBadge({ company, premium }: { company: string | null; premium?: 
   return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ${premium ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{company || "Sem empresa"}</span>;
 }
 
-function UserList({ users, empty }: { users: AdminUser[]; empty: string }) {
+function CollapsibleSection({ title, collapsed, onToggle, children, accent = false }: { title: string; collapsed: boolean; onToggle: () => void; children: React.ReactNode; accent?: boolean }) {
+  return <section className={`rounded-3xl border bg-[#101613] p-5 ${accent ? "border-[#b7f34a]/40" : "border-[#26312c]"}`}>
+    <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left">
+      <h2 className="text-sm font-black uppercase tracking-[.14em]">{title}</h2>
+      <span className="grid h-8 w-8 place-items-center rounded-lg border border-[#34413b] text-[#b7f34a]">{collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}</span>
+    </button>
+    <div className={`grid transition-all duration-300 ${collapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"}`}>
+      <div className="overflow-hidden">{children}</div>
+    </div>
+  </section>;
+}
+
+function UserList({ users, empty, actionLabel, actionIcon, actionTone = "default", loadingUserId, onAction }: { users: AdminUser[]; empty: string; actionLabel?: string; actionIcon?: React.ReactNode; actionTone?: "default" | "danger"; loadingUserId?: string | null; onAction?: (user: AdminUser) => void }) {
   return <div className="mt-4 grid gap-2">
     {users.length ? users.map((user) => <div key={user.id} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
       <div className="truncate text-sm font-black text-[#e8efeb]">{user.email}</div>
-      <div className="mt-2 flex items-center gap-2 text-xs text-[#8c9a93]"><CompanyBadge company={user.company} premium={user.premium} /> {formatOptionalDate(user.last_sign_in_at)}</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#8c9a93]"><CompanyBadge company={user.company} premium={user.premium} /> {formatOptionalDate(user.last_sign_in_at)}</div>
+      {actionLabel && onAction && <button
+        type="button"
+        disabled={loadingUserId === user.id}
+        onClick={() => onAction(user)}
+        className={`mt-3 inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[10px] font-black transition disabled:opacity-50 ${actionTone === "danger" ? "text-[#ff8f8f] hover:bg-[#2a1111]" : "text-[#b7f34a] hover:bg-[#172314]"}`}
+      >
+        {actionIcon} {loadingUserId === user.id ? "Salvando..." : actionLabel}
+      </button>}
     </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">{empty}</div>}
   </div>;
 }
