@@ -89,6 +89,8 @@ export function AdminDashboard() {
   const [companyFilter, setCompanyFilter] = useState("all");
   const [adminToken, setAdminToken] = useState("");
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [deleteCompanyTarget, setDeleteCompanyTarget] = useState<AdminCompany | null>(null);
+  const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<CollapsedSections>(() => {
     if (typeof window === "undefined") return { sma: false, noCompany: false };
     const savedCollapse = window.localStorage.getItem("vectorcad-admin-collapse");
@@ -353,6 +355,54 @@ export function AdminDashboard() {
     showToast(`Plano de ${company.name} atualizado.`);
   };
 
+  const deleteCompany = async () => {
+    if (!adminToken || !overview || !deleteCompanyTarget) return;
+    const target = deleteCompanyTarget;
+    const previousOverview = overview;
+    const nextUsers = overview.users.map((user) => user.company === target.name || user.company === target.id ? { ...user, company: null, premium: false } : user);
+    const nextCompanies = overview.companies.filter((company) => company.id !== target.id);
+
+    setDeletingCompanyId(target.id);
+    setDeleteCompanyTarget(null);
+    setOverview(rebuildOverviewUsers({
+      ...overview,
+      adminLogs: [{
+        id: crypto.randomUUID(),
+        admin_id: "local",
+        action: "company.delete",
+        target_type: "company",
+        target_id: target.id,
+        metadata: { name: target.name, plan: target.plan },
+        created_at: new Date().toISOString(),
+      }, ...overview.adminLogs],
+    }, nextUsers, nextCompanies));
+
+    try {
+      const response = await fetch(`/api/admin/companies/${encodeURIComponent(target.id)}/plan`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        setOverview(previousOverview);
+        setMessage(payload.error || "Nao foi possivel remover a empresa.");
+        showToast(payload.error || "Nao foi possivel remover a empresa.");
+        return;
+      }
+
+      setMessage("Empresa removida com sucesso.");
+      showToast("Empresa removida com sucesso.");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? `Nao foi possivel remover a empresa: ${error.message}` : "Nao foi possivel remover a empresa.";
+      setOverview(previousOverview);
+      setMessage(errorMessage);
+      showToast(errorMessage);
+    } finally {
+      setDeletingCompanyId(null);
+    }
+  };
+
   const deleteAdminProject = async (projectId: string, projectName: string) => {
     if (!adminToken || !overview) return;
     if (!window.confirm(`Tem certeza que deseja excluir o projeto "${projectName}"?`)) return;
@@ -449,13 +499,21 @@ export function AdminDashboard() {
               <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Plano
                 <select
                   value={company.plan}
-                  disabled={savingPlanCompanyId === company.id}
+                  disabled={savingPlanCompanyId === company.id || deletingCompanyId === company.id}
                   onChange={(event) => updateCompanyPlan(company, normalizeCompanyPlan(event.target.value))}
                   className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#080c0b] px-3 py-2 text-xs font-black text-[#eef5f1] outline-none focus:border-[#b7f34a] disabled:opacity-60"
                 >
                   {COMPANY_PLANS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
                 </select>
               </label>
+              <button
+                type="button"
+                disabled={deletingCompanyId === company.id}
+                onClick={() => setDeleteCompanyTarget(company)}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#5b2727] px-3 py-2.5 text-xs font-black text-[#ff8f8f] transition hover:bg-[#2a1111] disabled:opacity-50"
+              >
+                <Trash2 size={13} /> {deletingCompanyId === company.id ? "Removendo..." : "Remover empresa"}
+              </button>
             </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa criada ainda.</div>}
           </div>
         </section>
@@ -630,6 +688,23 @@ export function AdminDashboard() {
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={() => setRemoveCompanyUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={confirmRemoveUserCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
             {companySavingUserId === removeCompanyUser.id ? "Removendo..." : "Confirmar remocao"}
+          </button>
+        </div>
+      </div>
+    </div>}
+
+    {deleteCompanyTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#4a2a2a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><Trash2 size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Remover empresa</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">
+          Tem certeza que deseja excluir a empresa <span className="font-bold text-[#e8efeb]">{deleteCompanyTarget.name}</span>? Isso removera todos os vinculos dos usuarios com essa empresa.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">Os usuarios vinculados ficarao automaticamente como SEM EMPRESA. Essa acao nao altera login, projetos ou editor CAD.</p>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" disabled={deletingCompanyId === deleteCompanyTarget.id} onClick={() => setDeleteCompanyTarget(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
+          <button type="button" disabled={deletingCompanyId === deleteCompanyTarget.id} onClick={deleteCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
+            {deletingCompanyId === deleteCompanyTarget.id ? "Removendo..." : "Confirmar exclusao"}
           </button>
         </div>
       </div>
