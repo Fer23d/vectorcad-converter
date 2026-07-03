@@ -8,6 +8,9 @@ export type UserAccessProfile = {
   firstName: string | null;
   lastName: string | null;
   company: string | null;
+  plan?: CompanyPlan | null;
+  is_premium?: boolean | null;
+  payment_status?: string | null;
 };
 
 export function normalizeCompany(company?: string | null) {
@@ -33,8 +36,8 @@ export function shouldHideAdsForPlan(plan?: string | null) {
   return planHasPremiumAccess(plan);
 }
 
-export function userHasPremiumAccess(profile?: Pick<UserAccessProfile, "company"> | null) {
-  return isPremiumCompany(profile?.company);
+export function userHasPremiumAccess(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium"> | null) {
+  return Boolean(profile?.is_premium || isPremiumCompany(profile?.company) || planHasPremiumAccess(profile?.plan));
 }
 
 export function shouldShowAds(profile?: Pick<UserAccessProfile, "company"> | null) {
