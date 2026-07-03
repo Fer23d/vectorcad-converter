@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Activity, Clock3, FolderOpen, ShieldAlert, ShieldCheck, UsersRound } from "lucide-react";
+import { Activity, Clock3, FolderOpen, ShieldAlert, ShieldCheck, Trash2, UsersRound } from "lucide-react";
 import { isAdminUser } from "@/lib/admin";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
@@ -59,6 +59,8 @@ export function AdminDashboard() {
   const [message, setMessage] = useState("Validando acesso admin...");
   const [loading, setLoading] = useState(true);
   const [companyFilter, setCompanyFilter] = useState("all");
+  const [adminToken, setAdminToken] = useState("");
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     const client = supabase;
@@ -79,6 +81,7 @@ export function AdminDashboard() {
         return;
       }
 
+      setAdminToken(session.access_token);
       const response = await fetch("/api/admin/overview", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
@@ -100,6 +103,34 @@ export function AdminDashboard() {
       setLoading(false);
     });
   }, [router]);
+
+  const deleteAdminProject = async (projectId: string, projectName: string) => {
+    if (!adminToken || !overview) return;
+    if (!window.confirm(`Tem certeza que deseja excluir o projeto "${projectName}"?`)) return;
+
+    const previousOverview = overview;
+    setDeletingProjectId(projectId);
+    setOverview({
+      ...overview,
+      stats: { ...overview.stats, totalProjects: Math.max(0, overview.stats.totalProjects - 1) },
+      projects: overview.projects.filter((project) => project.id !== projectId),
+    });
+
+    const response = await fetch(`/api/admin/projects/${projectId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+
+    setDeletingProjectId(null);
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setOverview(previousOverview);
+      setMessage(payload.error || "Nao foi possivel excluir o projeto.");
+      return;
+    }
+
+    setMessage("Projeto excluido com sucesso.");
+  };
 
   if (loading) {
     return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]">
@@ -227,13 +258,23 @@ export function AdminDashboard() {
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Projetos</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[620px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>Empresa</th><th>User ID</th><th>Criado em</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>Empresa</th><th>User ID</th><th>Criado em</th><th>Acoes</th></tr></thead>
               <tbody>
                 {filteredProjects.map((project) => <tr key={project.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{project.name}</td>
                   <td className="text-[#9aa8a1]"><CompanyBadge company={project.company} /></td>
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{project.user_id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(project.created_at)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      disabled={deletingProjectId === project.id}
+                      onClick={() => deleteAdminProject(project.id, project.name)}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-[#ff8f8f] transition hover:bg-[#2a1111] disabled:opacity-50"
+                    >
+                      <Trash2 size={12} /> Excluir
+                    </button>
+                  </td>
                 </tr>)}
               </tbody>
             </table>

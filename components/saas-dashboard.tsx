@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Check, ChevronDown, ChevronUp, Clock3, Copy, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock3, Copy, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
 import { normalizeCompany, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { VectorCadApp } from "@/components/vector-cad-app";
@@ -53,6 +53,9 @@ export function SaasDashboard() {
   const [profileMessage, setProfileMessage] = useState("");
   const [showUserId, setShowUserId] = useState(false);
   const [userIdCopied, setUserIdCopied] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CadProject | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
 
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
@@ -172,6 +175,37 @@ export function SaasDashboard() {
     setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
   }, [projects.length, user]);
+
+  const confirmDeleteProject = useCallback(async () => {
+    if (!supabase || !user || !deleteTarget) return;
+
+    const target = deleteTarget;
+    const previousProjects = projects;
+
+    setDeletingProjectId(target.id);
+    setProjects((current) => current.filter((project) => project.id !== target.id));
+    if (activeProject?.id === target.id) setActiveProject(null);
+    setDeleteTarget(null);
+
+    const { error } = await supabase
+      .from("projects")
+      .delete()
+      .eq("id", target.id)
+      .eq("user_id", user.id);
+
+    setDeletingProjectId(null);
+
+    if (error) {
+      setProjects(previousProjects);
+      if (activeProject?.id === target.id) setActiveProject(activeProject);
+      setStatus(`Nao foi possivel excluir o projeto: ${error.message}`);
+      return;
+    }
+
+    setStatus("Projeto excluido com sucesso.");
+    setToastMessage("Projeto excluido com sucesso");
+    window.setTimeout(() => setToastMessage(""), 2600);
+  }, [activeProject, deleteTarget, projects, user]);
 
   useEffect(() => {
     const client = supabase;
@@ -347,7 +381,7 @@ export function SaasDashboard() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {sortedProjects.map((project) => <button key={project.id} onClick={() => openProject(project.id)} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#b7f34a] ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
+        {sortedProjects.map((project) => <article key={project.id} className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-black">{project.name}</div>
@@ -355,8 +389,11 @@ export function SaasDashboard() {
             </div>
             <span className="rounded-full border border-[#34413b] px-2 py-1 text-[10px] uppercase text-[#9aaaa2]">{project.type}</span>
           </div>
-          <p className="mt-4 text-xs text-[#8c9a93]">Abrir no editor</p>
-        </button>)}
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <button type="button" onClick={() => openProject(project.id)} className="rounded-lg border border-[#34413b] px-3 py-2 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Abrir no editor</button>
+            <button type="button" onClick={() => setDeleteTarget(project)} className="flex items-center gap-1 rounded-lg border border-transparent px-3 py-2 text-xs font-black text-[#ff8f8f] transition hover:border-[#6d2e2e] hover:bg-[#2a1111]" aria-label={`Excluir projeto ${project.name}`}><Trash2 size={14} /> Excluir</button>
+          </div>
+        </article>)}
       </div>
 
       {!sortedProjects.length && <div className="rounded-3xl border border-dashed border-[#34413b] bg-[#101613] p-10 text-center">
@@ -365,6 +402,22 @@ export function SaasDashboard() {
         <p className="mt-2 text-sm text-[#8c9a93]">O editor ja esta liberado. Crie um projeto para organizar seus arquivos.</p>
       </div>}
     </section>}
+
+    {deleteTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#3a2a2a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><Trash2 size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Excluir projeto?</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">Tem certeza que deseja excluir este projeto? <span className="font-bold text-[#e8efeb]">{deleteTarget.name}</span> sera removido da sua lista.</p>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
+          <button type="button" onClick={confirmDeleteProject} className="rounded-xl bg-[#ff5f5f] px-4 py-3 text-xs font-black text-[#160606] transition hover:brightness-110">Confirmar exclusao</button>
+        </div>
+      </div>
+    </div>}
+
+    {toastMessage && <div className="fixed bottom-5 right-5 z-50 rounded-2xl border border-[#b7f34a]/40 bg-[#101613] px-4 py-3 text-sm font-bold text-[#e8efeb] shadow-2xl shadow-black/40">
+      <span className="text-[#b7f34a]">✓</span> {toastMessage}
+    </div>}
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       <VectorCadApp />
