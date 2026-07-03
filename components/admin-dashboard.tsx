@@ -234,45 +234,63 @@ export function AdminDashboard() {
     const name = newCompanyName.trim();
     if (!name) {
       setMessage("Informe o nome da empresa.");
+      showToast("Informe o nome da empresa.");
       return;
     }
 
     setSavingCompany(true);
-    const response = await fetch("/api/admin/companies", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name, plan: newCompanyPlan }),
-    });
+    try {
+      const response = await fetch("/api/admin/companies", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, plan: newCompanyPlan }),
+      });
 
-    setSavingCompany(false);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setMessage(payload.error || "Nao foi possivel criar a empresa.");
-      return;
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.success === false) {
+        const errorMessage = payload.error || "Nao foi possivel criar a empresa.";
+        setMessage(errorMessage);
+        showToast(errorMessage);
+        return;
+      }
+
+      const company = (payload.company || payload) as AdminCompany;
+      if (!company.id || !company.name) {
+        const errorMessage = "A API respondeu sem os dados da empresa criada.";
+        setMessage(errorMessage);
+        showToast(errorMessage);
+        return;
+      }
+
+      setOverview({
+        ...overview,
+        companies: [company, ...overview.companies.filter((item) => item.name !== company.name)],
+        companyCounts: { ...overview.companyCounts, [company.name]: overview.companyCounts[company.name] || { total: 0, premium: 0 } },
+        adminLogs: [{
+          id: crypto.randomUUID(),
+          admin_id: "local",
+          action: "company.create",
+          target_type: "company",
+          target_id: company.id,
+          metadata: { name: company.name, plan: company.plan },
+          created_at: new Date().toISOString(),
+        }, ...overview.adminLogs],
+      });
+      setCreateCompanyOpen(false);
+      setNewCompanyName("");
+      setNewCompanyPlan("free");
+      setMessage("Empresa criada com sucesso.");
+      showToast("Empresa criada com sucesso.");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? `Nao foi possivel criar a empresa: ${error.message}` : "Nao foi possivel criar a empresa.";
+      setMessage(errorMessage);
+      showToast(errorMessage);
+    } finally {
+      setSavingCompany(false);
     }
-
-    const company = payload as AdminCompany;
-    setOverview({
-      ...overview,
-      companies: [company, ...overview.companies.filter((item) => item.name !== company.name)],
-      companyCounts: { ...overview.companyCounts, [company.name]: overview.companyCounts[company.name] || { total: 0, premium: 0 } },
-      adminLogs: [{
-        id: crypto.randomUUID(),
-        admin_id: "local",
-        action: "company.create",
-        target_type: "company",
-        target_id: company.id,
-        metadata: { name: company.name, plan: company.plan },
-        created_at: new Date().toISOString(),
-      }, ...overview.adminLogs],
-    });
-    setCreateCompanyOpen(false);
-    setNewCompanyName("");
-    setNewCompanyPlan("free");
-    showToast(`Empresa ${company.name} criada.`);
   };
 
   const updateCompanyPlan = async (company: AdminCompany, plan: CompanyPlan) => {

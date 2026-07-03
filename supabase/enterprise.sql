@@ -18,6 +18,14 @@ create policy "Authenticated users can read companies"
   to authenticated
   using (true);
 
+drop policy if exists "Service role can manage companies" on public.companies;
+create policy "Service role can manage companies"
+  on public.companies
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 create table if not exists public.admin_logs (
   id uuid primary key default gen_random_uuid(),
   admin_id uuid not null references auth.users(id) on delete cascade,
