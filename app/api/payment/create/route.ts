@@ -15,6 +15,10 @@ function bearerToken(request: Request) {
   return type?.toLowerCase() === "bearer" ? token : "";
 }
 
+function isMissingSubscriptionsTable(error: { code?: string; message?: string }) {
+  return error.code === "42P01" || error.code === "PGRST205" || error.message?.toLowerCase().includes("subscriptions");
+}
+
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
     return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
@@ -68,17 +72,17 @@ export async function POST(request: Request) {
     const { error } = await adminClient.from("subscriptions").upsert({
       user_id: user.id,
       email: user.email,
-      provider: "mercadopago",
-      provider_subscription_id: preapproval.id,
+      payment_provider: "mercadopago",
+      external_id: preapproval.id,
       plan: "pro",
       status: preapproval.status || "pending",
       amount: PRO_PLAN.price,
       currency: PRO_PLAN.currency,
       raw: preapproval,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "provider_subscription_id" });
+    }, { onConflict: "external_id" });
 
-    if (error && error.code !== "42P01") {
+    if (error && !isMissingSubscriptionsTable(error)) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }

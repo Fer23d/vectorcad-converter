@@ -23,6 +23,11 @@ type MercadoPagoPayment = {
   };
 };
 
+function isMissingTableOrColumn(error: { code?: string; message?: string }) {
+  const message = error.message?.toLowerCase() || "";
+  return error.code === "42P01" || error.code === "42703" || error.code === "PGRST205" || message.includes("schema cache") || message.includes("subscriptions");
+}
+
 async function upsertProAccess(input: {
   userId?: string | null;
   email?: string | null;
@@ -65,7 +70,7 @@ async function upsertProAccess(input: {
     updated_at: new Date().toISOString(),
   }, { onConflict: "user_id" });
 
-  if (profileError && profileError.code !== "42P01" && profileError.code !== "42703") {
+  if (profileError && !isMissingTableOrColumn(profileError)) {
     throw profileError;
   }
 
@@ -73,17 +78,17 @@ async function upsertProAccess(input: {
     const { error: subscriptionError } = await adminClient.from("subscriptions").upsert({
       user_id: userId,
       email,
-      provider: "mercadopago",
-      provider_subscription_id: input.providerSubscriptionId,
+      payment_provider: "mercadopago",
+      external_id: input.providerSubscriptionId,
       plan: PRO_PLAN.id,
       status: paymentStatus,
       amount: PRO_PLAN.price,
       currency: PRO_PLAN.currency,
       raw: input.raw,
       updated_at: new Date().toISOString(),
-    }, { onConflict: "provider_subscription_id" });
+    }, { onConflict: "external_id" });
 
-    if (subscriptionError && subscriptionError.code !== "42P01") {
+    if (subscriptionError && !isMissingTableOrColumn(subscriptionError)) {
       throw subscriptionError;
     }
   }
