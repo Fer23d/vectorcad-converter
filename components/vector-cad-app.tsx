@@ -27,6 +27,15 @@ const presets: Record<string, { processing: Partial<ProcessingSettings>; vector:
   logo: { processing: { blurRadius: 2, morphologyRadius: 1, openingRadius: 1, minComponentArea: 12 }, vector: { outputMode: "smooth", simplification: 1.8, smoothIterations: 2, joinDistance: 3 } },
 };
 
+type UsageInfo = {
+  plan: string;
+  usage: number;
+  usageLimit: number | null;
+  export3d: number;
+  export3dLimit: number | null;
+  adsVisible: boolean;
+};
+
 function Slider({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
   return <label className="range-row text-xs text-[#aab8b1]"><span>{label}</span><b className="text-right text-[#e8efeb]">{value}</b><input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} /></label>;
 }
@@ -39,7 +48,7 @@ function download(name: string, body: string, type: string) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: boolean; adSlot?: string }) {
+export function VectorCadApp({ adsVisible = false, adSlot, onUsageChange }: { adsVisible?: boolean; adSlot?: string; onUsageChange?: (usage: UsageInfo) => void }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [fileName, setFileName] = useState("");
   const [processing, setProcessing] = useState(defaultProcessing);
@@ -53,7 +62,8 @@ export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: bool
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const [show3d, setShow3d] = useState(false);
-  const [usageInfo, setUsageInfo] = useState<{ plan: string; usage: number; usageLimit: number | null; export3d: number; export3dLimit: number | null; adsVisible: boolean } | null>(null);
+  const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
+  const [upgradeModal, setUpgradeModal] = useState("");
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -66,7 +76,7 @@ export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: bool
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
 
-  const consumeUsage = useCallback(async (action: "vectorize" | "export3d" | "export_dxf") => {
+  const consumeUsage = useCallback(async (action: "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf") => {
     if (!isSupabaseConfigured || !supabase) return true;
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
@@ -86,12 +96,14 @@ export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: bool
 
     if (!response.ok) {
       setMessage(payload.error || "Nao foi possivel validar seu plano.");
+      if (response.status === 402) setUpgradeModal(payload.error || "Voce atingiu o limite diario de 3 usos. Faca upgrade para continuar.");
       return false;
     }
 
     setUsageInfo(payload);
+    onUsageChange?.(payload);
     return true;
-  }, []);
+  }, [onUsageChange]);
 
   const loadFile = useCallback(async (file?: File) => {
     if (!file) return;
@@ -129,13 +141,18 @@ export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: bool
     if (kind === "dxf") {
       const allowed = await consumeUsage("export_dxf");
       if (!allowed) return;
+    } else {
+      const allowed = await consumeUsage("export_svg");
+      if (!allowed) return;
     }
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
     download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc), kind === "svg" ? "image/svg+xml" : "application/dxf");
     setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
   };
-  const exportPng = () => {
+  const exportPng = async () => {
     const c = processedCanvas.current; if (!c) return;
+    const allowed = await consumeUsage("export_png");
+    if (!allowed) return;
     const a = document.createElement("a"); a.href = c.toDataURL("image/png"); a.download = "vectorcad-preview.png"; a.click();
   };
   const generate3d = async () => {
@@ -232,6 +249,17 @@ export function VectorCadApp({ adsVisible = false, adSlot }: { adsVisible?: bool
       <div className="mt-1 text-[11px] text-[#8b9a92]">by Fernando Fernandes</div>
     </footer>
     <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
+    {upgradeModal && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#b7f34a]/40 bg-[#101613] p-6 text-center shadow-2xl shadow-black/50">
+        <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><Sparkles size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Limite diario atingido</h3>
+        <p className="mt-3 text-sm leading-6 text-[#9caaa3]">{upgradeModal}</p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => setUpgradeModal("")} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Agora nao</button>
+          <a href="/pricing" className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Fazer upgrade</a>
+        </div>
+      </div>
+    </div>}
   </main>;
 }
 

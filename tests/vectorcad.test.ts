@@ -7,7 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
-import { daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
+import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
 const doc: VectorDocument = {
@@ -132,6 +132,9 @@ describe("VectorCAD pipeline", () => {
 
   it("applies monetization limits by plan", () => {
     expect(dailyUsageLimitForPlan("free")).toBe(3);
+    expect(canUseFeature({ company: null, plan: "free", usage_count_today: 2 })).toBe(true);
+    expect(canUseFeature({ company: null, plan: "free", usage_count_today: 3 })).toBe(false);
+    expect(canUseFeature({ company: null, plan: "pro", usage_count_today: 999 })).toBe(true);
     expect(daily3dLimitForPlan("free")).toBe(0);
     expect(shouldShowAds({ company: null, plan: "free" })).toBe(true);
     expect(dailyUsageLimitForPlan("plus")).toBe(15);

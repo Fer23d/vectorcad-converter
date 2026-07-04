@@ -8,6 +8,7 @@ import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, shouldSho
 import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { AdSenseSlot } from "@/components/adsense-slot";
+import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
 
@@ -24,6 +25,15 @@ type UserProfile = {
   usage_count_today?: number | null;
   export3d_count_today?: number | null;
   last_usage_reset?: string | null;
+};
+
+type UsageSnapshot = {
+  plan: string;
+  usage: number;
+  usageLimit: number | null;
+  export3d: number;
+  export3dLimit: number | null;
+  adsVisible: boolean;
 };
 
 const emptyProjectData: CadProjectData = {
@@ -74,6 +84,43 @@ export function SaasDashboard() {
   const effectivePlan = resolveEffectivePlan(profile);
   const planConfig = getBillingPlan(effectivePlan);
   const planLabel = planConfig.title;
+
+  const applyUsageSnapshot = useCallback((snapshot: UsageSnapshot, owner?: User) => {
+    setProfile((current) => {
+      const fallbackName = metadataName(owner || null);
+      const base = current || (owner ? {
+        user_id: owner.id,
+        name: fallbackName.firstName || null,
+        surname: fallbackName.lastName || null,
+        company: normalizeCompany(String(owner.user_metadata?.company || "")),
+        plan: normalizeCompanyPlan(String(owner.user_metadata?.plan || "free")),
+        is_premium: Boolean(owner.user_metadata?.is_premium),
+        payment_status: String(owner.user_metadata?.payment_status || "none"),
+        usage_count_today: 0,
+        export3d_count_today: 0,
+      } : null);
+
+      return base ? {
+      ...base,
+      plan: normalizeCompanyPlan(snapshot.plan),
+      usage_count_today: snapshot.usage,
+      export3d_count_today: snapshot.export3d,
+      last_usage_reset: new Date().toISOString(),
+    } : current;
+    });
+  }, []);
+
+  const refreshUsage = useCallback(async (owner?: User) => {
+    if (!supabase) return;
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+
+    const response = await fetch("/api/usage/consume", {
+      headers: { Authorization: `Bearer ${data.session.access_token}` },
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok && payload) applyUsageSnapshot(payload as UsageSnapshot, owner);
+  }, [applyUsageSnapshot]);
 
   const loadProjects = useCallback(async (userId: string) => {
     if (!supabase) return;
@@ -256,6 +303,7 @@ export function SaasDashboard() {
       if (data.user) {
         loadProjects(data.user.id);
         loadProfile(data.user);
+        refreshUsage(data.user);
       }
       else router.replace("/login");
     });
@@ -272,12 +320,13 @@ export function SaasDashboard() {
       if (session?.user) {
         loadProjects(session.user.id);
         loadProfile(session.user);
+        refreshUsage(session.user);
       }
       else router.replace("/login");
     });
 
     return () => listener.subscription.unsubscribe();
-  }, [loadProfile, loadProjects, router]);
+  }, [loadProfile, loadProjects, refreshUsage, router]);
 
   useEffect(() => {
     const client = supabase;
@@ -425,6 +474,15 @@ export function SaasDashboard() {
 
       <AdSenseSlot enabled={adsVisible} slot={dashboardAdSlot} label="Publicidade no dashboard" className="mb-6" />
 
+      <div className="mb-6">
+        <UsageMeter
+          plan={effectivePlan}
+          usage={profile?.usage_count_today || 0}
+          limit={planConfig.usageLimit}
+          onUpgrade={() => router.push("/pricing")}
+        />
+      </div>
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {sortedProjects.map((project, index) => <Fragment key={project.id}>
         <article className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
@@ -468,7 +526,7 @@ export function SaasDashboard() {
     </div>}
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
-      <VectorCadApp adsVisible={adsVisible} adSlot={editorAdSlot} />
+      <VectorCadApp adsVisible={adsVisible} adSlot={editorAdSlot} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
@@ -504,6 +562,12 @@ export function SaasDashboard() {
               {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="mt-4 w-full rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Ver planos</button>}
               {profile?.payment_status && <div className="mt-3 text-[10px] uppercase tracking-[.14em] text-[#728178]">Pagamento: {profile.payment_status}</div>}
             </div>
+            <UsageMeter
+              plan={effectivePlan}
+              usage={profile?.usage_count_today || 0}
+              limit={planConfig.usageLimit}
+              onUpgrade={() => router.push("/pricing")}
+            />
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
               <div className="relative mt-3 w-full">

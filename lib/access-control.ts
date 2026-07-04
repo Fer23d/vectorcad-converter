@@ -73,6 +73,13 @@ export function dailyUsageLimitForPlan(plan?: string | null) {
   return null;
 }
 
+export function canUseFeature(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium" | "usage_count_today"> | null) {
+  const plan = resolveUserPlan(profile);
+  const limit = dailyUsageLimitForPlan(plan);
+  if (limit === null) return true;
+  return Number(profile?.usage_count_today || 0) < limit;
+}
+
 export function daily3dLimitForPlan(plan?: string | null) {
   const normalized = normalizeCompanyPlan(plan);
   if (normalized === "free") return 0;

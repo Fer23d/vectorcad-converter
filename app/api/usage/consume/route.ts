@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { daily3dLimitForPlan, dailyUsageLimitForPlan, normalizeCompanyPlan, planAllowsDxf, planAllowsUnlimited3d, planHasPremiumAccess, planRemovesAds, resolveUserPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
-type UsageAction = "vectorize" | "export3d" | "export_dxf";
+type UsageAction = "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf";
 type UsageProfileRow = {
   user_id?: string;
   company?: string | null;
@@ -12,6 +12,9 @@ type UsageProfileRow = {
   export3d_count_today?: number | null;
   last_usage_reset?: string | null;
 };
+
+const USAGE_ACTIONS: UsageAction[] = ["vectorize", "export_svg", "export_png", "export3d", "export_dxf"];
+const DAILY_USAGE_ACTIONS: UsageAction[] = ["vectorize", "export_svg", "export_png"];
 
 function bearerToken(request: Request) {
   const header = request.headers.get("authorization") || "";
@@ -27,35 +30,33 @@ function sameDay(value?: string | null) {
   return Boolean(value && value.slice(0, 10) === todayKey());
 }
 
+function limitMessage(limit: number) {
+  return `Você atingiu o limite diário de ${limit} usos. Faça upgrade para continuar.`;
+}
+
 function isMissingTableOrColumn(error: { code?: string; message?: string }) {
   const message = error.message?.toLowerCase() || "";
   return error.code === "42P01" || error.code === "42703" || error.code === "PGRST205" || message.includes("schema cache");
 }
 
-export async function POST(request: Request) {
+async function getUsageContext(request: Request) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return { response: NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 }) };
   }
 
   if (!isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para controlar limites." }, { status: 500 });
+    return { response: NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para controlar limites." }, { status: 500 }) };
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Faca login para usar o VectorCAD." }, { status: 401 });
-  }
-
-  const body = await request.json().catch(() => ({}));
-  const action = String(body.action || "vectorize") as UsageAction;
-  if (!["vectorize", "export3d", "export_dxf"].includes(action)) {
-    return NextResponse.json({ error: "Acao de uso invalida." }, { status: 400 });
+    return { response: NextResponse.json({ error: "Faca login para usar o VectorCAD." }, { status: 401 }) };
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
   if (userError || !userData.user?.email) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return { response: NextResponse.json({ error: "Sessao invalida." }, { status: 401 }) };
   }
 
   const adminClient = createSupabaseAdminClient();
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (profileError && !isMissingTableOrColumn(profileError)) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    return { response: NextResponse.json({ error: profileError.message }, { status: 500 }) };
   }
 
   const profile = (profileRow || {}) as UsageProfileRow;
@@ -80,65 +81,105 @@ export async function POST(request: Request) {
   const current3d = reset ? 0 : Number(profile.export3d_count_today || 0);
   const usageLimit = dailyUsageLimitForPlan(plan);
   const export3dLimit = daily3dLimitForPlan(plan);
+  const now = new Date().toISOString();
 
-  if (action === "export_dxf" && !planAllowsDxf(plan)) {
-    return NextResponse.json({ error: "Exportacao DXF completa e recurso do plano PRO ou EMPRESARIAL.", plan, usage: currentUsage, usageLimit }, { status: 402 });
-  }
+  return { adminClient, basePlan, company, current3d, currentUsage, export3dLimit, plan, profile, reset, usageLimit, user, now };
+}
 
-  if (action === "export3d") {
-    if (export3dLimit === 0) {
-      return NextResponse.json({ error: "Exportacao 3D nao esta disponivel no plano FREE.", plan, export3d: current3d, export3dLimit }, { status: 402 });
-    }
+type UsageContext = Exclude<Awaited<ReturnType<typeof getUsageContext>>, { response: NextResponse }>;
 
-    if (export3dLimit !== null && current3d >= export3dLimit) {
-      return NextResponse.json({ error: "Limite diario de exportacao 3D atingido. Faca upgrade para PRO.", plan, export3d: current3d, export3dLimit }, { status: 402 });
-    }
-  }
+function usagePayload(context: UsageContext, usage: number, export3d: number) {
+  return {
+    ok: true,
+    plan: context.plan,
+    usage,
+    usageLimit: context.usageLimit,
+    export3d,
+    export3dLimit: context.export3dLimit,
+    adsVisible: !planRemovesAds(context.plan),
+    dxfAllowed: planAllowsDxf(context.plan),
+    unlimited3d: planAllowsUnlimited3d(context.plan),
+  };
+}
 
-  if (action === "vectorize" && usageLimit !== null && currentUsage >= usageLimit) {
-    return NextResponse.json({ error: "Limite diario atingido. Faca upgrade para continuar convertendo hoje.", plan, usage: currentUsage, usageLimit }, { status: 402 });
-  }
-
-  const nextUsage = action === "vectorize" ? currentUsage + 1 : currentUsage;
-  const next3d = action === "export3d" ? current3d + 1 : current3d;
+async function persistUsage(context: UsageContext, usage: number, export3d: number) {
   const updates = {
-    user_id: user.id,
-    plan: basePlan,
-    is_premium: planHasPremiumAccess(basePlan) || Boolean(profile.is_premium || user.user_metadata?.is_premium),
-    usage_count_today: nextUsage,
-    export3d_count_today: next3d,
-    last_usage_reset: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    user_id: context.user.id,
+    plan: context.basePlan,
+    is_premium: planHasPremiumAccess(context.basePlan) || Boolean(context.profile.is_premium || context.user.user_metadata?.is_premium),
+    usage_count_today: usage,
+    export3d_count_today: export3d,
+    last_usage_reset: context.now,
+    updated_at: context.now,
   };
 
-  const { error: updateError } = await adminClient.from("profiles").upsert(updates, { onConflict: "user_id" });
+  const { error: updateError } = await context.adminClient.from("profiles").upsert(updates, { onConflict: "user_id" });
   if (updateError && !isMissingTableOrColumn(updateError)) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  await adminClient.from("users").upsert({
-    id: user.id,
-    email: user.email,
-    company: company || null,
-    plan: basePlan,
+  await context.adminClient.from("users").upsert({
+    id: context.user.id,
+    email: context.user.email,
+    company: context.company || null,
+    plan: context.basePlan,
     is_premium: updates.is_premium,
-    usage_count_today: nextUsage,
-    export3d_count_today: next3d,
+    usage_count_today: usage,
+    export3d_count_today: export3d,
     last_usage_reset: updates.last_usage_reset,
     updated_at: updates.updated_at,
   }, { onConflict: "id" }).then(({ error }) => {
     if (error && !isMissingTableOrColumn(error)) console.error("[usage] public users sync failed", error);
   });
 
-  return NextResponse.json({
-    ok: true,
-    plan,
-    usage: nextUsage,
-    usageLimit,
-    export3d: next3d,
-    export3dLimit,
-    adsVisible: !planRemovesAds(plan),
-    dxfAllowed: planAllowsDxf(plan),
-    unlimited3d: planAllowsUnlimited3d(plan),
-  });
+  return null;
+}
+
+export async function GET(request: Request) {
+  const context = await getUsageContext(request);
+  if ("response" in context) return context.response;
+
+  if (context.reset) {
+    const errorResponse = await persistUsage(context, 0, 0);
+    if (errorResponse) return errorResponse;
+    return NextResponse.json(usagePayload(context, 0, 0));
+  }
+
+  return NextResponse.json(usagePayload(context, context.currentUsage, context.current3d));
+}
+
+export async function POST(request: Request) {
+  const context = await getUsageContext(request);
+  if ("response" in context) return context.response;
+
+  const body = await request.json().catch(() => ({}));
+  const action = String(body.action || "vectorize") as UsageAction;
+  if (!USAGE_ACTIONS.includes(action)) {
+    return NextResponse.json({ error: "Acao de uso invalida." }, { status: 400 });
+  }
+
+  if (context.usageLimit !== null && DAILY_USAGE_ACTIONS.includes(action) && context.currentUsage >= context.usageLimit) {
+    return NextResponse.json({ error: limitMessage(context.usageLimit), plan: context.plan, usage: context.currentUsage, usageLimit: context.usageLimit }, { status: 402 });
+  }
+
+  if (action === "export_dxf" && !planAllowsDxf(context.plan)) {
+    return NextResponse.json({ error: "Exportacao DXF completa e recurso do plano PRO ou EMPRESARIAL.", plan: context.plan, usage: context.currentUsage, usageLimit: context.usageLimit }, { status: 402 });
+  }
+
+  if (action === "export3d") {
+    if (context.export3dLimit === 0) {
+      return NextResponse.json({ error: "Exportacao 3D nao esta disponivel no plano FREE.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
+    }
+
+    if (context.export3dLimit !== null && context.current3d >= context.export3dLimit) {
+      return NextResponse.json({ error: "Limite diario de exportacao 3D atingido. Faca upgrade para PRO.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
+    }
+  }
+
+  const nextUsage = DAILY_USAGE_ACTIONS.includes(action) ? context.currentUsage + 1 : context.currentUsage;
+  const next3d = action === "export3d" ? context.current3d + 1 : context.current3d;
+  const errorResponse = await persistUsage(context, nextUsage, next3d);
+  if (errorResponse) return errorResponse;
+
+  return NextResponse.json(usagePayload(context, nextUsage, next3d));
 }
