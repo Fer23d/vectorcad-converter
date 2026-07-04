@@ -10,10 +10,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="pt-br">
   <head>
-    <Script
-      id="google-adsense"
+    <script
       async
-      strategy="beforeInteractive"
       src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5004421599745939"
       crossOrigin="anonymous"
     />
