@@ -8,5 +8,14 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body>{children}<Script src="https://sdk.mercadopago.com/js/v2" strategy="afterInteractive" /></body></html>;
+  return <html lang="pt-BR"><body>
+    {children}
+    <Script src="https://sdk.mercadopago.com/js/v2" strategy="afterInteractive" />
+    <Script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5004421599745939"
+      crossOrigin="anonymous"
+      strategy="afterInteractive"
+    />
+  </body></html>;
 }

@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
-import { normalizeCompany, normalizeCompanyPlan, shouldShowAds, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
+import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, shouldShowAds, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
 import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { AdSenseSlot } from "@/components/adsense-slot";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
 
@@ -42,6 +43,9 @@ const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
   { id: "editor", label: "Editor", icon: <Wrench size={15} /> },
   { id: "profile", label: "Perfil", icon: <UserRound size={15} /> },
 ];
+const dashboardAdSlot = process.env.NEXT_PUBLIC_ADSENSE_DASHBOARD_SLOT;
+const projectsAdSlot = process.env.NEXT_PUBLIC_ADSENSE_PROJECTS_SLOT || dashboardAdSlot;
+const editorAdSlot = process.env.NEXT_PUBLIC_ADSENSE_EDITOR_SLOT || dashboardAdSlot;
 
 export function SaasDashboard() {
   const router = useRouter();
@@ -67,7 +71,7 @@ export function SaasDashboard() {
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
   const adsVisible = shouldShowAds(profile);
-  const effectivePlan = profile?.plan || "free";
+  const effectivePlan = resolveEffectivePlan(profile);
   const planConfig = getBillingPlan(effectivePlan);
   const planLabel = planConfig.title;
 
@@ -419,8 +423,11 @@ export function SaasDashboard() {
         <button onClick={createProject} className="flex items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-5 py-3 text-xs font-black text-[#09120d]"><FilePlus2 size={15} /> Novo Projeto</button>
       </div>
 
+      <AdSenseSlot enabled={adsVisible} slot={dashboardAdSlot} label="Publicidade no dashboard" className="mb-6" />
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {sortedProjects.map((project) => <article key={project.id} className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
+        {sortedProjects.map((project, index) => <Fragment key={project.id}>
+        <article className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm font-black">{project.name}</div>
@@ -432,7 +439,9 @@ export function SaasDashboard() {
             <button type="button" onClick={() => openProject(project.id)} className="rounded-lg border border-[#34413b] px-3 py-2 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Abrir no editor</button>
             <button type="button" onClick={() => setDeleteTarget(project)} className="flex items-center gap-1 rounded-lg border border-transparent px-3 py-2 text-xs font-black text-[#ff8f8f] transition hover:border-[#6d2e2e] hover:bg-[#2a1111]" aria-label={`Excluir projeto ${project.name}`}><Trash2 size={14} /> Excluir</button>
           </div>
-        </article>)}
+        </article>
+        {index === 1 && <AdSenseSlot enabled={adsVisible} slot={projectsAdSlot} label="Publicidade" className="md:col-span-2 xl:col-span-3" />}
+        </Fragment>)}
       </div>
 
       {!sortedProjects.length && <div className="rounded-3xl border border-dashed border-[#34413b] bg-[#101613] p-10 text-center">
@@ -459,7 +468,7 @@ export function SaasDashboard() {
     </div>}
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
-      <VectorCadApp />
+      <VectorCadApp adsVisible={adsVisible} adSlot={editorAdSlot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
