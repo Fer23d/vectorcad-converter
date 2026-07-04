@@ -36,12 +36,11 @@ export async function GET(request: Request) {
 
   const requestedCompany = normalizeCompany(new URL(request.url).searchParams.get("company"));
   const adminClient = createSupabaseAdminClient();
-  const [{ data: usersData, error: usersError }, { data: projectsData, error: projectsError }, { data: profilesData, error: profilesError }, { data: appUsersData, error: appUsersError }, { data: companiesData, error: companiesError }, { data: logsData, error: logsError }] = await Promise.all([
+  const [{ data: usersData, error: usersError }, { data: projectsData, error: projectsError }, { data: profilesData, error: profilesError }, { data: appUsersData, error: appUsersError }, { data: logsData, error: logsError }] = await Promise.all([
     adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
     adminClient.from("profiles").select("user_id,name,surname,company"),
     adminClient.from("users").select("id,email,company,plan,is_premium"),
-    adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("created_at", { ascending: false }),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
   ]);
 
@@ -53,27 +52,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: projectsError.message }, { status: 500 });
   }
 
-  const rawCompanies = companiesError ? [] : companiesData || [];
   const profilesByUserId = new Map((profilesError ? [] : profilesData || []).map((profile) => [profile.user_id, profile]));
   const appUsersById = new Map((appUsersError ? [] : appUsersData || []).map((appUser) => [appUser.id, appUser]));
-  const companyById = new Map(rawCompanies.map((company) => [company.id, company]));
-  const companyByName = new Map(rawCompanies.map((company) => [company.name, company]));
   const resolveCompany = (value?: string | null) => {
     const normalized = normalizeCompany(value);
-    if (!normalized) {
-      return { id: null as string | null, name: null as string | null, plan: normalizeCompanyPlan("free") };
-    }
-
-    const company = companyById.get(normalized) || companyByName.get(normalized);
-    if (company) {
-      return { id: company.id, name: company.name, plan: normalizeCompanyPlan(company.plan) };
-    }
-
-    return {
-      id: null as string | null,
-      name: normalized,
-      plan: normalizeCompanyPlan(isPremiumCompany(normalized) ? "empresarial" : "free"),
-    };
+    return isPremiumCompany(normalized)
+      ? { id: "SM&A", name: "SM&A", plan: normalizeCompanyPlan("pro") }
+      : { id: null as string | null, name: null as string | null, plan: normalizeCompanyPlan("free") };
   };
   const selectedCompany = requestedCompany ? resolveCompany(requestedCompany) : null;
   const users = usersData.users.map((user) => {
@@ -83,8 +68,7 @@ export async function GET(request: Request) {
     const individualPlan = normalizeCompanyPlan(appUser?.plan || String(user.user_metadata?.plan || ""));
     const individualPremium = Boolean(appUser?.is_premium || user.user_metadata?.is_premium);
     const effectivePlan = resolveUserPlan(
-      { plan: individualPlan, is_premium: individualPremium },
-      { name: companyInfo.name, plan: companyInfo.plan },
+      { company: companyInfo.name, plan: individualPlan, is_premium: individualPremium },
     );
     const premium = planHasPremiumAccess(effectivePlan);
 
@@ -119,30 +103,20 @@ export async function GET(request: Request) {
     else totals[company].free += 1;
     return totals;
   }, {});
-  const companies = companiesError
-    ? Object.entries(companyCounts).filter(([name]) => name !== "Sem empresa").map(([name, counts]) => ({
-      id: name,
-      name,
-      plan: normalizeCompanyPlan(isPremiumCompany(name) ? "empresarial" : "free"),
-      user_count: counts.total,
-      premium_users: counts.premium,
-      enterprise_users: counts.enterprise,
-      pro_users: counts.pro,
-      plus_users: counts.plus,
-      free_users: counts.free,
-      created_at: null,
-      updated_at: null,
-    }))
-    : (companiesData || []).map((company) => ({
-      ...company,
-      plan: normalizeCompanyPlan(company.plan),
-      user_count: companyCounts[company.name]?.total || 0,
-      premium_users: companyCounts[company.name]?.premium || 0,
-      enterprise_users: companyCounts[company.name]?.enterprise || 0,
-      pro_users: companyCounts[company.name]?.pro || 0,
-      plus_users: companyCounts[company.name]?.plus || 0,
-      free_users: companyCounts[company.name]?.free || 0,
-    }));
+  const smaCounts = companyCounts["SM&A"] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
+  const companies = [{
+    id: "SM&A",
+    name: "SM&A",
+    plan: normalizeCompanyPlan("pro"),
+    user_count: smaCounts.total,
+    premium_users: smaCounts.premium,
+    enterprise_users: smaCounts.enterprise,
+    pro_users: smaCounts.pro,
+    plus_users: smaCounts.plus,
+    free_users: smaCounts.free,
+    created_at: null,
+    updated_at: null,
+  }];
   const smAUsers = users.filter((user) => isPremiumCompany(user.company));
   const usersWithoutCompany = users.filter((user) => !user.company);
   const latestLogins = [...usersWithLogin]

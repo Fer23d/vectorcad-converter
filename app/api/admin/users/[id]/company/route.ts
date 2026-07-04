@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan } from "@/lib/access-control";
+import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -41,7 +41,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const company = normalizeCompany(typeof body.company === "string" ? body.company : null);
+  const requestedCompany = normalizeCompany(typeof body.company === "string" ? body.company : null);
+  const company = isPremiumCompany(requestedCompany) ? "SM&A" : null;
   const adminClient = createSupabaseAdminClient();
 
   const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(id);
@@ -72,14 +73,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
-  const billingPlan = isPremiumCompany(company) ? "empresarial" : normalizeCompanyPlan(String(existingMetadata.plan || "free"));
+  const billingPlan = normalizeCompanyPlan(String(existingMetadata.plan || "free"));
+  const effectivePlan = resolveUserPlan({ company, plan: billingPlan, is_premium: Boolean(existingMetadata.is_premium) });
   const { error: publicUserError } = await adminClient
     .from("users")
     .upsert({
       id,
       email: userData.user.email || null,
       company,
-      is_premium: isPremiumCompany(company) || Boolean(existingMetadata.is_premium),
+      is_premium: Boolean(existingMetadata.is_premium) || planHasPremiumAccess(billingPlan),
       plan: billingPlan,
       updated_at: new Date().toISOString(),
     }, { onConflict: "id" });
@@ -100,6 +102,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({
     id,
     company,
-    premium: isPremiumCompany(company),
+    plan: effectivePlan,
+    premium: planHasPremiumAccess(effectivePlan),
   });
 }

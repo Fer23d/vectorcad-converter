@@ -142,12 +142,12 @@ describe("VectorCAD pipeline", () => {
     expect(dailyUsageLimitForPlan("empresarial")).toBeNull();
   });
 
-  it("resolves the effective SaaS plan with company override", () => {
-    expect(resolveUserPlan({ plan: "free" }, { plan: "empresarial" })).toBe("empresarial");
+  it("resolves the effective SaaS plan with the fixed SM&A override", () => {
+    expect(resolveUserPlan({ company: "SM&A", plan: "free" })).toBe("pro");
     expect(resolveUserPlan({ plan: "pro" }, { plan: "free" })).toBe("pro");
     expect(resolveUserPlan({ plan: "plus" }, { plan: "free" })).toBe("plus");
     expect(resolveUserPlan({ plan: "free", is_premium: true }, { plan: "free" })).toBe("pro");
-    expect(resolveUserPlan({ plan: "free" }, { name: "SM&A", plan: "free" })).toBe("empresarial");
+    expect(resolveUserPlan({ plan: "free" }, { name: "SM&A", plan: "free" })).toBe("pro");
     expect(resolveUserPlan({ plan: null }, { plan: null })).toBe("free");
   });
 });

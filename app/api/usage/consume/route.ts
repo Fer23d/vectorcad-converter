@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, normalizeCompanyPlan, planAllowsDxf, planAllowsUnlimited3d, planRemovesAds } from "@/lib/access-control";
+import { daily3dLimitForPlan, dailyUsageLimitForPlan, normalizeCompanyPlan, planAllowsDxf, planAllowsUnlimited3d, planHasPremiumAccess, planRemovesAds, resolveUserPlan } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 type UsageAction = "vectorize" | "export3d" | "export_dxf";
@@ -72,17 +72,8 @@ export async function POST(request: Request) {
 
   const profile = (profileRow || {}) as UsageProfileRow;
   const company = typeof profile.company === "string" ? profile.company : String(user.user_metadata?.company || "");
-  let plan = normalizeCompanyPlan(String(profile.plan || user.user_metadata?.plan || "free"));
-
-  if (company) {
-    const { data: companyRow } = await adminClient.from("companies").select("plan").eq("name", company).maybeSingle();
-    if (normalizeCompanyPlan(companyRow?.plan) === "empresarial" || isPremiumCompany(company)) {
-      plan = "empresarial";
-    }
-  }
-
-  const isPremium = Boolean(profile.is_premium || user.user_metadata?.is_premium || plan === "pro" || plan === "empresarial");
-  if (isPremium && (plan === "free" || plan === "plus")) plan = "pro";
+  const basePlan = normalizeCompanyPlan(String(profile.plan || user.user_metadata?.plan || "free"));
+  const plan = resolveUserPlan({ company, plan: basePlan, is_premium: Boolean(profile.is_premium || user.user_metadata?.is_premium) });
 
   const reset = !sameDay(profile.last_usage_reset);
   const currentUsage = reset ? 0 : Number(profile.usage_count_today || 0);
@@ -112,8 +103,8 @@ export async function POST(request: Request) {
   const next3d = action === "export3d" ? current3d + 1 : current3d;
   const updates = {
     user_id: user.id,
-    plan,
-    is_premium: isPremium || plan === "pro" || plan === "empresarial",
+    plan: basePlan,
+    is_premium: planHasPremiumAccess(basePlan) || Boolean(profile.is_premium || user.user_metadata?.is_premium),
     usage_count_today: nextUsage,
     export3d_count_today: next3d,
     last_usage_reset: new Date().toISOString(),
@@ -129,7 +120,7 @@ export async function POST(request: Request) {
     id: user.id,
     email: user.email,
     company: company || null,
-    plan,
+    plan: basePlan,
     is_premium: updates.is_premium,
     usage_count_today: nextUsage,
     export3d_count_today: next3d,

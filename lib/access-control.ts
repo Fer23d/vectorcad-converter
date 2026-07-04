@@ -37,11 +37,10 @@ export function planHasPremiumAccess(plan?: string | null) {
 }
 
 export function resolveUserPlan(
-  user?: { plan?: string | null; is_premium?: boolean | null } | null,
+  user?: { plan?: string | null; is_premium?: boolean | null; company?: string | null } | null,
   company?: { plan?: string | null; name?: string | null } | null,
 ): CompanyPlan {
-  const companyPlan = normalizeCompanyPlan(company?.plan);
-  if (companyPlan === "empresarial" || isPremiumCompany(company?.name)) return "empresarial";
+  if (isPremiumCompany(user?.company) || isPremiumCompany(company?.name)) return "pro";
 
   const userPlan = normalizeCompanyPlan(user?.plan);
   if (userPlan === "empresarial") return "empresarial";
@@ -86,13 +85,13 @@ export function shouldHideAdsForPlan(plan?: string | null) {
 }
 
 export function userHasPremiumAccess(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium"> | null) {
-  return Boolean(profile?.is_premium || isPremiumCompany(profile?.company) || planHasPremiumAccess(profile?.plan));
+  return planHasPremiumAccess(resolveUserPlan(profile));
 }
 
 export function shouldShowAds(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium"> | null) {
-  return !(profile?.is_premium || isPremiumCompany(profile?.company) || planRemovesAds(profile?.plan));
+  return !planRemovesAds(resolveUserPlan(profile));
 }
 
 export function resolveEffectivePlan(profile?: Pick<UserAccessProfile, "company" | "plan" | "is_premium"> | null): CompanyPlan {
-  return resolveUserPlan(profile, { name: profile?.company, plan: isPremiumCompany(profile?.company) ? "empresarial" : null });
+  return resolveUserPlan(profile);
 }
