@@ -123,10 +123,11 @@ describe("VectorCAD pipeline", () => {
     expect(scaled.unit).toBe("mm");
   });
 
-  it("grants premium access and hides ads for SM&A users", () => {
+  it("keeps company text informational unless admin/billing grants premium", () => {
     expect(isPremiumCompany("SM&A")).toBe(true);
-    expect(userHasPremiumAccess({ company: "sm&a" })).toBe(true);
-    expect(shouldShowAds({ company: "SM&A" })).toBe(false);
+    expect(userHasPremiumAccess({ company: "sm&a", plan: "free" })).toBe(false);
+    expect(shouldShowAds({ company: "SM&A", plan: "free" })).toBe(true);
+    expect(userHasPremiumAccess({ company: "SM&A", plan: "pro" })).toBe(true);
     expect(shouldShowAds({ company: null })).toBe(true);
   });
 
@@ -145,12 +146,12 @@ describe("VectorCAD pipeline", () => {
     expect(dailyUsageLimitForPlan("empresarial")).toBeNull();
   });
 
-  it("resolves the effective SaaS plan with the fixed SM&A override", () => {
-    expect(resolveUserPlan({ company: "SM&A", plan: "free" })).toBe("pro");
-    expect(resolveUserPlan({ plan: "pro" }, { plan: "free" })).toBe("pro");
-    expect(resolveUserPlan({ plan: "plus" }, { plan: "free" })).toBe("plus");
-    expect(resolveUserPlan({ plan: "free", is_premium: true }, { plan: "free" })).toBe("pro");
-    expect(resolveUserPlan({ plan: "free" }, { name: "SM&A", plan: "free" })).toBe("pro");
-    expect(resolveUserPlan({ plan: null }, { plan: null })).toBe("free");
+  it("resolves the effective SaaS plan from payment or admin-assigned plan only", () => {
+    expect(resolveUserPlan({ company: "SM&A", plan: "free" })).toBe("free");
+    expect(resolveUserPlan({ plan: "pro" })).toBe("pro");
+    expect(resolveUserPlan({ plan: "plus" })).toBe("plus");
+    expect(resolveUserPlan({ plan: "free", is_premium: true })).toBe("pro");
+    expect(resolveUserPlan({ plan: "free" })).toBe("free");
+    expect(resolveUserPlan({ plan: null })).toBe("free");
   });
 });

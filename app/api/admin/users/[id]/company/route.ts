@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
+import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -12,6 +12,11 @@ function bearerToken(request: Request) {
 async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdminClient>, adminId: string, action: string, targetType: string, targetId: string, metadata: Record<string, unknown> = {}) {
   const { error } = await adminClient.from("admin_logs").insert([{ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata }]);
   if (error && error.code !== "42P01") throw error;
+}
+
+function isMissingRelation(error: { code?: string; message?: string }) {
+  const message = error.message?.toLowerCase() || "";
+  return error.code === "42P01" || error.code === "PGRST205" || message.includes("schema cache");
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -51,7 +56,68 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const existingMetadata = userData.user.user_metadata || {};
+  const billingPlan = normalizeCompanyPlan(String(existingMetadata.plan || "free"));
+  const nextPlan = company ? normalizeCompanyPlan("pro") : billingPlan;
+  const nextPremium = company ? true : Boolean(existingMetadata.is_premium) || planHasPremiumAccess(billingPlan);
+  const now = new Date().toISOString();
+
+  let companyId: string | null = null;
+  if (company) {
+    const { data: existingCompany, error: companyLookupError } = await adminClient
+      .from("companies")
+      .select("id")
+      .eq("name", company)
+      .maybeSingle();
+
+    if (companyLookupError && !isMissingRelation(companyLookupError)) {
+      return NextResponse.json({ error: companyLookupError.message }, { status: 500 });
+    }
+
+    if (existingCompany?.id) {
+      companyId = existingCompany.id;
+    } else {
+      const { data: createdCompany, error: createCompanyError } = await adminClient
+        .from("companies")
+        .upsert({ name: company, plan: "pro", updated_at: now }, { onConflict: "name" })
+        .select("id")
+        .single();
+
+      if (createCompanyError && !isMissingRelation(createCompanyError)) {
+        return NextResponse.json({ error: createCompanyError.message }, { status: 500 });
+      }
+
+      companyId = createdCompany?.id || null;
+    }
+  }
+
+  if (company) {
+    // companies_users is the authoritative admin-controlled membership table.
+    const { error: membershipError } = await adminClient.from("companies_users").upsert({
+      user_id: id,
+      company_id: companyId,
+      company_name: company,
+      plan_grant: "pro",
+      assigned_by: adminData.user.id,
+      updated_at: now,
+    }, { onConflict: "user_id,company_name" });
+
+    if (membershipError && !isMissingRelation(membershipError)) {
+      return NextResponse.json({ error: membershipError.message }, { status: 500 });
+    }
+  } else {
+    const { error: membershipError } = await adminClient
+      .from("companies_users")
+      .delete()
+      .eq("user_id", id);
+
+    if (membershipError && !isMissingRelation(membershipError)) {
+      return NextResponse.json({ error: membershipError.message }, { status: 500 });
+    }
+  }
+
   const { error: metadataError } = await adminClient.auth.admin.updateUserById(id, {
+    // Auth metadata mirrors the admin membership for display only. The plan is
+    // not written here, so billing remains the source for individual plans.
     user_metadata: { ...existingMetadata, company },
   });
 
@@ -66,24 +132,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       name: existingMetadata.first_name || null,
       surname: existingMetadata.last_name || null,
       company,
-      updated_at: new Date().toISOString(),
+      plan: nextPlan,
+      is_premium: nextPremium,
+      updated_at: now,
     }, { onConflict: "user_id" });
 
   if (profileError && profileError.code !== "42P01") {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
-  const billingPlan = normalizeCompanyPlan(String(existingMetadata.plan || "free"));
-  const effectivePlan = resolveUserPlan({ company, plan: billingPlan, is_premium: Boolean(existingMetadata.is_premium) });
   const { error: publicUserError } = await adminClient
     .from("users")
     .upsert({
       id,
       email: userData.user.email || null,
       company,
-      is_premium: Boolean(existingMetadata.is_premium) || planHasPremiumAccess(billingPlan),
-      plan: billingPlan,
-      updated_at: new Date().toISOString(),
+      is_premium: nextPremium,
+      plan: nextPlan,
+      updated_at: now,
     }, { onConflict: "id" });
 
   if (publicUserError && publicUserError.code !== "42P01" && publicUserError.code !== "42703" && publicUserError.code !== "PGRST205") {
@@ -102,7 +168,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({
     id,
     company,
-    plan: effectivePlan,
-    premium: planHasPremiumAccess(effectivePlan),
+    plan: nextPlan,
+    premium: planHasPremiumAccess(nextPlan),
   });
 }

@@ -369,35 +369,48 @@ export function SaasDashboard() {
     setProfileSaving(true);
     setProfileMessage("");
 
-    const { data, error } = await supabase.auth.updateUser({
-      data: {
-        first_name: profileFirstName.trim(),
-        last_name: profileLastName.trim(),
-        company: normalizeCompany(profileCompany),
-      },
-    });
-
-    setProfileSaving(false);
-    if (error) {
-      setProfileMessage(`Nao foi possivel salvar perfil: ${error.message}`);
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      setProfileSaving(false);
+      setProfileMessage("Sessao expirada. Faca login novamente.");
       return;
     }
 
-    setUser(data.user);
+    const response = await fetch("/api/profile/update", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        first_name: profileFirstName.trim(),
+        last_name: profileLastName.trim(),
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    setProfileSaving(false);
+    if (!response.ok) {
+      setProfileMessage(`Nao foi possivel salvar perfil: ${payload.error || "erro desconhecido"}`);
+      return;
+    }
+
+    setUser(payload.user);
+    const savedProfile = payload.profile || profile;
     const nextProfile = {
-      user_id: user?.id || data.user.id,
+      user_id: user?.id || payload.user.id,
       name: profileFirstName.trim() || null,
       surname: profileLastName.trim() || null,
-      company: normalizeCompany(profileCompany),
-      plan: profile?.plan || normalizeCompanyPlan(String(data.user.user_metadata?.plan || "free")),
-      is_premium: Boolean(profile?.is_premium || data.user.user_metadata?.is_premium),
-      payment_status: profile?.payment_status || String(data.user.user_metadata?.payment_status || "none"),
+      company: savedProfile?.company || profile?.company || null,
+      plan: profile?.plan || normalizeCompanyPlan(String(payload.user.user_metadata?.plan || "free")),
+      is_premium: Boolean(profile?.is_premium || payload.user.user_metadata?.is_premium),
+      payment_status: profile?.payment_status || String(payload.user.user_metadata?.payment_status || "none"),
       usage_count_today: profile?.usage_count_today || 0,
       export3d_count_today: profile?.export3d_count_today || 0,
       last_usage_reset: profile?.last_usage_reset || null,
     };
-    await supabase.from("profiles").upsert(nextProfile, { onConflict: "user_id" });
     setProfile(nextProfile);
+    setProfileCompany(nextProfile.company || "");
     setProfileMessage("Perfil atualizado com sucesso.");
   };
 
@@ -547,7 +560,16 @@ export function SaasDashboard() {
                 <label className="text-xs text-[#aab8b1]">Nome<input value={profileFirstName} onChange={(event) => setProfileFirstName(event.target.value)} className="mt-1 w-full" type="text" /></label>
                 <label className="text-xs text-[#aab8b1]">Sobrenome<input value={profileLastName} onChange={(event) => setProfileLastName(event.target.value)} className="mt-1 w-full" type="text" /></label>
               </div>
-              <label className="mt-3 block text-xs text-[#aab8b1]">Empresa<input value={profileCompany} onChange={(event) => setProfileCompany(event.target.value)} className="mt-1 w-full" type="text" placeholder="SM&A" /></label>
+              <label className="mt-3 block text-xs text-[#aab8b1]">Empresa
+                <input
+                  value={profileCompany || "Sem empresa vinculada"}
+                  readOnly
+                  className="mt-1 w-full cursor-not-allowed opacity-80"
+                  type="text"
+                  title="Campo informativo. Apenas o administrador pode vincular empresas e planos."
+                />
+              </label>
+              <p className="mt-2 text-[11px] leading-5 text-[#7c8b83]">Empresa e plano sao controlados pelo pagamento ou pela area admin. Alterar dados pessoais nao muda seu plano.</p>
               <button disabled={profileSaving} className="mt-4 rounded-xl bg-[#b7f34a] px-4 py-2 text-xs font-black text-[#09120d] disabled:opacity-60">{profileSaving ? "Salvando..." : "Salvar perfil"}</button>
               {profileMessage && <p className="mt-3 text-xs text-[#8c9a93]">{profileMessage}</p>}
             </form>

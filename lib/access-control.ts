@@ -36,12 +36,9 @@ export function planHasPremiumAccess(plan?: string | null) {
   return normalized === "pro" || normalized === "empresarial";
 }
 
-export function resolveUserPlan(
-  user?: { plan?: string | null; is_premium?: boolean | null; company?: string | null } | null,
-  company?: { plan?: string | null; name?: string | null } | null,
-): CompanyPlan {
-  if (isPremiumCompany(user?.company) || isPremiumCompany(company?.name)) return "pro";
-
+export function resolveUserPlan(user?: { plan?: string | null; is_premium?: boolean | null; company?: string | null } | null): CompanyPlan {
+  // Company text is informational for normal profiles. Premium access must come
+  // from billing/admin controlled fields, not from a user-editable company name.
   const userPlan = normalizeCompanyPlan(user?.plan);
   if (userPlan === "empresarial") return "empresarial";
   if (userPlan === "pro") return "pro";

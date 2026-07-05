@@ -105,6 +105,19 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const affectedUserIds = new Set<string>();
+  const { data: membershipUsers, error: membershipUsersError } = await adminClient
+    .from("companies_users")
+    .select("user_id")
+    .eq("company_name", company.name);
+
+  if (membershipUsersError && membershipUsersError.code !== "42P01" && membershipUsersError.code !== "PGRST205") {
+    return NextResponse.json({ error: membershipUsersError.message }, { status: 500 });
+  }
+
+  for (const row of membershipUsers || []) {
+    if (row.user_id) affectedUserIds.add(row.user_id);
+  }
+
   const { data: profileUsersByName, error: profileUsersByNameError } = await adminClient.from("profiles").select("user_id").eq("company", company.name);
   if (profileUsersByNameError && profileUsersByNameError.code !== "42P01") {
     return NextResponse.json({ error: profileUsersByNameError.message }, { status: 500 });
@@ -154,6 +167,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { error: usersByIdError } = await adminClient.from("users").update(nullCompanyUpdate).eq("company", company.id);
   if (usersByIdError && usersByIdError.code !== "42P01") {
     return NextResponse.json({ error: usersByIdError.message }, { status: 500 });
+  }
+
+  const { error: membershipDeleteError } = await adminClient.from("companies_users").delete().eq("company_name", company.name);
+  if (membershipDeleteError && membershipDeleteError.code !== "42P01" && membershipDeleteError.code !== "PGRST205") {
+    return NextResponse.json({ error: membershipDeleteError.message }, { status: 500 });
   }
 
   const { error: deleteError } = await adminClient.from("companies").delete().eq("id", company.id);

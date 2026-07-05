@@ -9,6 +9,11 @@ function bearerToken(request: Request) {
   return type?.toLowerCase() === "bearer" ? token : "";
 }
 
+function isMissingRelation(error: { code?: string; message?: string }) {
+  const message = error.message?.toLowerCase() || "";
+  return error.code === "42P01" || error.code === "PGRST205" || message.includes("schema cache");
+}
+
 export async function GET(request: Request) {
   if (!isSupabaseServerConfigured) {
     return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
@@ -36,11 +41,11 @@ export async function GET(request: Request) {
 
   const requestedCompany = normalizeCompany(new URL(request.url).searchParams.get("company"));
   const adminClient = createSupabaseAdminClient();
-  const [{ data: usersData, error: usersError }, { data: projectsData, error: projectsError }, { data: profilesData, error: profilesError }, { data: appUsersData, error: appUsersError }, { data: logsData, error: logsError }] = await Promise.all([
+  const [{ data: usersData, error: usersError }, { data: projectsData, error: projectsError }, { data: appUsersData, error: appUsersError }, { data: membershipsData, error: membershipsError }, { data: logsData, error: logsError }] = await Promise.all([
     adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
-    adminClient.from("profiles").select("user_id,name,surname,company"),
     adminClient.from("users").select("id,email,company,plan,is_premium"),
+    adminClient.from("companies_users").select("user_id,company_id,company_name,plan_grant"),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
   ]);
 
@@ -52,8 +57,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: projectsError.message }, { status: 500 });
   }
 
-  const profilesByUserId = new Map((profilesError ? [] : profilesData || []).map((profile) => [profile.user_id, profile]));
   const appUsersById = new Map((appUsersError ? [] : appUsersData || []).map((appUser) => [appUser.id, appUser]));
+  const membershipsByUserId = new Map((membershipsError && !isMissingRelation(membershipsError) ? [] : membershipsData || []).map((membership) => [membership.user_id, membership]));
   const resolveCompany = (value?: string | null) => {
     const normalized = normalizeCompany(value);
     return isPremiumCompany(normalized)
@@ -62,14 +67,13 @@ export async function GET(request: Request) {
   };
   const selectedCompany = requestedCompany ? resolveCompany(requestedCompany) : null;
   const users = usersData.users.map((user) => {
-    const profile = profilesByUserId.get(user.id);
     const appUser = appUsersById.get(user.id);
-    const companyInfo = resolveCompany(profile?.company || appUser?.company || String(user.user_metadata?.company || ""));
+    const membership = membershipsByUserId.get(user.id);
+    const companyInfo = resolveCompany(membership?.company_name || "");
     const individualPlan = normalizeCompanyPlan(appUser?.plan || String(user.user_metadata?.plan || ""));
     const individualPremium = Boolean(appUser?.is_premium || user.user_metadata?.is_premium);
-    const effectivePlan = resolveUserPlan(
-      { company: companyInfo.name, plan: individualPlan, is_premium: individualPremium },
-    );
+    const membershipPlan = normalizeCompanyPlan(membership?.plan_grant || null);
+    const effectivePlan = companyInfo.name ? membershipPlan : resolveUserPlan({ plan: individualPlan, is_premium: individualPremium });
     const premium = planHasPremiumAccess(effectivePlan);
 
     return {
@@ -89,7 +93,7 @@ export async function GET(request: Request) {
   const userCompanyById = new Map(users.map((user) => [user.id, user.company]));
   const projects = (projectsData || []).map((project) => ({
     ...project,
-    company: userCompanyById.get(project.user_id) || resolveCompany(profilesByUserId.get(project.user_id)?.company).name,
+    company: userCompanyById.get(project.user_id) || null,
   }));
   const usersWithLogin = users.filter((user) => Boolean(user.last_sign_in_at));
   const companyCounts = users.reduce<Record<string, { total: number; premium: number; enterprise: number; pro: number; plus: number; free: number }>>((totals, user) => {

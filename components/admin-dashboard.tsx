@@ -237,7 +237,7 @@ export function AdminDashboard() {
     const normalizedUsers = nextUsers.map((user) => {
       const company = resolveUserCompany(user.company);
       const userPlan = normalizeCompanyPlan(user.userPlan || user.plan);
-      const effectivePlan = resolveUserPlan({ company: company.name, plan: userPlan, is_premium: user.is_premium });
+      const effectivePlan = company.name ? normalizeCompanyPlan("pro") : resolveUserPlan({ plan: userPlan, is_premium: user.is_premium });
       const premium = planHasPremiumAccess(effectivePlan);
       return {
         ...user,
@@ -533,7 +533,7 @@ export function AdminDashboard() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-[.14em]"><Building2 size={16} /> Empresa fixa</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">SM&A concede PRO automatico. Usuarios fora da SM&A usam apenas o plano individual do Mercado Pago.</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">SM&A concede PRO somente quando o admin vincula o usuario. Texto digitado no perfil nao altera plano.</p>
             </div>
             <span className="inline-flex items-center justify-center rounded-xl border border-[#b7f34a]/40 px-4 py-3 text-xs font-black uppercase tracking-[.14em] text-[#b7f34a]">SM&A only</span>
           </div>
