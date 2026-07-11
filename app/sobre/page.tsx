@@ -48,7 +48,10 @@ export default function SobrePage() {
           <p className="mt-4 max-w-4xl leading-7 text-[#aebeb6]">
             O VectorCAD foi pensado para apoiar profissionais, equipes e empresas que lidam com arquivos técnicos, revisões, conversões, relatórios e organização de projetos. A plataforma cresce com foco em confiabilidade, segurança, produtividade e experiência moderna.
           </p>
-          <p className="mt-6 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">ASS Grupo ShiftCore</p>
+          <div className="mt-6">
+            <p className="text-sm font-black text-[#b7f34a]">Grupo ShiftCore</p>
+            <p className="mt-1 text-xs leading-5 text-[#94a49c]">Tecnologia, inovação e soluções inteligentes.</p>
+          </div>
         </div>
       </section>
     </PublicSiteShell>

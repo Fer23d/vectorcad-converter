@@ -107,7 +107,7 @@ function VerifyEmailContent() {
       <div className="flex items-center gap-4">
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><MailCheck size={23} /></div>
         <div>
-          <div className="text-base font-black tracking-[.18em]">VECTORCAD</div>
+          <div className="text-base font-black tracking-[.12em]">VectorCAD</div>
           <div className="mt-1 text-[11px] text-[#84938b]">Ativação segura da conta</div>
         </div>
       </div>

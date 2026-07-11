@@ -18,7 +18,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
           <Link href="/" className="flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#b7f34a] text-sm font-black text-[#07100a]">VC</span>
             <span>
-              <span className="block text-sm font-black tracking-[.18em]">VECTORCAD</span>
+              <span className="block text-sm font-black tracking-[.12em]">VectorCAD</span>
               <span className="block text-[10px] uppercase tracking-[.22em] text-[#8ea098]">Converter</span>
             </span>
           </Link>
@@ -40,8 +40,9 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 text-sm text-[#94a49c] md:grid-cols-[1.3fr_.7fr_.7fr] lg:px-8">
           <div>
             <div className="text-lg font-black tracking-[.12em] text-[#edf5f0]">VectorCAD</div>
-            <p className="mt-3 max-w-xl leading-6">A inteligencia aplicada aos seus projetos de engenharia.</p>
-            <p className="mt-5 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">ASS Grupo ShiftCore</p>
+            <p className="mt-3 max-w-xl leading-6">A inteligência aplicada aos seus projetos de engenharia.</p>
+            <p className="mt-5 text-sm font-black text-[#b7f34a]">Grupo ShiftCore</p>
+            <p className="mt-1 text-xs leading-5 text-[#94a49c]">Tecnologia, inovação e soluções inteligentes.</p>
           </div>
           <div className="grid gap-2">
             <div className="font-black text-[#edf5f0]">Institucional</div>
