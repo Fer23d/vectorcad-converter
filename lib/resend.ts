@@ -153,11 +153,13 @@ function passwordResetEmailHtml(resetUrl: string) {
 }
 
 export async function sendWelcomeEmail({ to, name }: { to: string; name: string }) {
+  const displayName = name || "Usuario VectorCAD";
+
   return sendVectorCadEmail({
     to,
-    subject: "Bem-vindo ao VectorCAD",
-    react: createElement(WelcomeEmail, { name: name || "Usuario VectorCAD", dashboardUrl: getAppUrl("/dashboard") }),
-    text: `Bem-vindo ao VectorCAD, ${name || "Usuario VectorCAD"}. Sua conta ja esta ativa.`,
+    subject: "Bem-vindo ao VectorCAD \u{1F680} Sua \u00e1rea de projetos est\u00e1 pronta",
+    react: createElement(WelcomeEmail, { name: displayName, dashboardUrl: getAppUrl("/dashboard") }),
+    text: `Ola, ${displayName}!\n\nSeja bem-vindo ao VectorCAD.\n\nSua conta foi criada com sucesso e agora voce tem acesso a uma plataforma desenvolvida para facilitar analises, organizacao e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informacoes tecnicas do projeto\n- Gerar relatorios organizados\n- Centralizar seus projetos em um unico workspace\n\nSeu proximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos tecnicos, unindo engenharia, automacao e inteligencia.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n(c) 2026 VectorCAD. Todos os direitos reservados.`,
   });
 }
 
