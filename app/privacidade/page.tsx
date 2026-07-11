@@ -17,6 +17,10 @@ const sections = [
     text: "Usamos os dados para autenticar usuarios, salvar projetos, manter o workspace, enviar comunicacoes transacionais, controlar limites de uso, processar pagamentos, melhorar a experiencia e proteger a plataforma contra abuso.",
   },
   {
+    title: "Arquivos CAD enviados",
+    text: "Arquivos CAD, imagens e dados tecnicos enviados podem ser processados para entregar os recursos contratados, como analise, organizacao, conversao, visualizacao e exportacao. O usuário é responsável pelos arquivos enviados e declara possuir autorização para utilização desses arquivos.",
+  },
+  {
     title: "Armazenamento e seguranca",
     text: "Os dados podem ser armazenados em provedores de infraestrutura e banco de dados utilizados pelo VectorCAD. Aplicamos medidas tecnicas e organizacionais para reduzir riscos de acesso indevido, perda ou alteracao nao autorizada.",
   },

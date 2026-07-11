@@ -34,6 +34,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
@@ -61,7 +62,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     event.preventDefault();
     const client = supabase;
     if (!client) return;
+
+    if (mode === "signup" && !termsAccepted) {
+      setMessage("Voce precisa aceitar os Termos de Uso e a Politica de Privacidade para criar sua conta.");
+      return;
+    }
+
     setLoading(true);
+    const acceptedAt = new Date().toISOString();
 
     const { data, error } = mode === "login"
       ? await client.auth.signInWithPassword({ email, password })
@@ -73,6 +81,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             company: normalizeCompany(company),
+            terms_accepted: true,
+            terms_accepted_at: acceptedAt,
+            terms_version: "1.0",
           },
         },
       });
@@ -90,6 +101,9 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           name: firstName.trim() || null,
           surname: lastName.trim() || null,
           company: normalizeCompany(company),
+          terms_accepted: true,
+          terms_accepted_at: acceptedAt,
+          terms_version: "1.0",
         }, { onConflict: "user_id" });
       }
 
@@ -165,7 +179,23 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           Esqueci minha senha
         </button>
       </div>}
-      <button disabled={loading || !isSupabaseConfigured} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:opacity-60">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>
+      {mode === "signup" && <label className="mb-5 flex items-start gap-3 rounded-2xl border border-[#26312c] bg-[#0b100e] p-4 text-xs leading-5 text-[#aab8b1]">
+        <input
+          checked={termsAccepted}
+          onChange={(event) => setTermsAccepted(event.target.checked)}
+          className="mt-1 h-4 w-4 accent-[#b7f34a]"
+          type="checkbox"
+          required
+        />
+        <span>
+          Li e concordo com os{" "}
+          <Link href="/termos" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Termos de Uso</Link>
+          {" "}e a{" "}
+          <Link href="/privacidade" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Politica de Privacidade</Link>
+          {" "}do VectorCAD.
+        </span>
+      </label>}
+      <button disabled={loading || !isSupabaseConfigured || (mode === "signup" && !termsAccepted)} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>
       <p className="mt-5 rounded-2xl border border-[#26312c] bg-[#0b100e] px-4 py-3 text-center text-xs leading-5 text-[#8c9a93]">{message}</p>
       <div className="mt-6 text-center text-sm text-[#aab8b1]">
         {mode === "login" ? <>Nao tem conta? <Link className="font-bold text-[#b7f34a]" href="/signup">Criar conta</Link></> : <>Ja tem conta? <Link className="font-bold text-[#b7f34a]" href="/login">Entrar</Link></>}

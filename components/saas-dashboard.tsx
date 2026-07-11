@@ -4,10 +4,9 @@ import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
-import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, shouldShowAds, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
+import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
 import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
-import { AdSenseSlot } from "@/components/adsense-slot";
 import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import type { CadProject, CadProjectData } from "@/types/project";
@@ -19,6 +18,9 @@ type UserProfile = {
   name: string | null;
   surname: string | null;
   company: string | null;
+  terms_accepted?: boolean | null;
+  terms_accepted_at?: string | null;
+  terms_version?: string | null;
   plan: CompanyPlan;
   is_premium: boolean;
   payment_status: string | null;
@@ -33,8 +35,10 @@ type UsageSnapshot = {
   usageLimit: number | null;
   export3d: number;
   export3dLimit: number | null;
-  adsVisible: boolean;
+  adsVisible?: boolean;
 };
+
+const CURRENT_TERMS_VERSION = "1.0";
 
 const emptyProjectData: CadProjectData = {
   notes: "",
@@ -48,15 +52,19 @@ function metadataName(user: User | null) {
   };
 }
 
+function metadataTerms(user: User | null) {
+  return {
+    accepted: Boolean(user?.user_metadata?.terms_accepted),
+    acceptedAt: typeof user?.user_metadata?.terms_accepted_at === "string" ? user.user_metadata.terms_accepted_at : null,
+    version: typeof user?.user_metadata?.terms_version === "string" ? user.user_metadata.terms_version : null,
+  };
+}
+
 const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
   { id: "projects", label: "Projetos", icon: <FolderOpen size={15} /> },
   { id: "editor", label: "Editor", icon: <Wrench size={15} /> },
   { id: "profile", label: "Perfil", icon: <UserRound size={15} /> },
 ];
-const dashboardAdSlot = process.env.NEXT_PUBLIC_ADSENSE_DASHBOARD_SLOT;
-const projectsAdSlot = process.env.NEXT_PUBLIC_ADSENSE_PROJECTS_SLOT || dashboardAdSlot;
-const editorAdSlot = process.env.NEXT_PUBLIC_ADSENSE_EDITOR_SLOT || dashboardAdSlot;
-
 export function SaasDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("editor");
@@ -70,8 +78,11 @@ export function SaasDashboard() {
   const [profileLastName, setProfileLastName] = useState("");
   const [profileCompany, setProfileCompany] = useState("");
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [termsMessage, setTermsMessage] = useState("");
   const [showUserId, setShowUserId] = useState(false);
   const [userIdCopied, setUserIdCopied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CadProject | null>(null);
@@ -80,7 +91,6 @@ export function SaasDashboard() {
 
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
-  const adsVisible = shouldShowAds(profile);
   const effectivePlan = resolveEffectivePlan(profile);
   const planConfig = getBillingPlan(effectivePlan);
   const planLabel = planConfig.title;
@@ -88,11 +98,15 @@ export function SaasDashboard() {
   const applyUsageSnapshot = useCallback((snapshot: UsageSnapshot, owner?: User) => {
     setProfile((current) => {
       const fallbackName = metadataName(owner || null);
+      const fallbackTerms = metadataTerms(owner || null);
       const base = current || (owner ? {
         user_id: owner.id,
         name: fallbackName.firstName || null,
         surname: fallbackName.lastName || null,
         company: normalizeCompany(String(owner.user_metadata?.company || "")),
+        terms_accepted: fallbackTerms.accepted,
+        terms_accepted_at: fallbackTerms.acceptedAt,
+        terms_version: fallbackTerms.version,
         plan: normalizeCompanyPlan(String(owner.user_metadata?.plan || "free")),
         is_premium: Boolean(owner.user_metadata?.is_premium),
         payment_status: String(owner.user_metadata?.payment_status || "none"),
@@ -143,6 +157,9 @@ export function SaasDashboard() {
     if (!supabase) return;
     const fallback = metadataName(currentUser);
     const metadataCompany = normalizeCompany(String(currentUser.user_metadata?.company || ""));
+    const terms = metadataTerms(currentUser);
+
+    setProfileLoading(true);
 
     const { data, error } = await supabase
       .from("profiles")
@@ -156,6 +173,9 @@ export function SaasDashboard() {
         name: fallback.firstName || null,
         surname: fallback.lastName || null,
         company: metadataCompany,
+        terms_accepted: terms.accepted,
+        terms_accepted_at: terms.acceptedAt,
+        terms_version: terms.version,
         plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(currentUser.user_metadata?.is_premium),
         payment_status: String(currentUser.user_metadata?.payment_status || "none"),
@@ -163,6 +183,7 @@ export function SaasDashboard() {
         export3d_count_today: 0,
       });
       setProfileCompany(metadataCompany || "");
+      setProfileLoading(false);
       return;
     }
 
@@ -173,6 +194,9 @@ export function SaasDashboard() {
         name: profileRow.name || fallback.firstName || null,
         surname: profileRow.surname || fallback.lastName || null,
         company: profileRow.company || metadataCompany,
+        terms_accepted: Boolean(profileRow.terms_accepted || terms.accepted),
+        terms_accepted_at: typeof profileRow.terms_accepted_at === "string" ? profileRow.terms_accepted_at : terms.acceptedAt,
+        terms_version: typeof profileRow.terms_version === "string" ? profileRow.terms_version : terms.version,
         plan: normalizeCompanyPlan(profileRow.plan || String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(profileRow.is_premium || currentUser.user_metadata?.is_premium),
         payment_status: profileRow.payment_status || String(currentUser.user_metadata?.payment_status || "none"),
@@ -184,6 +208,7 @@ export function SaasDashboard() {
       setProfileFirstName(nextProfile.name || "");
       setProfileLastName(nextProfile.surname || "");
       setProfileCompany(nextProfile.company || "");
+      setProfileLoading(false);
       return;
     }
 
@@ -192,6 +217,9 @@ export function SaasDashboard() {
       name: fallback.firstName || null,
       surname: fallback.lastName || null,
       company: metadataCompany,
+      terms_accepted: terms.accepted,
+      terms_accepted_at: terms.acceptedAt,
+      terms_version: terms.version,
       plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
       is_premium: Boolean(currentUser.user_metadata?.is_premium),
       payment_status: String(currentUser.user_metadata?.payment_status || "none"),
@@ -201,6 +229,7 @@ export function SaasDashboard() {
     await supabase.from("profiles").upsert(createdProfile, { onConflict: "user_id" });
     setProfile(createdProfile);
     setProfileCompany(metadataCompany || "");
+    setProfileLoading(false);
   }, []);
 
   const openProject = useCallback(async (projectId: string) => {
@@ -315,6 +344,8 @@ export function SaasDashboard() {
       setProfileLastName(name.lastName);
       setProfile(null);
       setProfileCompany("");
+      setProfileLoading(false);
+      setTermsMessage("");
       setActiveProject(null);
       setProjects([]);
       if (session?.user) {
@@ -362,6 +393,46 @@ export function SaasDashboard() {
     window.setTimeout(() => setUserIdCopied(false), 1600);
   };
 
+  const acceptCurrentTerms = async () => {
+    if (!supabase || !user) return;
+
+    setTermsSaving(true);
+    setTermsMessage("");
+
+    const acceptedAt = new Date().toISOString();
+    const nextAcceptance = {
+      terms_accepted: true,
+      terms_accepted_at: acceptedAt,
+      terms_version: CURRENT_TERMS_VERSION,
+    };
+
+    const { error } = await supabase
+      .from("profiles")
+      .update(nextAcceptance)
+      .eq("user_id", user.id);
+
+    setTermsSaving(false);
+
+    if (error) {
+      setTermsMessage(`Nao foi possivel registrar o aceite: ${error.message}`);
+      return;
+    }
+
+    setProfile((current) => current ? { ...current, ...nextAcceptance } : {
+      user_id: user.id,
+      name: profileFirstName.trim() || null,
+      surname: profileLastName.trim() || null,
+      company: normalizeCompany(String(user.user_metadata?.company || "")),
+      ...nextAcceptance,
+      plan: normalizeCompanyPlan(String(user.user_metadata?.plan || "free")),
+      is_premium: Boolean(user.user_metadata?.is_premium),
+      payment_status: String(user.user_metadata?.payment_status || "none"),
+      usage_count_today: 0,
+      export3d_count_today: 0,
+    });
+    setTermsMessage("Termos aceitos com sucesso.");
+  };
+
   const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!supabase) return;
@@ -402,6 +473,9 @@ export function SaasDashboard() {
       name: profileFirstName.trim() || null,
       surname: profileLastName.trim() || null,
       company: savedProfile?.company || profile?.company || null,
+      terms_accepted: profile?.terms_accepted || false,
+      terms_accepted_at: profile?.terms_accepted_at || null,
+      terms_version: profile?.terms_version || null,
       plan: profile?.plan || normalizeCompanyPlan(String(payload.user.user_metadata?.plan || "free")),
       is_premium: Boolean(profile?.is_premium || payload.user.user_metadata?.is_premium),
       payment_status: profile?.payment_status || String(payload.user.user_metadata?.payment_status || "none"),
@@ -415,6 +489,7 @@ export function SaasDashboard() {
   };
 
   const sortedProjects = useMemo(() => [...projects].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [projects]);
+  const hasAcceptedCurrentTerms = Boolean(profile?.terms_accepted && profile.terms_version === CURRENT_TERMS_VERSION);
 
   if (!canUseSupabase) {
     return <main className="min-h-screen bg-[#080c0b] p-6 text-[#e8efeb]">
@@ -428,6 +503,41 @@ export function SaasDashboard() {
   if (authLoading || !user) {
     return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]">
       <div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">Carregando sessao...</div>
+    </main>;
+  }
+
+  if (profileLoading) {
+    return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]">
+      <div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">Validando termos...</div>
+    </main>;
+  }
+
+  if (!hasAcceptedCurrentTerms) {
+    return <main className="grid min-h-screen place-items-center bg-[#080c0b] px-4 text-[#e8efeb]">
+      <section className="w-full max-w-2xl rounded-3xl border border-[#26312c] bg-[#101613] p-6 shadow-2xl shadow-black/30">
+        <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Aceite obrigatorio</div>
+        <h1 className="mt-4 text-3xl font-black tracking-[-.04em]">Termos de Uso e Politica de Privacidade</h1>
+        <p className="mt-4 text-sm leading-7 text-[#aebeb6]">
+          Para acessar o dashboard do VectorCAD, confirme que leu e concorda com os documentos legais da plataforma.
+          Esta confirmacao protege sua conta e prepara o SaaS para novas versoes dos termos.
+        </p>
+        <div className="mt-5 rounded-2xl border border-[#2b382f] bg-[#0b100e] p-4 text-sm leading-7 text-[#b8c8c0]">
+          Ao continuar, voce aceita a versao <b className="text-[#e8efeb]">{CURRENT_TERMS_VERSION}</b> dos{" "}
+          <a href="/termos" target="_blank" rel="noreferrer" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Termos de Uso</a>{" "}
+          e da{" "}
+          <a href="/privacidade" target="_blank" rel="noreferrer" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Politica de Privacidade</a>.
+        </div>
+        <button
+          type="button"
+          onClick={acceptCurrentTerms}
+          disabled={termsSaving}
+          className="mt-6 w-full rounded-xl bg-[#b7f34a] px-5 py-3.5 text-sm font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {termsSaving ? "Registrando aceite..." : "Li e concordo. Acessar dashboard"}
+        </button>
+        {termsMessage && <p className="mt-3 text-sm text-[#9caaa3]">{termsMessage}</p>}
+        <button type="button" onClick={signOut} className="mt-4 w-full rounded-xl border border-[#34413b] px-5 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Sair da conta</button>
+      </section>
     </main>;
   }
 
@@ -485,8 +595,6 @@ export function SaasDashboard() {
         <button onClick={createProject} className="flex items-center justify-center gap-2 rounded-xl bg-[#b7f34a] px-5 py-3 text-xs font-black text-[#09120d]"><FilePlus2 size={15} /> Novo Projeto</button>
       </div>
 
-      <AdSenseSlot enabled={adsVisible} slot={dashboardAdSlot} label="Publicidade no dashboard" className="mb-6" />
-
       <div className="mb-6">
         <UsageMeter
           plan={effectivePlan}
@@ -497,7 +605,7 @@ export function SaasDashboard() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {sortedProjects.map((project, index) => <Fragment key={project.id}>
+        {sortedProjects.map((project) => <Fragment key={project.id}>
         <article className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -511,7 +619,6 @@ export function SaasDashboard() {
             <button type="button" onClick={() => setDeleteTarget(project)} className="flex items-center gap-1 rounded-lg border border-transparent px-3 py-2 text-xs font-black text-[#ff8f8f] transition hover:border-[#6d2e2e] hover:bg-[#2a1111]" aria-label={`Excluir projeto ${project.name}`}><Trash2 size={14} /> Excluir</button>
           </div>
         </article>
-        {index === 1 && <AdSenseSlot enabled={adsVisible} slot={projectsAdSlot} label="Publicidade" className="md:col-span-2 xl:col-span-3" />}
         </Fragment>)}
       </div>
 
@@ -539,7 +646,7 @@ export function SaasDashboard() {
     </div>}
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
-      <VectorCadApp adsVisible={adsVisible} adSlot={editorAdSlot} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
@@ -576,7 +683,7 @@ export function SaasDashboard() {
             <div className={`rounded-2xl border p-4 ${premiumAccess ? "border-[#b7f34a]/60 bg-[#172314]" : "border-[#26312c] bg-[#0b100e]"}`}>
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Controle de acesso</div>
               <div className="mt-2 flex items-center gap-2 text-lg font-black"><Crown size={17} className={premiumAccess ? "text-[#b7f34a]" : "text-[#6f7f76]"} /> Plano {planLabel}</div>
-              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: anuncios ocultos, DXF e recursos PRO liberados." : adsVisible ? "Conta com anuncios e limites diarios conforme o plano." : "Anuncios ocultos para esta conta."}</p>
+              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: DXF e recursos PRO liberados." : "Conta com limites diarios conforme o plano atual."}</p>
               <div className="mt-3 grid gap-2 text-xs text-[#8c9a93]">
                 <div>Uso hoje: <b className="text-[#e8efeb]">{profile?.usage_count_today || 0}</b>{planConfig.usageLimit === null ? " / ilimitado" : ` / ${planConfig.usageLimit}`}</div>
                 <div>3D hoje: <b className="text-[#e8efeb]">{profile?.export3d_count_today || 0}</b>{planConfig.export3dLimit === null ? " / ilimitado" : ` / ${planConfig.export3dLimit}`}</div>

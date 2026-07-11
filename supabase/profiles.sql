@@ -4,6 +4,9 @@ create table if not exists public.profiles (
   name text,
   surname text,
   company text,
+  terms_accepted boolean not null default false,
+  terms_accepted_at timestamptz,
+  terms_version text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -13,6 +16,9 @@ create index if not exists profiles_company_idx
 
 create index if not exists profiles_user_id_idx
   on public.profiles (user_id);
+
+create index if not exists profiles_terms_accepted_idx
+  on public.profiles (terms_accepted);
 
 alter table public.profiles enable row level security;
 
@@ -42,17 +48,23 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (user_id, name, surname, company)
+  insert into public.profiles (user_id, name, surname, company, terms_accepted, terms_accepted_at, terms_version)
   values (
     new.id,
     nullif(new.raw_user_meta_data ->> 'first_name', ''),
     nullif(new.raw_user_meta_data ->> 'last_name', ''),
-    nullif(new.raw_user_meta_data ->> 'company', '')
+    nullif(new.raw_user_meta_data ->> 'company', ''),
+    case when lower(coalesce(new.raw_user_meta_data ->> 'terms_accepted', 'false')) = 'true' then true else false end,
+    nullif(new.raw_user_meta_data ->> 'terms_accepted_at', '')::timestamptz,
+    nullif(new.raw_user_meta_data ->> 'terms_version', '')
   )
   on conflict (user_id) do update
     set name = coalesce(excluded.name, public.profiles.name),
         surname = coalesce(excluded.surname, public.profiles.surname),
         company = coalesce(excluded.company, public.profiles.company),
+        terms_accepted = excluded.terms_accepted,
+        terms_accepted_at = coalesce(excluded.terms_accepted_at, public.profiles.terms_accepted_at),
+        terms_version = coalesce(excluded.terms_version, public.profiles.terms_version),
         updated_at = now();
 
   return new;

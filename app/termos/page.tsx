@@ -18,7 +18,7 @@ const sections = [
   },
   {
     title: "Responsabilidade do usuario",
-    text: "O usuario e responsavel pelas informacoes enviadas, pela revisao tecnica dos resultados e pela verificacao de medidas, escalas, dados e arquivos antes de qualquer uso profissional, industrial ou comercial.",
+    text: "O usuario e responsavel pelas informacoes enviadas, pela revisao tecnica dos resultados e pela verificacao de medidas, escalas, dados e arquivos antes de qualquer uso profissional, industrial ou comercial. O usuário é responsável pelos arquivos enviados e declara possuir autorização para utilização desses arquivos.",
   },
   {
     title: "Propriedade intelectual",
