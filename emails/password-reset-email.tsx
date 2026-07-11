@@ -1,19 +1,34 @@
 import { EmailParagraph, EmailShell } from "@/emails/email-shell";
 
-export function PasswordResetEmail({ name, resetUrl }: { name: string; resetUrl: string }) {
+export function PasswordResetEmail({ resetUrl }: { name: string; resetUrl: string }) {
   return (
     <EmailShell
-      preview="Use este link seguro para redefinir sua senha no VectorCAD."
-      eyebrow="Seguranca"
-      title={`Redefinicao de senha${name ? ` para ${name}` : ""}`}
+      preview="Crie uma nova senha de forma segura para acessar sua conta."
+      eyebrow="Segurança da conta"
+      title="Redefinição de senha"
       ctaHref={resetUrl}
-      ctaLabel="Redefinir senha"
+      ctaLabel="Redefinir minha senha"
     >
+      <EmailParagraph>Olá, tudo bem?</EmailParagraph>
       <EmailParagraph>
-        Recebemos uma solicitacao para redefinir a senha da sua conta VectorCAD. Clique no botao abaixo para abrir o link seguro de recuperacao.
+        Recebemos uma solicitação para redefinir a senha da sua conta VectorCAD.
       </EmailParagraph>
       <EmailParagraph>
-        Se voce nao solicitou essa alteracao, ignore este e-mail. O acesso a sua conta continua protegido.
+        Para criar uma nova senha com segurança, clique no botão abaixo:
+      </EmailParagraph>
+      <EmailParagraph>
+        Este link é válido por tempo limitado e foi criado para proteger o acesso à sua conta.
+      </EmailParagraph>
+      <EmailParagraph>
+        Caso você não tenha solicitado essa alteração, ignore este e-mail. Sua conta continuará segura e nenhuma alteração será realizada.
+      </EmailParagraph>
+      <EmailParagraph>
+        Se precisar de ajuda, nossa equipe está à disposição.
+      </EmailParagraph>
+      <EmailParagraph>
+        Atenciosamente,
+        <br />
+        Equipe VectorCAD
       </EmailParagraph>
     </EmailShell>
   );

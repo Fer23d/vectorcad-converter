@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { daily3dLimitForPlan, dailyUsageLimitForPlan, normalizeCompanyPlan, planAllowsDxf, planAllowsUnlimited3d, planHasPremiumAccess, planRemovesAds, resolveUserPlan } from "@/lib/access-control";
+import { sendDailyLimitReachedEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 type UsageAction = "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf";
@@ -32,6 +33,12 @@ function sameDay(value?: string | null) {
 
 function limitMessage(limit: number) {
   return `Você atingiu o limite diário de ${limit} usos. Faça upgrade para continuar.`;
+}
+
+function fullName(metadata: Record<string, unknown> | undefined) {
+  const firstName = String(metadata?.first_name || "").trim();
+  const lastName = String(metadata?.last_name || "").trim();
+  return [firstName, lastName].filter(Boolean).join(" ");
 }
 
 function isMissingTableOrColumn(error: { code?: string; message?: string }) {
@@ -180,6 +187,15 @@ export async function POST(request: Request) {
   const next3d = action === "export3d" ? context.current3d + 1 : context.current3d;
   const errorResponse = await persistUsage(context, nextUsage, next3d);
   if (errorResponse) return errorResponse;
+
+  if (context.plan === "free" && context.usageLimit !== null && nextUsage === context.usageLimit && context.user.email) {
+    sendDailyLimitReachedEmail({
+      to: context.user.email,
+      name: fullName(context.user.user_metadata as Record<string, unknown> | undefined),
+      used: nextUsage,
+      limit: context.usageLimit,
+    }).catch((error) => console.error("[usage] daily limit email failed", error));
+  }
 
   return NextResponse.json(usagePayload(context, nextUsage, next3d));
 }

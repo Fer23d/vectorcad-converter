@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { mercadoPagoRequest, paymentStatusToPlan } from "@/lib/mercadopago";
 import { getBillingPlan } from "@/lib/billing";
+import { sendPaymentApprovedEmail } from "@/lib/resend";
 
 type MercadoPagoPreapproval = {
   id: string;
@@ -35,6 +36,12 @@ function isMissingTableOrColumn(error: { code?: string; message?: string }) {
   return error.code === "42P01" || error.code === "42703" || error.code === "PGRST205" || message.includes("schema cache") || message.includes("subscriptions");
 }
 
+function fullName(metadata: Record<string, unknown> | undefined) {
+  const firstName = String(metadata?.first_name || "").trim();
+  const lastName = String(metadata?.last_name || "").trim();
+  return [firstName, lastName].filter(Boolean).join(" ");
+}
+
 async function upsertProAccess(input: {
   userId?: string | null;
   email?: string | null;
@@ -59,10 +66,11 @@ async function upsertProAccess(input: {
   if (!userId) return;
 
   const { data: userData } = await adminClient.auth.admin.getUserById(userId);
-  if (userData.user) {
+  const authUser = userData.user;
+  if (authUser) {
     await adminClient.auth.admin.updateUserById(userId, {
       user_metadata: {
-        ...(userData.user.user_metadata || {}),
+        ...(authUser.user_metadata || {}),
         plan,
         is_premium: isPremium,
         payment_status: paymentStatus,
@@ -114,6 +122,18 @@ async function upsertProAccess(input: {
 
     if (publicUserError && !isMissingTableOrColumn(publicUserError)) {
       throw publicUserError;
+    }
+  }
+
+  if (email && ["authorized", "approved"].includes(paymentStatus)) {
+    try {
+      await sendPaymentApprovedEmail({
+        to: email,
+        name: fullName(authUser?.user_metadata as Record<string, unknown> | undefined),
+        plan,
+      });
+    } catch (emailError) {
+      console.error("[payment] approved email failed", emailError);
     }
   }
 }

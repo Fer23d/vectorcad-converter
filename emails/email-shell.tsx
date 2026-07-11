@@ -47,7 +47,7 @@ export function EmailShell({
             <Text style={logo}>VC</Text>
             <Section style={{ display: "inline-block", verticalAlign: "middle" }}>
               <Text style={brand}>VECTORCAD</Text>
-              <Text style={brandSub}>Converter SaaS</Text>
+              <Text style={brandSub}>Plataforma SaaS para conversão CAD</Text>
             </Section>
           </Section>
           <Section style={card}>
@@ -60,10 +60,18 @@ export function EmailShell({
               </Button>
             ) : null}
             <Hr style={hr} />
-            <Text style={footer}>
-              shiftcore
+            <Text style={footerBrand}>VectorCAD</Text>
+            <Text style={footerText}>
+              Tecnologia desenvolvida pelo Grupo ShiftCore
               <br />
-              by Fernando Fernandes
+              Construindo soluções digitais inteligentes para empresas.
+            </Text>
+            <Text style={footerNotice}>
+              Este é um e-mail automático. Caso não tenha solicitado esta ação,
+              <br />
+              ignore esta mensagem. Sua conta permanece protegida.
+              <br />
+              © 2026 Grupo ShiftCore. Todos os direitos reservados.
             </Text>
           </Section>
         </Container>
@@ -87,11 +95,11 @@ const container: CSSProperties = {
   width: "100%",
   maxWidth: "620px",
   margin: "0 auto",
-  padding: "36px 18px",
+  padding: "42px 18px",
 };
 
 const brandRow: CSSProperties = {
-  marginBottom: "18px",
+  marginBottom: "20px",
 };
 
 const logo: CSSProperties = {
@@ -118,7 +126,7 @@ const brand: CSSProperties = {
 };
 
 const brandSub: CSSProperties = {
-  margin: "2px 0 0",
+  margin: "3px 0 0",
   color: colors.muted,
   fontSize: "11px",
 };
@@ -127,7 +135,7 @@ const card: CSSProperties = {
   border: `1px solid ${colors.border}`,
   borderRadius: "28px",
   backgroundColor: colors.card,
-  padding: "32px",
+  padding: "34px",
   boxShadow: "0 24px 80px rgba(0,0,0,.38)",
 };
 
@@ -143,7 +151,7 @@ const eyebrowStyle: CSSProperties = {
 const heading: CSSProperties = {
   margin: "0 0 18px",
   color: colors.text,
-  fontSize: "30px",
+  fontSize: "32px",
   lineHeight: "1.12",
   fontWeight: 900,
 };
@@ -161,26 +169,41 @@ const paragraph: CSSProperties = {
 
 const button: CSSProperties = {
   display: "inline-block",
-  marginTop: "12px",
+  marginTop: "14px",
   borderRadius: "14px",
   backgroundColor: colors.neon,
   color: colors.dark,
   fontSize: "14px",
   fontWeight: 900,
   textDecoration: "none",
-  padding: "14px 18px",
+  padding: "15px 22px",
 };
 
 const hr: CSSProperties = {
   borderColor: colors.border,
-  margin: "28px 0 18px",
+  margin: "32px 0 20px",
 };
 
-const footer: CSSProperties = {
+const footerBrand: CSSProperties = {
   margin: 0,
+  color: colors.text,
+  fontSize: "13px",
+  lineHeight: "1.5",
+  fontWeight: 900,
+  letterSpacing: "1.6px",
+  textTransform: "uppercase",
+};
+
+const footerText: CSSProperties = {
+  margin: "8px 0 0",
+  color: "#8d9a93",
+  fontSize: "12px",
+  lineHeight: "1.7",
+};
+
+const footerNotice: CSSProperties = {
+  margin: "16px 0 0",
   color: "#6f7d75",
   fontSize: "11px",
   lineHeight: "1.6",
-  letterSpacing: "1px",
-  textTransform: "uppercase",
 };
