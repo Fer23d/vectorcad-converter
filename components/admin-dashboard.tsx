@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
-import { isAdminUser } from "@/lib/admin";
+import type { AdminRole } from "@/lib/admin";
 import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AdminOverview = {
+  role?: AdminRole;
   stats: {
     totalUsers: number;
     totalProjects: number;
@@ -147,11 +148,6 @@ export function AdminDashboard() {
         return;
       }
 
-      if (!isAdminUser(session.user.id)) {
-        router.replace("/editor");
-        return;
-      }
-
       setAdminToken(session.access_token);
       const response = await fetch("/api/admin/overview", {
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -159,11 +155,6 @@ export function AdminDashboard() {
       const payload = await response.json();
 
       if (!response.ok) {
-        if (response.status === 403) {
-          router.replace("/editor");
-          return;
-        }
-
         setMessage(payload.error || "Não foi possível carregar o painel admin.");
         setLoading(false);
         return;

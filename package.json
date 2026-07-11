@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "admin:create": "node scripts/create-admin-user.mjs"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",

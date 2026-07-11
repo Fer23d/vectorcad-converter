@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { isAdminUser } from "@/lib/admin";
 import { normalizeCompany, planHasPremiumAccess } from "@/lib/access-control";
+import { requireAdmin } from "@/lib/admin-auth";
 import { getUserEffectivePlan } from "@/lib/effective-plan";
-import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
-
-function bearerToken(request: Request) {
-  const header = request.headers.get("authorization") || "";
-  const [type, token] = header.split(" ");
-  return type?.toLowerCase() === "bearer" ? token : "";
-}
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdminClient>, adminId: string, action: string, targetType: string, targetId: string, metadata: Record<string, unknown> = {}) {
   const { error } = await adminClient.from("admin_logs").insert([{ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata }]);
@@ -43,34 +37,13 @@ async function upsertPublicUserCompany(adminClient: ReturnType<typeof createSupa
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-  }
-
-  const token = bearerToken(request);
-  if (!token) {
-    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
-  }
-
-  const authClient = createSupabaseAuthServerClient(token);
-  const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
-
-  if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  }
-
-  if (!isAdminUser(adminData.user.id)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-  }
-
-  if (!isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 });
-  }
+  const adminAuth = await requireAdmin(request);
+  if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const requestedCompany = normalizeCompany(typeof body.company === "string" ? body.company : null);
-  const adminClient = createSupabaseAdminClient();
+  const { adminClient, user: adminUser } = adminAuth;
 
   const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(id);
   if (userError || !userData.user) {
@@ -118,7 +91,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       company_id: companyId,
       company_name: company,
       plan_grant: "pro",
-      assigned_by: adminData.user.id,
+      assigned_by: adminUser.id,
       updated_at: now,
     }, { onConflict: "user_id,company_name" });
 
@@ -180,7 +153,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   await logAdminAction(
     adminClient,
-    adminData.user.id,
+    adminUser.id,
     company ? "user.company_add" : "user.company_remove",
     "user",
     id,

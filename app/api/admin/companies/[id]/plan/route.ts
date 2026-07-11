@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
-import { isAdminUser } from "@/lib/admin";
 import { normalizeCompanyPlan } from "@/lib/access-control";
-import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
-
-function bearerToken(request: Request) {
-  const header = request.headers.get("authorization") || "";
-  const [type, token] = header.split(" ");
-  return type?.toLowerCase() === "bearer" ? token : "";
-}
+import { requireAdmin } from "@/lib/admin-auth";
+import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -19,35 +13,14 @@ async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdmin
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-  }
-
-  const token = bearerToken(request);
-  if (!token) {
-    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
-  }
-
-  const authClient = createSupabaseAuthServerClient(token);
-  const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
-
-  if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  }
-
-  if (!isAdminUser(adminData.user.id)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-  }
-
-  if (!isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 });
-  }
+  const adminAuth = await requireAdmin(request);
+  if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const plan = normalizeCompanyPlan(typeof body.plan === "string" ? body.plan : "free");
   const name = typeof body.name === "string" ? body.name.trim() : decodeURIComponent(id);
-  const adminClient = createSupabaseAdminClient();
+  const { adminClient, user } = adminAuth;
 
   const filteredQuery = isUuid(id)
     ? adminClient.from("companies").update({ plan, updated_at: new Date().toISOString() }).eq("id", id)
@@ -63,38 +36,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  await logAdminAction(adminClient, adminData.user.id, "company.plan_update", "company", data.id, { name: data.name, plan });
+  await logAdminAction(adminClient, user.id, "company.plan_update", "company", data.id, { name: data.name, plan });
 
   return NextResponse.json({ ...data, plan });
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-  }
-
-  const token = bearerToken(request);
-  if (!token) {
-    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
-  }
-
-  const authClient = createSupabaseAuthServerClient(token);
-  const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
-
-  if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  }
-
-  if (!isAdminUser(adminData.user.id)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-  }
-
-  if (!isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 });
-  }
+  const adminAuth = await requireAdmin(request);
+  if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;
-  const adminClient = createSupabaseAdminClient();
+  const { adminClient, user } = adminAuth;
   const companyQuery = isUuid(id)
     ? adminClient.from("companies").select("id,name,plan").eq("id", id)
     : adminClient.from("companies").select("id,name,plan").eq("name", decodeURIComponent(id));
@@ -133,10 +85,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   const { data: authUsers } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  for (const user of authUsers.users) {
-    const metadataCompany = String(user.user_metadata?.company || "");
+  for (const authUser of authUsers.users) {
+    const metadataCompany = String(authUser.user_metadata?.company || "");
     if (metadataCompany === company.name || metadataCompany === company.id) {
-      affectedUserIds.add(user.id);
+      affectedUserIds.add(authUser.id);
     }
   }
 
@@ -179,7 +131,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
-  await logAdminAction(adminClient, adminData.user.id, "company.delete", "company", company.id, { name: company.name, plan: company.plan });
+  await logAdminAction(adminClient, user.id, "company.delete", "company", company.id, { name: company.name, plan: company.plan });
 
   return NextResponse.json({ success: true, company });
 }

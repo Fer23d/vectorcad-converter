@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
-import { isAdminUser } from "@/lib/admin";
 import { normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
+import { requireAdmin } from "@/lib/admin-auth";
 import { getUserEffectivePlan } from "@/lib/effective-plan";
-import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
-
-function bearerToken(request: Request) {
-  const header = request.headers.get("authorization") || "";
-  const [type, token] = header.split(" ");
-  return type?.toLowerCase() === "bearer" ? token : "";
-}
 
 function isMissingRelation(error: { code?: string; message?: string }) {
   const message = error.message?.toLowerCase() || "";
@@ -16,32 +9,11 @@ function isMissingRelation(error: { code?: string; message?: string }) {
 }
 
 export async function GET(request: Request) {
-  if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
-  }
-
-  const token = bearerToken(request);
-  if (!token) {
-    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
-  }
-
-  const authClient = createSupabaseAuthServerClient(token);
-  const { data: userData, error: userError } = await authClient.auth.getUser(token);
-
-  if (userError || !userData.user) {
-    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
-  }
-
-  if (!isAdminUser(userData.user.id)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-  }
-
-  if (!isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 });
-  }
+  const adminAuth = await requireAdmin(request);
+  if ("response" in adminAuth) return adminAuth.response;
 
   const requestedCompany = normalizeCompany(new URL(request.url).searchParams.get("company"));
-  const adminClient = createSupabaseAdminClient();
+  const { adminClient, role } = adminAuth;
   const [
     { data: usersData, error: usersError },
     { data: projectsData, error: projectsError },
@@ -56,14 +28,8 @@ export async function GET(request: Request) {
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
   ]);
 
-  if (usersError) {
-    return NextResponse.json({ error: usersError.message }, { status: 500 });
-  }
-
-  if (projectsError) {
-    return NextResponse.json({ error: projectsError.message }, { status: 500 });
-  }
-
+  if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 });
+  if (projectsError) return NextResponse.json({ error: projectsError.message }, { status: 500 });
   if (companiesError && !isMissingRelation(companiesError)) {
     return NextResponse.json({ error: companiesError.message }, { status: 500 });
   }
@@ -98,6 +64,7 @@ export async function GET(request: Request) {
       userPlan: effective.individualPlan,
       plan: effective.plan,
       planSource: effective.source,
+      role: String(user.app_metadata?.role || user.user_metadata?.role || "USER"),
       is_premium: premium,
       premium,
       created_at: user.created_at,
@@ -171,6 +138,7 @@ export async function GET(request: Request) {
   const filteredProjects = projects.filter((project) => matchesSelectedCompany(project.company));
 
   return NextResponse.json({
+    role,
     stats: {
       totalUsers: users.length,
       totalProjects: projects.length,
