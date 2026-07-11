@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { sendPasswordResetEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 
+const PASSWORD_RESET_REDIRECT_TO = "https://vetorcad.com.br/reset-password";
+
 function cleanEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
@@ -17,27 +19,17 @@ function maskEmail(email: string) {
   return `${name.slice(0, 2)}***@${domain || "***"}`;
 }
 
-function cleanEnv(value: string | undefined) {
-  return value?.trim().replace(/^["']|["']$/g, "") || "";
-}
-
-function siteUrl() {
-  const configuredUrl =
-    cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) ||
-    cleanEnv(process.env.NEXT_PUBLIC_APP_URL) ||
-    "https://vetorcad.com.br";
-
+function recoveryLinkSummary(actionLink: string) {
   try {
-    const parsedUrl = new URL(configuredUrl);
-    if (parsedUrl.hostname === "localhost" || parsedUrl.hostname === "127.0.0.1") {
-      console.warn("[password-reset] ignoring local site URL for production reset link");
-      return "https://vetorcad.com.br";
-    }
-
-    return parsedUrl.origin;
+    const parsedUrl = new URL(actionLink);
+    const redirectTo = parsedUrl.searchParams.get("redirect_to") || parsedUrl.searchParams.get("redirectTo");
+    return {
+      actionOrigin: parsedUrl.origin,
+      actionPathname: parsedUrl.pathname,
+      redirectTo,
+    };
   } catch {
-    console.warn("[password-reset] invalid site URL configured, using production domain");
-    return "https://vetorcad.com.br";
+    return { actionOrigin: "invalid_url", actionPathname: "invalid_url", redirectTo: null };
   }
 }
 
@@ -56,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Informe um email valido." }, { status: 400 });
   }
 
-  const redirectTo = `${siteUrl()}/reset-password`;
+  const redirectTo = PASSWORD_RESET_REDIRECT_TO;
   const adminClient = createSupabaseAdminClient();
   console.info("[password-reset] request received", { email: maskEmail(email), redirectTo });
 
@@ -75,6 +67,8 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ error: error?.message || "Nao foi possivel gerar link de recuperacao." }, { status: 500 });
   }
+
+  console.info("[password-reset] Supabase recovery link generated", recoveryLinkSummary(data.properties.action_link));
 
   try {
     await sendPasswordResetEmail({

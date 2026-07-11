@@ -78,12 +78,24 @@ export function ResetPasswordForm() {
 
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
+      const code = params.get("code");
 
       if (accessToken && refreshToken) {
         const { error } = await client.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         });
+
+        window.history.replaceState({}, document.title, "/reset-password");
+        if (!cancelled) {
+          setLoading(false);
+          setMessage(error ? friendlyRecoveryError(error.message) : "Digite sua nova senha.");
+        }
+        return;
+      }
+
+      if (code) {
+        const { error } = await client.auth.exchangeCodeForSession(code);
 
         window.history.replaceState({}, document.title, "/reset-password");
         if (!cancelled) {
