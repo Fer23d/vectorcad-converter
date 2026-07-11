@@ -51,6 +51,7 @@ export function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [hasRecoverySession, setHasRecoverySession] = useState(false);
   const [message, setMessage] = useState("Validando link de recuperacao...");
 
   useEffect(() => {
@@ -79,36 +80,51 @@ export function ResetPasswordForm() {
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
       const code = params.get("code");
+      const linkType = params.get("type");
+
+      if (linkType && linkType !== "recovery") {
+        if (!cancelled) {
+          setLoading(false);
+          setHasRecoverySession(false);
+          setMessage("Link de recuperação inválido ou expirado.");
+        }
+        return;
+      }
 
       if (accessToken && refreshToken) {
         const { error } = await client.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
         });
+        const { data: sessionData } = error ? { data: { session: null } } : await client.auth.getSession();
 
         window.history.replaceState({}, document.title, "/reset-password");
         if (!cancelled) {
+          setHasRecoverySession(Boolean(sessionData.session));
           setLoading(false);
-          setMessage(error ? friendlyRecoveryError(error.message) : "Digite sua nova senha.");
+          setMessage(error || !sessionData.session ? friendlyRecoveryError(error?.message) : "Digite sua nova senha.");
         }
         return;
       }
 
       if (code) {
         const { error } = await client.auth.exchangeCodeForSession(code);
+        const { data: sessionData } = error ? { data: { session: null } } : await client.auth.getSession();
 
         window.history.replaceState({}, document.title, "/reset-password");
         if (!cancelled) {
+          setHasRecoverySession(Boolean(sessionData.session));
           setLoading(false);
-          setMessage(error ? friendlyRecoveryError(error.message) : "Digite sua nova senha.");
+          setMessage(error || !sessionData.session ? friendlyRecoveryError(error?.message) : "Digite sua nova senha.");
         }
         return;
       }
 
       const { data } = await client.auth.getSession();
       if (!cancelled) {
+        setHasRecoverySession(Boolean(data.session));
         setLoading(false);
-        setMessage(data.session ? "Digite sua nova senha." : "Sessao de recuperacao inexistente. Abra o link recebido por email ou solicite um novo.");
+        setMessage(data.session ? "Digite sua nova senha." : "Link de recuperação inválido ou expirado.");
       }
     }
 
@@ -125,8 +141,8 @@ export function ResetPasswordForm() {
   }, []);
 
   const canSubmit = useMemo(() => {
-    return !loading && !saving && password.length >= 6 && password === confirmPassword;
-  }, [confirmPassword, loading, password, saving]);
+    return hasRecoverySession && !loading && !saving && password.length >= 6 && password === confirmPassword;
+  }, [confirmPassword, hasRecoverySession, loading, password, saving]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -144,6 +160,14 @@ export function ResetPasswordForm() {
     }
 
     setSaving(true);
+    const { data: sessionData } = await client.auth.getSession();
+    if (!sessionData.session) {
+      setSaving(false);
+      setHasRecoverySession(false);
+      setMessage("Link de recuperação inválido ou expirado.");
+      return;
+    }
+
     const { error } = await client.auth.updateUser({ password });
     setSaving(false);
 
@@ -177,7 +201,7 @@ export function ResetPasswordForm() {
 
         <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Nova senha
           <div className="relative mt-2">
-            <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} type={showPassword ? "text" : "password"} placeholder="Digite a nova senha" required minLength={6} disabled={loading} />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} type={showPassword ? "text" : "password"} placeholder="Digite a nova senha" required minLength={6} disabled={loading || !hasRecoverySession} />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
               {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
@@ -185,7 +209,7 @@ export function ResetPasswordForm() {
         </label>
 
         <label className="mb-5 block text-xs font-bold text-[#aab8b1]">Confirmar senha
-          <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20" type={showPassword ? "text" : "password"} placeholder="Repita a nova senha" required minLength={6} disabled={loading} />
+          <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20" type={showPassword ? "text" : "password"} placeholder="Repita a nova senha" required minLength={6} disabled={loading || !hasRecoverySession} />
         </label>
 
         <button disabled={!canSubmit} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:opacity-60">

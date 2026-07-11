@@ -23,13 +23,15 @@ function recoveryLinkSummary(actionLink: string) {
   try {
     const parsedUrl = new URL(actionLink);
     const redirectTo = parsedUrl.searchParams.get("redirect_to") || parsedUrl.searchParams.get("redirectTo");
+    const redirectUrl = redirectTo ? new URL(redirectTo) : null;
     return {
-      actionOrigin: parsedUrl.origin,
-      actionPathname: parsedUrl.pathname,
+      generatedLinkHostname: parsedUrl.hostname,
+      redirectPathname: redirectUrl?.pathname || null,
       redirectTo,
+      linkType: parsedUrl.searchParams.get("type") || "recovery",
     };
   } catch {
-    return { actionOrigin: "invalid_url", actionPathname: "invalid_url", redirectTo: null };
+    return { generatedLinkHostname: "invalid_url", redirectPathname: null, redirectTo: null, linkType: "recovery" };
   }
 }
 
