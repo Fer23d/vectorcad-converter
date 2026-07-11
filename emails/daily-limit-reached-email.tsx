@@ -4,7 +4,7 @@ export function DailyLimitReachedEmail({ name, used, limit, pricingUrl }: { name
   return (
     <EmailShell
       preview={`Você usou ${used}/${limit} conversões gratuitas hoje no VectorCAD.`}
-      eyebrow="Limite diario"
+      eyebrow="Limite diário"
       title="Limite gratuito atingido"
       ctaHref={pricingUrl}
       ctaLabel="Ver planos"

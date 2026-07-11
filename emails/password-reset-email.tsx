@@ -25,11 +25,6 @@ export function PasswordResetEmail({ resetUrl }: { name: string; resetUrl: strin
       <EmailParagraph>
         Se precisar de ajuda, nossa equipe está à disposição.
       </EmailParagraph>
-      <EmailParagraph>
-        Atenciosamente,
-        <br />
-        Equipe VectorCAD
-      </EmailParagraph>
     </EmailShell>
   );
 }

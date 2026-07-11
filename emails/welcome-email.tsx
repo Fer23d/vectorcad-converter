@@ -25,7 +25,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                             <tr>
                               <td align="center" valign="middle" style={{ width: "48px", height: "48px", borderRadius: "16px", backgroundColor: "#b7f34a", color: "#09120d", fontSize: "15px", fontWeight: 900, lineHeight: "48px", textAlign: "center" }}>VC</td>
                               <td style={{ paddingLeft: "14px" }}>
-                                <div style={{ color: "#f2f8f4", fontSize: "16px", fontWeight: 900, letterSpacing: "3px", lineHeight: "20px" }}>VECTORCAD</div>
+                                <div style={{ color: "#f2f8f4", fontSize: "16px", fontWeight: 900, letterSpacing: "1px", lineHeight: "20px" }}>VectorCAD</div>
                                 <div style={{ color: "#91a098", fontSize: "12px", lineHeight: "18px" }}>Workspace inteligente para projetos t&eacute;cnicos</div>
                               </td>
                             </tr>
@@ -90,7 +90,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ padding: "28px 0 0 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Atenciosamente,<br /><strong style={{ color: "#edf5f0" }}>Equipe VectorCAD</strong></td>
+                              <td style={{ padding: "28px 0 0 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Atenciosamente<br /><strong style={{ color: "#edf5f0" }}>Equipe VectorCAD</strong></td>
                             </tr>
                             <tr>
                               <td style={{ padding: "26px 0 0 0" }}>
@@ -98,7 +98,8 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                                   <tbody>
                                     <tr>
                                       <td style={{ paddingTop: "20px", color: "#7e8c85", fontSize: "12px", lineHeight: "20px" }}>
-                                        <strong style={{ color: "#edf5f0", letterSpacing: "1.4px", textTransform: "uppercase" }}>ASS Grupo ShiftCore</strong><br />
+                                        <strong style={{ color: "#edf5f0", letterSpacing: "1.1px" }}>Grupo ShiftCore</strong><br />
+                                        Tecnologia, inovação e soluções inteligentes.<br />
                                         © 2026 VectorCAD. Todos os direitos reservados.
                                       </td>
                                     </tr>

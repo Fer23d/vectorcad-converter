@@ -46,7 +46,7 @@ export function EmailShell({
           <Section style={brandRow}>
             <Text style={logo}>VC</Text>
             <Section style={{ display: "inline-block", verticalAlign: "middle" }}>
-              <Text style={brand}>VECTORCAD</Text>
+              <Text style={brand}>VectorCAD</Text>
               <Text style={brandSub}>Plataforma SaaS para conversão CAD</Text>
             </Section>
           </Section>
@@ -60,19 +60,11 @@ export function EmailShell({
               </Button>
             ) : null}
             <Hr style={hr} />
-            <Text style={footerBrand}>VectorCAD</Text>
-            <Text style={footerText}>
-              Tecnologia desenvolvida pelo Grupo ShiftCore
-              <br />
-              Construindo soluções digitais inteligentes para empresas.
-            </Text>
-            <Text style={footerNotice}>
-              Este é um e-mail automático. Caso não tenha solicitado esta ação,
-              <br />
-              ignore esta mensagem. Sua conta permanece protegida.
-              <br />
-              © 2026 Grupo ShiftCore. Todos os direitos reservados.
-            </Text>
+            <Text style={signatureText}>Atenciosamente</Text>
+            <Text style={signatureTeam}>Equipe VectorCAD</Text>
+            <Text style={footerBrand}>Grupo ShiftCore</Text>
+            <Text style={footerText}>Tecnologia, inovação e soluções inteligentes.</Text>
+            <Text style={footerNotice}>© 2026 VectorCAD. Todos os direitos reservados.</Text>
           </Section>
         </Container>
       </Body>
@@ -184,6 +176,21 @@ const hr: CSSProperties = {
   margin: "32px 0 20px",
 };
 
+const signatureText: CSSProperties = {
+  margin: 0,
+  color: colors.muted,
+  fontSize: "13px",
+  lineHeight: "1.6",
+};
+
+const signatureTeam: CSSProperties = {
+  margin: "4px 0 18px",
+  color: colors.text,
+  fontSize: "14px",
+  lineHeight: "1.6",
+  fontWeight: 800,
+};
+
 const footerBrand: CSSProperties = {
   margin: 0,
   color: colors.text,
@@ -191,7 +198,6 @@ const footerBrand: CSSProperties = {
   lineHeight: "1.5",
   fontWeight: 900,
   letterSpacing: "1.6px",
-  textTransform: "uppercase",
 };
 
 const footerText: CSSProperties = {
