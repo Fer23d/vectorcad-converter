@@ -18,7 +18,7 @@ export function isMercadoPagoConfigured() {
 
 export async function mercadoPagoRequest<T>(path: string, init?: RequestInit): Promise<T> {
   if (!mercadoPagoAccessToken) {
-    throw new Error("MERCADOPAGO_ACCESS_TOKEN nao configurado.");
+    throw new Error("MERCADOPAGO_ACCESS_TOKEN não configurado.");
   }
 
   const response = await fetch(`${MERCADOPAGO_API_BASE}${path}`, {

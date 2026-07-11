@@ -22,19 +22,19 @@ function isMissingCompaniesTable(error: { code?: string; message?: string }) {
 export async function POST(request: Request) {
   try {
     if (!isSupabaseServerConfigured) {
-      return NextResponse.json({ success: false, error: "Supabase nao configurado." }, { status: 500 });
+      return NextResponse.json({ success: false, error: "Supabase não configurado." }, { status: 500 });
     }
 
     const token = bearerToken(request);
     if (!token) {
-      return NextResponse.json({ success: false, error: "Sessao ausente." }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Sessão ausente." }, { status: 401 });
     }
 
     const authClient = createSupabaseAuthServerClient(token);
     const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
 
     if (adminError || !adminData.user) {
-      return NextResponse.json({ success: false, error: "Sessao invalida." }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Sessão inválida." }, { status: 401 });
     }
 
     if (!isAdminUser(adminData.user.id)) {
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       if (isMissingCompaniesTable(error)) {
         return NextResponse.json({
           success: false,
-          error: "Tabela companies nao existe ou nao esta no schema cache. Execute supabase/enterprise.sql no SQL Editor do Supabase e tente novamente.",
+          error: "Tabela companies não existe ou não está no schema cache. Execute supabase/enterprise.sql no SQL Editor do Supabase e tente novamente.",
         }, { status: 500 });
       }
 

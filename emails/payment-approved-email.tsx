@@ -10,10 +10,10 @@ export function PaymentApprovedEmail({ name, plan, dashboardUrl }: { name: strin
       ctaLabel="Usar recursos liberados"
     >
       <EmailParagraph>
-        {name ? `${name}, seu pagamento foi aprovado.` : "Seu pagamento foi aprovado."} O plano {plan.toUpperCase()} ja foi sincronizado com sua conta VectorCAD.
+        {name ? `${name}, seu pagamento foi aprovado.` : "Seu pagamento foi aprovado."} O plano {plan.toUpperCase()} já foi sincronizado com sua conta VectorCAD.
       </EmailParagraph>
       <EmailParagraph>
-        Agora voce pode continuar usando os recursos do seu plano, com limites e exportacoes liberados conforme a assinatura contratada.
+        Agora você pode continuar usando os recursos do seu plano, com limites e exportações liberados conforme a assinatura contratada.
       </EmailParagraph>
     </EmailShell>
   );

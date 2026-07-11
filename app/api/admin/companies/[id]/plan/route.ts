@@ -20,19 +20,19 @@ async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdmin
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
 
   if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   if (!isAdminUser(adminData.user.id)) {
@@ -57,7 +57,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   if (error) {
     if (error.code === "42P01") {
-      return NextResponse.json({ error: "Tabela companies nao existe. Execute supabase/enterprise.sql no Supabase." }, { status: 500 });
+      return NextResponse.json({ error: "Tabela companies não existe. Execute supabase/enterprise.sql no Supabase." }, { status: 500 });
     }
 
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -70,19 +70,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
 
   if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   if (!isAdminUser(adminData.user.id)) {
@@ -101,7 +101,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { data: company, error: companyError } = await companyQuery.single();
 
   if (companyError || !company) {
-    return NextResponse.json({ error: companyError?.message || "Empresa nao encontrada." }, { status: 404 });
+    return NextResponse.json({ error: companyError?.message || "Empresa não encontrada." }, { status: 404 });
   }
 
   const affectedUserIds = new Set<string>();

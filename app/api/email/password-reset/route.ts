@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       email: maskEmail(email),
       message: error?.message || "missing_action_link",
     });
-    return NextResponse.json({ error: error?.message || "Nao foi possivel gerar link de recuperacao." }, { status: 500 });
+    return NextResponse.json({ error: error?.message || "Não foi possível gerar link de recuperação." }, { status: 500 });
   }
 
   console.info("[password-reset] Supabase recovery link generated", recoveryLinkSummary(data.properties.action_link));
@@ -86,6 +86,6 @@ export async function POST(request: Request) {
       email: maskEmail(email),
       message: sendError instanceof Error ? sendError.message : "unknown_error",
     });
-    return NextResponse.json({ error: sendError instanceof Error ? sendError.message : "Nao foi possivel enviar email." }, { status: 500 });
+    return NextResponse.json({ error: sendError instanceof Error ? sendError.message : "Não foi possível enviar e-mail." }, { status: 500 });
   }
 }

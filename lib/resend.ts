@@ -26,7 +26,7 @@ export function getAppUrl(path = "/") {
 
 function getResendClient() {
   if (!resendApiKey) {
-    throw new Error("RESEND_API_KEY nao configurada.");
+    throw new Error("RESEND_API_KEY não configurada.");
   }
 
   resendClient ??= new Resend(resendApiKey);
@@ -56,7 +56,7 @@ async function sendVectorCadEmail({
   });
 
   if (error) {
-    throw new Error(error.message || "Nao foi possivel enviar email pelo Resend.");
+    throw new Error(error.message || "Não foi possível enviar e-mail pelo Resend.");
   }
 
   return data;
@@ -153,13 +153,13 @@ function passwordResetEmailHtml(resetUrl: string) {
 }
 
 export async function sendWelcomeEmail({ to, name }: { to: string; name: string }) {
-  const displayName = name || "Usuario VectorCAD";
+  const displayName = name || "Usuário VectorCAD";
 
   return sendVectorCadEmail({
     to,
     subject: "Bem-vindo ao VectorCAD \u{1F680} Sua \u00e1rea de projetos est\u00e1 pronta",
     react: createElement(WelcomeEmail, { name: displayName, dashboardUrl: getAppUrl("/dashboard") }),
-    text: `Ola, ${displayName}!\n\nSeja bem-vindo ao VectorCAD.\n\nSua conta foi criada com sucesso e agora voce tem acesso a uma plataforma desenvolvida para facilitar analises, organizacao e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informacoes tecnicas do projeto\n- Gerar relatorios organizados\n- Centralizar seus projetos em um unico workspace\n\nSeu proximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos tecnicos, unindo engenharia, automacao e inteligencia.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n(c) 2026 VectorCAD. Todos os direitos reservados.`,
+    text: `Olá, ${displayName}!\n\nSeja bem-vindo ao VectorCAD.\n\nSua conta foi criada com sucesso e agora você tem acesso a uma plataforma desenvolvida para facilitar análises, organização e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informações técnicas do projeto\n- Gerar relatórios organizados\n- Centralizar seus projetos em um único workspace\n\nSeu próximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos técnicos, unindo engenharia, automação e inteligência.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
   });
 }
 
@@ -168,7 +168,7 @@ export async function sendPasswordResetEmail({ to, resetUrl }: { to: string; nam
     to,
     subject: "Redefini\u00e7\u00e3o de senha da sua conta VectorCAD",
     html: passwordResetEmailHtml(resetUrl),
-    text: `Ola!\n\nRecebemos uma solicitacao para redefinir a senha da sua conta VectorCAD.\n\nClique no link abaixo para criar uma nova senha com seguranca:\n${resetUrl}\n\nSe voce nao solicitou essa alteracao, ignore este e-mail. Sua conta continuara protegida.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n(c) 2026 VectorCAD. Todos os direitos reservados.`,
+    text: `Olá!\n\nRecebemos uma solicitação para redefinir a senha da sua conta VectorCAD.\n\nClique no link abaixo para criar uma nova senha com segurança:\n${resetUrl}\n\nSe você não solicitou essa alteração, ignore este e-mail. Sua conta continuará protegida.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
   });
 }
 
@@ -186,6 +186,6 @@ export async function sendDailyLimitReachedEmail({ to, name, used, limit }: { to
     to,
     subject: "Limite diario atingido no VectorCAD",
     react: createElement(DailyLimitReachedEmail, { name, used, limit, pricingUrl: getAppUrl("/pricing") }),
-    text: `Voce atingiu o limite diario do plano FREE no VectorCAD: ${used}/${limit} usos hoje.`,
+    text: `Você atingiu o limite diário do plano FREE no VectorCAD: ${used}/${limit} usos hoje.`,
   });
 }

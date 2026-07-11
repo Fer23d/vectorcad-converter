@@ -145,7 +145,7 @@ export function SaasDashboard() {
       .order("updated_at", { ascending: false });
 
     if (error) {
-      setStatus(`Nao foi possivel carregar projetos: ${error.message}`);
+      setStatus(`Não foi possível carregar projetos: ${error.message}`);
       return;
     }
 
@@ -242,7 +242,7 @@ export function SaasDashboard() {
       .single();
 
     if (error) {
-      setStatus(`Nao foi possivel abrir o projeto: ${error.message}`);
+      setStatus(`Não foi possível abrir o projeto: ${error.message}`);
       return;
     }
 
@@ -278,7 +278,7 @@ export function SaasDashboard() {
       .single();
 
     if (error) {
-      setStatus(`Nao foi possivel criar o projeto: ${error.message}`);
+      setStatus(`Não foi possível criar o projeto: ${error.message}`);
       return;
     }
 
@@ -310,12 +310,12 @@ export function SaasDashboard() {
     if (error) {
       setProjects(previousProjects);
       if (activeProject?.id === target.id) setActiveProject(activeProject);
-      setStatus(`Nao foi possivel excluir o projeto: ${error.message}`);
+      setStatus(`Não foi possível excluir o projeto: ${error.message}`);
       return;
     }
 
-    setStatus("Projeto excluido com sucesso.");
-    setToastMessage("Projeto excluido com sucesso");
+    setStatus("Projeto excluído com sucesso.");
+    setToastMessage("Projeto excluído com sucesso");
     window.setTimeout(() => setToastMessage(""), 2600);
   }, [activeProject, deleteTarget, projects, user]);
 
@@ -414,7 +414,7 @@ export function SaasDashboard() {
     setTermsSaving(false);
 
     if (error) {
-      setTermsMessage(`Nao foi possivel registrar o aceite: ${error.message}`);
+      setTermsMessage(`Não foi possível registrar o aceite: ${error.message}`);
       return;
     }
 
@@ -443,7 +443,7 @@ export function SaasDashboard() {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       setProfileSaving(false);
-      setProfileMessage("Sessao expirada. Faca login novamente.");
+      setProfileMessage("Sessão expirada. Faça login novamente.");
       return;
     }
 
@@ -462,7 +462,7 @@ export function SaasDashboard() {
 
     setProfileSaving(false);
     if (!response.ok) {
-      setProfileMessage(`Nao foi possivel salvar perfil: ${payload.error || "erro desconhecido"}`);
+      setProfileMessage(`Não foi possível salvar perfil: ${payload.error || "erro desconhecido"}`);
       return;
     }
 
@@ -494,7 +494,7 @@ export function SaasDashboard() {
   if (!canUseSupabase) {
     return <main className="min-h-screen bg-[#080c0b] p-6 text-[#e8efeb]">
       <div className="mx-auto mt-20 max-w-xl rounded-2xl border border-[#33413a] bg-[#101613] p-6">
-        <h1 className="text-xl font-black">Supabase nao configurado</h1>
+        <h1 className="text-xl font-black">Supabase não configurado</h1>
         <p className="mt-3 text-sm leading-6 text-[#9caaa3]">Adicione `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no Vercel/local para ativar login, dashboard e projetos.</p>
       </div>
     </main>;
@@ -502,7 +502,7 @@ export function SaasDashboard() {
 
   if (authLoading || !user) {
     return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]">
-      <div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">Carregando sessao...</div>
+      <div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">Carregando sessão...</div>
     </main>;
   }
 
@@ -515,17 +515,17 @@ export function SaasDashboard() {
   if (!hasAcceptedCurrentTerms) {
     return <main className="grid min-h-screen place-items-center bg-[#080c0b] px-4 text-[#e8efeb]">
       <section className="w-full max-w-2xl rounded-3xl border border-[#26312c] bg-[#101613] p-6 shadow-2xl shadow-black/30">
-        <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Aceite obrigatorio</div>
-        <h1 className="mt-4 text-3xl font-black tracking-[-.04em]">Termos de Uso e Politica de Privacidade</h1>
+        <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Aceite obrigatório</div>
+        <h1 className="mt-4 text-3xl font-black tracking-[-.04em]">Termos de Uso e Política de Privacidade</h1>
         <p className="mt-4 text-sm leading-7 text-[#aebeb6]">
           Para acessar o dashboard do VectorCAD, confirme que leu e concorda com os documentos legais da plataforma.
-          Esta confirmacao protege sua conta e prepara o SaaS para novas versoes dos termos.
+          Esta confirmação protege sua conta e prepara o SaaS para novas versões dos termos.
         </p>
         <div className="mt-5 rounded-2xl border border-[#2b382f] bg-[#0b100e] p-4 text-sm leading-7 text-[#b8c8c0]">
-          Ao continuar, voce aceita a versao <b className="text-[#e8efeb]">{CURRENT_TERMS_VERSION}</b> dos{" "}
+          Ao continuar, você aceita a versão <b className="text-[#e8efeb]">{CURRENT_TERMS_VERSION}</b> dos{" "}
           <a href="/termos" target="_blank" rel="noreferrer" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Termos de Uso</a>{" "}
           e da{" "}
-          <a href="/privacidade" target="_blank" rel="noreferrer" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Politica de Privacidade</a>.
+          <a href="/privacidade" target="_blank" rel="noreferrer" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Política de Privacidade</a>.
         </div>
         <button
           type="button"
@@ -564,7 +564,7 @@ export function SaasDashboard() {
         <div className="flex items-center justify-end gap-2 lg:justify-self-end">
           {!headerCollapsed && <div className="hidden items-center gap-2 text-xs text-[#b7f34a] xl:flex">
             <ShieldCheck size={14} />
-            sessao protegida
+            sessão protegida
           </div>}
           {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
           <button
@@ -625,7 +625,7 @@ export function SaasDashboard() {
       {!sortedProjects.length && <div className="rounded-3xl border border-dashed border-[#34413b] bg-[#101613] p-10 text-center">
         <FolderOpen className="mx-auto text-[#b7f34a]" />
         <h3 className="mt-4 text-lg font-black">Nenhum projeto salvo ainda</h3>
-        <p className="mt-2 text-sm text-[#8c9a93]">O editor ja esta liberado. Crie um projeto para organizar seus arquivos.</p>
+        <p className="mt-2 text-sm text-[#8c9a93]">O editor já está liberado. Crie um projeto para organizar seus arquivos.</p>
       </div>}
     </section>}
 
@@ -633,10 +633,10 @@ export function SaasDashboard() {
       <div className="w-full max-w-md rounded-3xl border border-[#3a2a2a] bg-[#101613] p-6 shadow-2xl shadow-black/50">
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><Trash2 size={22} /></div>
         <h3 className="mt-4 text-xl font-black">Excluir projeto?</h3>
-        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">Tem certeza que deseja excluir este projeto? <span className="font-bold text-[#e8efeb]">{deleteTarget.name}</span> sera removido da sua lista.</p>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">Tem certeza que deseja excluir este projeto? <span className="font-bold text-[#e8efeb]">{deleteTarget.name}</span> será removido da sua lista.</p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Cancelar</button>
-          <button type="button" onClick={confirmDeleteProject} className="rounded-xl bg-[#ff5f5f] px-4 py-3 text-xs font-black text-[#160606] transition hover:brightness-110">Confirmar exclusao</button>
+          <button type="button" onClick={confirmDeleteProject} className="rounded-xl bg-[#ff5f5f] px-4 py-3 text-xs font-black text-[#160606] transition hover:brightness-110">Confirmar exclusão</button>
         </div>
       </div>
     </div>}
@@ -676,14 +676,14 @@ export function SaasDashboard() {
                   title="Campo informativo. Apenas o administrador pode vincular empresas e planos."
                 />
               </label>
-              <p className="mt-2 text-[11px] leading-5 text-[#7c8b83]">Empresa e plano sao controlados pelo pagamento ou pela area admin. Alterar dados pessoais nao muda seu plano.</p>
+              <p className="mt-2 text-[11px] leading-5 text-[#7c8b83]">Empresa e plano são controlados pelo pagamento ou pela área admin. Alterar dados pessoais não muda seu plano.</p>
               <button disabled={profileSaving} className="mt-4 rounded-xl bg-[#b7f34a] px-4 py-2 text-xs font-black text-[#09120d] disabled:opacity-60">{profileSaving ? "Salvando..." : "Salvar perfil"}</button>
               {profileMessage && <p className="mt-3 text-xs text-[#8c9a93]">{profileMessage}</p>}
             </form>
             <div className={`rounded-2xl border p-4 ${premiumAccess ? "border-[#b7f34a]/60 bg-[#172314]" : "border-[#26312c] bg-[#0b100e]"}`}>
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">Controle de acesso</div>
               <div className="mt-2 flex items-center gap-2 text-lg font-black"><Crown size={17} className={premiumAccess ? "text-[#b7f34a]" : "text-[#6f7f76]"} /> Plano {planLabel}</div>
-              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: DXF e recursos PRO liberados." : "Conta com limites diarios conforme o plano atual."}</p>
+              <p className="mt-2 text-xs leading-5 text-[#8c9a93]">{premiumAccess ? "Acesso premium ativo: DXF e recursos PRO liberados." : "Conta com limites diários conforme o plano atual."}</p>
               <div className="mt-3 grid gap-2 text-xs text-[#8c9a93]">
                 <div>Uso hoje: <b className="text-[#e8efeb]">{profile?.usage_count_today || 0}</b>{planConfig.usageLimit === null ? " / ilimitado" : ` / ${planConfig.usageLimit}`}</div>
                 <div>3D hoje: <b className="text-[#e8efeb]">{profile?.export3d_count_today || 0}</b>{planConfig.export3dLimit === null ? " / ilimitado" : ` / ${planConfig.export3dLimit}`}</div>
@@ -720,7 +720,7 @@ export function SaasDashboard() {
 
         <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-6">
           <div className="flex items-center gap-2 text-sm font-black"><Settings size={16} /> Configuracoes futuras</div>
-          <p className="mt-3 text-sm leading-6 text-[#8c9a93]">Este espaco fica reservado para preferencias, assinatura, billing e configuracoes de exportacao.</p>
+          <p className="mt-3 text-sm leading-6 text-[#8c9a93]">Este espaço fica reservado para preferências, assinatura, billing e configurações de exportação.</p>
           <button onClick={signOut} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[#34413b] py-3 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]"><LogOut size={15} /> Sair da conta</button>
         </div>
       </div>

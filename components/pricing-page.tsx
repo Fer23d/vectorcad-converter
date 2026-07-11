@@ -67,7 +67,7 @@ export function PricingPage() {
     if (!data.session) {
       setState("error");
       setLoadingPlan(null);
-      setMessage("Faca login antes de assinar.");
+      setMessage("Faça login antes de assinar.");
       return;
     }
 
@@ -84,7 +84,7 @@ export function PricingPage() {
 
       if (!response.ok || !payload.init_point) {
         setState("error");
-        setMessage(payload.error || "Nao foi possivel abrir o checkout.");
+        setMessage(payload.error || "Não foi possível abrir o checkout.");
         return;
       }
 

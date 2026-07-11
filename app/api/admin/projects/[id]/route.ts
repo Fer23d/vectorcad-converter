@@ -10,19 +10,19 @@ function bearerToken(request: Request) {
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
 
   if (userError || !userData.user) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   if (!isAdminUser(userData.user.id)) {

@@ -10,15 +10,15 @@ function friendlyRecoveryError(value?: string | null) {
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes("expired") || lowerMessage.includes("expire")) {
-    return "Este link de recuperacao expirou. Solicite um novo email em Esqueci minha senha.";
+    return "Este link de recuperação expirou. Solicite um novo e-mail em Esqueci minha senha.";
   }
 
   if (lowerMessage.includes("invalid") || lowerMessage.includes("malformed")) {
-    return "Este link de recuperacao e invalido. Solicite um novo email em Esqueci minha senha.";
+    return "Este link de recuperação é inválido. Solicite um novo e-mail em Esqueci minha senha.";
   }
 
   if (message) return message;
-  return "Nao foi possivel validar o link de recuperacao.";
+  return "Não foi possível validar o link de recuperação.";
 }
 
 function friendlyUpdateError(value?: string | null) {
@@ -26,14 +26,14 @@ function friendlyUpdateError(value?: string | null) {
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes("session") || lowerMessage.includes("jwt")) {
-    return "Sessao de recuperacao inexistente ou expirada. Solicite um novo link.";
+    return "Sessão de recuperação inexistente ou expirada. Solicite um novo link.";
   }
 
   if (lowerMessage.includes("password") || lowerMessage.includes("weak")) {
-    return "A senha nao atende aos requisitos de seguranca. Use pelo menos 6 caracteres e evite senhas muito simples.";
+    return "A senha não atende aos requisitos de segurança. Use pelo menos 6 caracteres e evite senhas muito simples.";
   }
 
-  return message || "Nao foi possivel salvar a nova senha.";
+  return message || "Não foi possível salvar a nova senha.";
 }
 
 function recoveryParams() {
@@ -52,7 +52,7 @@ export function ResetPasswordForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
-  const [message, setMessage] = useState("Validando link de recuperacao...");
+  const [message, setMessage] = useState("Validando link de recuperação...");
 
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +62,7 @@ export function ResetPasswordForm() {
       if (!client) {
         if (!cancelled) {
           setLoading(false);
-          setMessage("Supabase nao configurado.");
+          setMessage("Supabase não configurado.");
         }
         return;
       }
@@ -131,7 +131,7 @@ export function ResetPasswordForm() {
     prepareRecovery().catch(() => {
       if (!cancelled) {
         setLoading(false);
-        setMessage("Nao foi possivel validar o link de recuperacao.");
+        setMessage("Não foi possível validar o link de recuperação.");
       }
     });
 
@@ -155,7 +155,7 @@ export function ResetPasswordForm() {
     }
 
     if (password !== confirmPassword) {
-      setMessage("As senhas nao conferem.");
+      setMessage("As senhas não conferem.");
       return;
     }
 
@@ -190,7 +190,7 @@ export function ResetPasswordForm() {
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div>
           <div>
             <div className="text-base font-black tracking-[.18em]">VECTORCAD</div>
-            <div className="mt-1 text-[11px] text-[#84938b]">Redefinicao de senha</div>
+            <div className="mt-1 text-[11px] text-[#84938b]">Redefinição de senha</div>
           </div>
         </div>
 

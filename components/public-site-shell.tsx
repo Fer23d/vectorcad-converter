@@ -52,7 +52,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
           <div className="grid gap-2">
             <div className="font-black text-[#edf5f0]">Legal</div>
             <Link href="/termos" className="hover:text-[#b7f34a]">Termos de Uso</Link>
-            <Link href="/privacidade" className="hover:text-[#b7f34a]">Politica de Privacidade</Link>
+            <Link href="/privacidade" className="hover:text-[#b7f34a]">Política de Privacidade</Link>
             <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
             <Link href="/ads.txt" className="hover:text-[#b7f34a]">ads.txt</Link>
           </div>

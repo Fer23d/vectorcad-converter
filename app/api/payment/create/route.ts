@@ -22,12 +22,12 @@ function isMissingSubscriptionsTable(error: { code?: string; message?: string })
 
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   try {
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const { data: userData, error: userError } = await authClient.auth.getUser(token);
 
     if (userError || !userData.user?.email) {
-      return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+      return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
     }
 
     const origin = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "https://vetorcad.com.br";
@@ -99,6 +99,6 @@ export async function POST(request: Request) {
       public_key_configured: Boolean(process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY),
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Nao foi possivel criar checkout." }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível criar checkout." }, { status: 500 });
   }
 }

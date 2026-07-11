@@ -4,14 +4,14 @@ import { PublicSiteShell } from "@/components/public-site-shell";
 
 export const metadata: Metadata = {
   title: "Sobre | VectorCAD",
-  description: "Conheca o VectorCAD, plataforma SaaS para automacao de processos de engenharia, analise de projetos e organizacao tecnica.",
+  description: "Conheça o VectorCAD, plataforma SaaS para automação de processos de engenharia, análise de projetos e organização técnica.",
   alternates: { canonical: "https://vetorcad.com.br/sobre" },
 };
 
 const pillars = [
-  ["Automacao tecnica", "Reduzimos tarefas repetitivas e ajudamos equipes a organizar informacoes de projeto com mais velocidade."],
-  ["Engenharia aplicada", "O foco do VectorCAD e apoiar fluxos reais de analise, documentacao, revisao e preparacao tecnica."],
-  ["Workspace SaaS", "Projetos, usuarios, planos e historico evoluem em uma base centralizada, pronta para times e empresas."],
+  ["Automação técnica", "Reduzimos tarefas repetitivas e ajudamos equipes a organizar informações de projeto com mais velocidade."],
+  ["Engenharia aplicada", "O foco do VectorCAD é apoiar fluxos reais de análise, documentação, revisão e preparação técnica."],
+  ["Workspace SaaS", "Projetos, usuários, planos e histórico evoluem em uma base centralizada, pronta para equipes e empresas."],
 ];
 
 export default function SobrePage() {
@@ -23,7 +23,7 @@ export default function SobrePage() {
           <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Sobre o VectorCAD</div>
           <h1 className="mt-4 max-w-4xl text-4xl font-black tracking-[-.04em] md:text-6xl">Tecnologia SaaS para organizar e acelerar projetos de engenharia</h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-[#b8c8c0]">
-            VectorCAD e uma plataforma SaaS criada para automatizar processos de engenharia, analise de projetos e organizacao tecnica. A proposta e unir engenharia, automacao e inteligencia para transformar arquivos e informacoes tecnicas em fluxos mais claros, rastreaveis e produtivos.
+            VectorCAD é uma plataforma SaaS criada para automatizar processos de engenharia, análise de projetos e organização técnica. A proposta é unir engenharia, automação e inteligência para transformar arquivos e informações técnicas em fluxos mais claros, rastreáveis e produtivos.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Criar workspace</Link>
@@ -44,9 +44,9 @@ export default function SobrePage() {
         </div>
 
         <div className="mt-10 rounded-[2rem] border border-[#223028] bg-[#0a0f0d] p-8">
-          <h2 className="text-2xl font-black">Criado para empresas que precisam de clareza tecnica</h2>
+          <h2 className="text-2xl font-black">Criado para empresas que precisam de clareza técnica</h2>
           <p className="mt-4 max-w-4xl leading-7 text-[#aebeb6]">
-            O VectorCAD foi pensado para apoiar profissionais, equipes e empresas que lidam com arquivos tecnicos, revisoes, conversoes, relatorios e organizacao de projetos. A plataforma cresce com foco em confiabilidade, seguranca, produtividade e experiencia moderna.
+            O VectorCAD foi pensado para apoiar profissionais, equipes e empresas que lidam com arquivos técnicos, revisões, conversões, relatórios e organização de projetos. A plataforma cresce com foco em confiabilidade, segurança, produtividade e experiência moderna.
           </p>
           <p className="mt-6 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">ASS Grupo ShiftCore</p>
         </div>

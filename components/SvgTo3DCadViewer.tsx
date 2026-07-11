@@ -607,7 +607,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
         saveBlob(`${baseName(fileName)}.${result instanceof ArrayBuffer ? "glb" : "gltf"}`, blob);
         setMessage("Arquivo GLB gerado com sucesso para AutoCAD/Web.");
       },
-      (error) => setMessage(`Nao foi possivel exportar GLB: ${error.message}`),
+      (error) => setMessage(`Não foi possível exportar GLB: ${error.message}`),
       { binary: true },
     );
   };

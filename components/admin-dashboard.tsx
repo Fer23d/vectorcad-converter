@@ -164,7 +164,7 @@ export function AdminDashboard() {
           return;
         }
 
-        setMessage(payload.error || "Nao foi possivel carregar o painel admin.");
+        setMessage(payload.error || "Não foi possível carregar o painel admin.");
         setLoading(false);
         return;
       }
@@ -194,8 +194,8 @@ export function AdminDashboard() {
         if (!response.ok) {
           setBackendFilteredUsers(null);
           setBackendFilteredProjects(null);
-          setMessage(payload.error || "Nao foi possivel filtrar por empresa.");
-          showToast(payload.error || "Nao foi possivel filtrar por empresa.");
+          setMessage(payload.error || "Não foi possível filtrar por empresa.");
+          showToast(payload.error || "Não foi possível filtrar por empresa.");
           return;
         }
 
@@ -204,7 +204,7 @@ export function AdminDashboard() {
       })
       .catch((error) => {
         if (cancelled) return;
-        const errorMessage = error instanceof Error ? `Nao foi possivel filtrar por empresa: ${error.message}` : "Nao foi possivel filtrar por empresa.";
+        const errorMessage = error instanceof Error ? `Não foi possível filtrar por empresa: ${error.message}` : "Não foi possível filtrar por empresa.";
         setBackendFilteredUsers(null);
         setBackendFilteredProjects(null);
         setMessage(errorMessage);
@@ -316,16 +316,16 @@ export function AdminDashboard() {
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         setOverview(previousOverview);
-        setMessage(payload.error || "Nao foi possivel atualizar empresa do usuario.");
-        showToast(payload.error || "Nao foi possivel atualizar empresa do usuario.");
+        setMessage(payload.error || "Não foi possível atualizar a empresa do usuário.");
+        showToast(payload.error || "Não foi possível atualizar a empresa do usuário.");
         return false;
       }
 
-      showToast(nextCompany ? `Usuario movido para ${nextCompany}.` : "Usuario removido da empresa.");
-      setMessage(nextCompany ? "Empresa do usuario atualizada." : "Usuario removido da empresa.");
+      showToast(nextCompany ? `Usuário movido para ${nextCompany}.` : "Usuário removido da empresa.");
+      setMessage(nextCompany ? "Empresa do usuário atualizada." : "Usuário removido da empresa.");
       return true;
     } catch (error) {
-      const errorMessage = error instanceof Error ? `Nao foi possivel atualizar empresa do usuario: ${error.message}` : "Nao foi possivel atualizar empresa do usuario.";
+      const errorMessage = error instanceof Error ? `Não foi possível atualizar a empresa do usuário: ${error.message}` : "Não foi possível atualizar a empresa do usuário.";
       setOverview(previousOverview);
       setMessage(errorMessage);
       showToast(errorMessage);
@@ -363,7 +363,7 @@ export function AdminDashboard() {
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.success === false) {
-        const errorMessage = payload.error || "Nao foi possivel criar a empresa.";
+        const errorMessage = payload.error || "Não foi possível criar a empresa.";
         setMessage(errorMessage);
         showToast(errorMessage);
         return;
@@ -397,7 +397,7 @@ export function AdminDashboard() {
       setMessage("Empresa criada com sucesso.");
       showToast("Empresa criada com sucesso.");
     } catch (error) {
-      const errorMessage = error instanceof Error ? `Nao foi possivel criar a empresa: ${error.message}` : "Nao foi possivel criar a empresa.";
+      const errorMessage = error instanceof Error ? `Não foi possível criar a empresa: ${error.message}` : "Não foi possível criar a empresa.";
       setMessage(errorMessage);
       showToast(errorMessage);
     } finally {
@@ -436,15 +436,15 @@ export function AdminDashboard() {
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         setOverview(previousOverview);
-        setMessage(payload.error || "Nao foi possivel remover a empresa.");
-        showToast(payload.error || "Nao foi possivel remover a empresa.");
+        setMessage(payload.error || "Não foi possível remover a empresa.");
+        showToast(payload.error || "Não foi possível remover a empresa.");
         return;
       }
 
       setMessage("Empresa removida com sucesso.");
       showToast("Empresa removida com sucesso.");
     } catch (error) {
-      const errorMessage = error instanceof Error ? `Nao foi possivel remover a empresa: ${error.message}` : "Nao foi possivel remover a empresa.";
+      const errorMessage = error instanceof Error ? `Não foi possível remover a empresa: ${error.message}` : "Não foi possível remover a empresa.";
       setOverview(previousOverview);
       setMessage(errorMessage);
       showToast(errorMessage);
@@ -474,7 +474,7 @@ export function AdminDashboard() {
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       setOverview(previousOverview);
-      setMessage(payload.error || "Nao foi possivel excluir o projeto.");
+      setMessage(payload.error || "Não foi possível excluir o projeto.");
       return;
     }
 
@@ -522,10 +522,10 @@ export function AdminDashboard() {
 
     <section className="mx-auto max-w-7xl px-5 py-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard icon={<UsersRound size={20} />} label="Total de usuarios" value={overview.stats.totalUsers} />
+        <StatCard icon={<UsersRound size={20} />} label="Total de usuários" value={overview.stats.totalUsers} />
         <StatCard icon={<FolderOpen size={20} />} label="Total de projetos" value={overview.stats.totalProjects} />
-        <StatCard icon={<Activity size={20} />} label="Usuarios ativos" value={overview.stats.activeUsers} />
-        <StatCard icon={<ShieldCheck size={20} />} label="Usuarios SM&A" value={overview.stats.smaUsers} />
+        <StatCard icon={<Activity size={20} />} label="Usuários ativos" value={overview.stats.activeUsers} />
+        <StatCard icon={<ShieldCheck size={20} />} label="Usuários SM&A" value={overview.stats.smaUsers} />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -533,7 +533,7 @@ export function AdminDashboard() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-[.14em]"><Building2 size={16} /> Empresa fixa</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">SM&A concede PRO somente quando o admin vincula o usuario. Texto digitado no perfil nao altera plano.</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">SM&A concede PRO somente quando o admin vincula o usuário. Texto digitado no perfil não altera plano.</p>
             </div>
             <span className="inline-flex items-center justify-center rounded-xl border border-[#b7f34a]/40 px-4 py-3 text-xs font-black uppercase tracking-[.14em] text-[#b7f34a]">SM&A only</span>
           </div>
@@ -543,14 +543,14 @@ export function AdminDashboard() {
                 <div>
                   <div className="truncate text-sm font-black text-[#e8efeb]">{company.name}</div>
                   <div className="mt-2 inline-flex rounded-full bg-[#b7f34a] px-2 py-1 text-[10px] font-black uppercase text-[#09120d]">PRO AUTOMATICO</div>
-                  <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuarios · {company.premium_users} premium</div>
+                  <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuários · {company.premium_users} premium</div>
                   <div className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#6f7d75]">
                     {company.pro_users || 0} pro · {company.plus_users || 0} plus · {company.free_users || 0} free
                   </div>
                 </div>
                 <CreditCard className="text-[#b7f34a]" size={16} />
               </div>
-              <div className="mt-4 rounded-xl border border-[#26312c] bg-[#080c0b] p-3 text-xs leading-5 text-[#8c9a93]">Nao ha planos por empresa nesta versao. Apenas vincule ou remova usuarios da SM&A.</div>
+              <div className="mt-4 rounded-xl border border-[#26312c] bg-[#080c0b] p-3 text-xs leading-5 text-[#8c9a93]">Não há planos por empresa nesta versão. Apenas vincule ou remova usuários da SM&A.</div>
             </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa criada ainda.</div>}
           </div>
         </section>
@@ -559,7 +559,7 @@ export function AdminDashboard() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-sm font-black uppercase tracking-[.14em]">Filtro por empresa</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuarios e projetos no backend por tenant/company.</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuários e projetos no backend por tenant/company.</p>
             </div>
             <label className="text-xs font-bold text-[#aab8b1]">Empresa
               <select value={companyFilter} onChange={(event) => {
@@ -577,7 +577,7 @@ export function AdminDashboard() {
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {companyNames.map((company) => <div key={company} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
               <div className="truncate text-sm font-black text-[#e8efeb]">{company}</div>
-              <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company]?.total || 0} usuarios</div>
+              <div className="mt-2 text-xs text-[#8c9a93]">{overview.companyCounts[company]?.total || 0} usuários</div>
               <div className="mt-1 text-xs text-[#b7f34a]">{overview.companyCounts[company]?.premium || 0} premium</div>
               <div className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#6f7d75]">
                 {overview.companyCounts[company]?.pro || 0} pro · {overview.companyCounts[company]?.plus || 0} plus · {overview.companyCounts[company]?.free || 0} free
@@ -590,7 +590,7 @@ export function AdminDashboard() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-black uppercase tracking-[.14em]">Ultimos logins</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">Usuarios com acesso recente ao SaaS</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">Usuários com acesso recente ao SaaS</p>
             </div>
             <Clock3 className="text-[#b7f34a]" size={20} />
           </div>
@@ -603,14 +603,14 @@ export function AdminDashboard() {
         </section>
 
         <CollapsibleSection
-          title="Usuarios SM&A"
+          title="Usuários SM&A"
           collapsed={collapsedSections.sma}
           onToggle={() => setSectionCollapsed("sma", !collapsedSections.sma)}
           accent
         >
           <UserList
             users={overview.smAUsers}
-            empty="Nenhum usuario SM&A ainda."
+            empty="Nenhum usuário SM&A ainda."
             actionLabel="Remover da empresa"
             actionIcon={<XCircle size={13} />}
             actionTone="danger"
@@ -620,13 +620,13 @@ export function AdminDashboard() {
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Usuarios sem empresa"
+          title="Usuários sem empresa"
           collapsed={collapsedSections.noCompany}
           onToggle={() => setSectionCollapsed("noCompany", !collapsedSections.noCompany)}
         >
           <UserList
             users={overview.usersWithoutCompany}
-            empty="Todos os usuarios possuem empresa."
+            empty="Todos os usuários possuem empresa."
             actionLabel="Adicionar a empresa"
             actionIcon={<UserPlus size={13} />}
             loadingUserId={companySavingUserId}
@@ -649,10 +649,10 @@ export function AdminDashboard() {
         </section>
 
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
-          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuarios</h2>
+          <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuários</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Email</th><th>Empresa</th><th>Plano</th><th>ID</th><th>Criado em</th><th>Ultimo login</th><th>Acoes</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">E-mail</th><th>Empresa</th><th>Plano</th><th>ID</th><th>Criado em</th><th>Último login</th><th>Ações</th></tr></thead>
               <tbody>
                 {filteredUsers.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{user.email}</td>
@@ -681,7 +681,7 @@ export function AdminDashboard() {
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Projetos</h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[620px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>Empresa</th><th>User ID</th><th>Criado em</th><th>Acoes</th></tr></thead>
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">Nome</th><th>Empresa</th><th>User ID</th><th>Criado em</th><th>Ações</th></tr></thead>
               <tbody>
                 {filteredProjects.map((project) => <tr key={project.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{project.name}</td>
@@ -730,7 +730,7 @@ export function AdminDashboard() {
         <p className="mt-2 text-sm leading-6 text-[#9caaa3]">
           Deseja remover <span className="font-bold text-[#e8efeb]">{removeCompanyUser.email}</span> da empresa <span className="font-bold text-[#e8efeb]">{removeCompanyUser.company}</span>?
         </p>
-        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">O usuario sera movido automaticamente para a lista SEM EMPRESA.</p>
+        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">O usuário será movido automaticamente para a lista SEM EMPRESA.</p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={() => setRemoveCompanyUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={confirmRemoveUserCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
@@ -745,13 +745,13 @@ export function AdminDashboard() {
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><Trash2 size={22} /></div>
         <h3 className="mt-4 text-xl font-black">Remover empresa</h3>
         <p className="mt-2 text-sm leading-6 text-[#9caaa3]">
-          Tem certeza que deseja excluir a empresa <span className="font-bold text-[#e8efeb]">{deleteCompanyTarget.name}</span>? Isso removera todos os vinculos dos usuarios com essa empresa.
+          Tem certeza que deseja excluir a empresa <span className="font-bold text-[#e8efeb]">{deleteCompanyTarget.name}</span>? Isso removerá todos os vínculos dos usuários com essa empresa.
         </p>
-        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">Os usuarios vinculados ficarao automaticamente como SEM EMPRESA. Essa acao nao altera login, projetos ou editor CAD.</p>
+        <p className="mt-2 text-xs leading-5 text-[#7c8b83]">Os usuários vinculados ficarão automaticamente como SEM EMPRESA. Essa ação não altera login, projetos ou editor CAD.</p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" disabled={deletingCompanyId === deleteCompanyTarget.id} onClick={() => setDeleteCompanyTarget(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
           <button type="button" disabled={deletingCompanyId === deleteCompanyTarget.id} onClick={deleteCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
-            {deletingCompanyId === deleteCompanyTarget.id ? "Removendo..." : "Confirmar exclusao"}
+            {deletingCompanyId === deleteCompanyTarget.id ? "Removendo..." : "Confirmar exclusão"}
           </button>
         </div>
       </div>

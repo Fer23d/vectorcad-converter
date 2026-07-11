@@ -18,18 +18,18 @@ function isMissingProfileTable(error: { code?: string; message?: string }) {
 
 export async function PATCH(request: Request) {
   if (!isSupabaseServerConfigured || !isSupabaseAdminConfigured) {
-    return NextResponse.json({ error: "Supabase server nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase server não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
   if (userError || !userData.user) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   const body = await request.json().catch(() => ({}));

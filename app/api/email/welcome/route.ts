@@ -10,12 +10,12 @@ function bearerToken(request: Request) {
 
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
@@ -23,17 +23,17 @@ export async function POST(request: Request) {
   const user = data.user;
 
   if (error || !user?.email) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   const firstName = String(user.user_metadata?.first_name || "").trim();
   const lastName = String(user.user_metadata?.last_name || "").trim();
-  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Usuario VectorCAD";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Usuário VectorCAD";
 
   try {
     const payload = await sendWelcomeEmail({ to: user.email, name: fullName });
     return NextResponse.json({ ok: true, id: payload?.id });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Nao foi possivel enviar email." }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível enviar e-mail." }, { status: 500 });
   }
 }

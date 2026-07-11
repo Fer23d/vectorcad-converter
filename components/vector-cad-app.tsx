@@ -78,7 +78,7 @@ export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageI
     if (!isSupabaseConfigured || !supabase) return true;
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      setMessage("Faca login para usar o VectorCAD.");
+      setMessage("Faça login para usar o VectorCAD.");
       return false;
     }
 
@@ -93,8 +93,8 @@ export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageI
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      setMessage(payload.error || "Nao foi possivel validar seu plano.");
-      if (response.status === 402) setUpgradeModal(payload.error || "Voce atingiu o limite diario de 3 usos. Faca upgrade para continuar.");
+      setMessage(payload.error || "Não foi possível validar seu plano.");
+      if (response.status === 402) setUpgradeModal(payload.error || "Você atingiu o limite diário de 3 usos. Faça upgrade para continuar.");
       return false;
     }
 
@@ -251,7 +251,7 @@ export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageI
         <h3 className="mt-4 text-xl font-black">Limite diario atingido</h3>
         <p className="mt-3 text-sm leading-6 text-[#9caaa3]">{upgradeModal}</p>
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
-          <button type="button" onClick={() => setUpgradeModal("")} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Agora nao</button>
+          <button type="button" onClick={() => setUpgradeModal("")} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Agora não</button>
           <a href="/pricing" className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Fazer upgrade</a>
         </div>
       </div>

@@ -21,19 +21,19 @@ function isMissingRelation(error: { code?: string; message?: string }) {
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!isSupabaseServerConfigured) {
-    return NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 });
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão ausente." }, { status: 401 });
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: adminData, error: adminError } = await authClient.auth.getUser(token);
 
   if (adminError || !adminData.user) {
-    return NextResponse.json({ error: "Sessao invalida." }, { status: 401 });
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
   }
 
   if (!isAdminUser(adminData.user.id)) {
@@ -52,7 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(id);
   if (userError || !userData.user) {
-    return NextResponse.json({ error: userError?.message || "Usuario nao encontrado." }, { status: 404 });
+    return NextResponse.json({ error: userError?.message || "Usuário não encontrado." }, { status: 404 });
   }
 
   const existingMetadata = userData.user.user_metadata || {};

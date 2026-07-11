@@ -18,31 +18,31 @@ export const blogArticles: BlogArticle[] = [
     category: "CAD",
     sections: [
       {
-        heading: "O que o DXF precisa ter para ser editavel",
+        heading: "O que o DXF precisa ter para ser editável",
         body: [
-          "Um arquivo DXF util para CAD nao deve ser apenas uma imagem colada dentro do desenho. Ele precisa conter entidades vetoriais, como polilinhas, contornos e curvas aproximadas, para que o usuario consiga editar, medir, escalar e enviar para corte ou fabricacao.",
-          "No VectorCAD, a imagem passa por pre-processamento, vetorizacao por contorno e exportacao em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais proximas de um desenho tecnico.",
+          "Um arquivo DXF útil para CAD não deve ser apenas uma imagem colada dentro do desenho. Ele precisa conter entidades vetoriais, como polilinhas, contornos e curvas aproximadas, para que o usuário consiga editar, medir, escalar e enviar para corte ou fabricação.",
+          "No VectorCAD, a imagem passa por pré-processamento, vetorização por contorno e exportação em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais próximas de um desenho técnico.",
         ],
       },
       {
-        heading: "Como preparar a imagem antes da conversao",
+        heading: "Como preparar a imagem antes da conversão",
         body: [
-          "Use imagens com bom contraste, bordas claras e fundo simples. Quanto menos ruido, sombra e compressao, mais limpo tende a ficar o contorno final.",
-          "Ajustes como threshold, contraste, remocao de ruido e inversao de cores sao importantes porque definem quais areas viram linhas e quais areas serao descartadas.",
+          "Use imagens com bom contraste, bordas claras e fundo simples. Quanto menos ruído, sombra e compressão, mais limpo tende a ficar o contorno final.",
+          "Ajustes como threshold, contraste, remoção de ruído e inversão de cores são importantes porque definem quais áreas viram linhas e quais áreas serão descartadas.",
         ],
       },
       {
         heading: "Quando usar DXF, SVG ou STL",
         body: [
-          "Use SVG quando o objetivo for editar em Illustrator, CorelDRAW ou visualizar na web. Use DXF quando o objetivo for abrir no AutoCAD, Fusion 360 ou software CAM. Use STL quando o desenho ja foi transformado em uma extrusao 3D.",
+          "Use SVG quando o objetivo for editar em Illustrator, CorelDRAW ou visualizar na web. Use DXF quando o objetivo for abrir no AutoCAD, Fusion 360 ou software CAM. Use STL quando o desenho já foi transformado em uma extrusão 3D.",
         ],
       },
     ],
   },
   {
     slug: "svg-para-corte-laser-e-cnc",
-    title: "SVG para corte laser e CNC: boas praticas para contornos limpos",
-    description: "Veja como simplificacao, fechamento de caminhos e escala correta ajudam na preparacao de arquivos para fabricacao digital.",
+    title: "SVG para corte laser e CNC: boas práticas para contornos limpos",
+    description: "Veja como simplificação, fechamento de caminhos e escala correta ajudam na preparação de arquivos para fabricação digital.",
     date: "2026-07-09",
     readTime: "5 min",
     category: "CNC",
@@ -50,36 +50,36 @@ export const blogArticles: BlogArticle[] = [
       {
         heading: "Contornos fechados evitam problemas na maquina",
         body: [
-          "Em corte laser e CNC, caminhos abertos podem gerar falhas, cortes incompletos ou trajetorias inesperadas. Por isso, fechar contornos e remover pequenos fragmentos e uma etapa essencial.",
-          "A simplificacao tambem e importante: pontos demais deixam o arquivo pesado e podem causar movimentos desnecessarios na maquina.",
+          "Em corte laser e CNC, caminhos abertos podem gerar falhas, cortes incompletos ou trajetórias inesperadas. Por isso, fechar contornos e remover pequenos fragmentos é uma etapa essencial.",
+          "A simplificação também é importante: pontos demais deixam o arquivo pesado e podem causar movimentos desnecessários na máquina.",
         ],
       },
       {
-        heading: "Escala em milimetros",
+        heading: "Escala em milímetros",
         body: [
-          "Antes de exportar, defina largura e altura reais do desenho. Isso reduz erros ao importar em softwares de CAD/CAM e evita que um logo de poucos centimetros abra com tamanho incorreto.",
+          "Antes de exportar, defina largura e altura reais do desenho. Isso reduz erros ao importar em softwares de CAD/CAM e evita que um logo de poucos centímetros abra com tamanho incorreto.",
         ],
       },
     ],
   },
   {
     slug: "vetorizacao-de-logo-para-cad",
-    title: "Vetorizacao de logo para CAD: do PNG ao vetor tecnico",
-    description: "Aprenda por que logos simples geram melhores resultados e como ajustar threshold e suavizacao para criar paths editaveis.",
+    title: "Vetorização de logo para CAD: do PNG ao vetor técnico",
+    description: "Aprenda por que logos simples geram melhores resultados e como ajustar threshold e suavização para criar paths editáveis.",
     date: "2026-07-09",
     readTime: "4 min",
-    category: "Vetorizacao",
+    category: "Vetorização",
     sections: [
       {
-        heading: "Logos funcionam bem quando ha contraste",
+        heading: "Logos funcionam bem quando há contraste",
         body: [
-          "Logos em preto e branco, marcas com areas bem definidas e arquivos sem fundo complexo costumam gerar os melhores vetores. Gradientes, sombras e texturas precisam de limpeza antes da conversao.",
+          "Logos em preto e branco, marcas com áreas bem definidas e arquivos sem fundo complexo costumam gerar os melhores vetores. Gradientes, sombras e texturas precisam de limpeza antes da conversão.",
         ],
       },
       {
         heading: "Menos pontos, mais controle",
         body: [
-          "Um bom vetor CAD nao precisa repetir cada pixel da imagem original. O ideal e manter a forma visual, mas reduzir pontos redundantes para que a edicao seja pratica.",
+          "Um bom vetor CAD não precisa repetir cada pixel da imagem original. O ideal é manter a forma visual, mas reduzir pontos redundantes para que a edição seja prática.",
         ],
       },
     ],

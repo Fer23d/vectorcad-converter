@@ -36,7 +36,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
     allowsDxf: false,
     allowsUnlimited3d: false,
     isPremium: false,
-    features: ["3 usos por dia", "Anuncios ativos", "SVG basico", "Sem exportacao 3D"],
+    features: ["3 usos por dia", "Anúncios ativos", "SVG básico", "Sem exportação 3D"],
   },
   plus: {
     id: "plus",
@@ -53,7 +53,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
     allowsDxf: false,
     allowsUnlimited3d: false,
     isPremium: false,
-    features: ["15 usos por dia", "1 exportacao 3D por dia", "Sem anuncios", "Ideal para uso leve"],
+    features: ["15 usos por dia", "1 exportação 3D por dia", "Sem anúncios", "Ideal para uso leve"],
   },
   pro: {
     id: "pro",
@@ -70,7 +70,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
     allowsDxf: true,
     allowsUnlimited3d: true,
     isPremium: true,
-    features: ["Uso ilimitado", "3D ilimitado", "DXF completo", "Sem anuncios"],
+    features: ["Uso ilimitado", "3D ilimitado", "DXF completo", "Sem anúncios"],
   },
   empresarial: {
     id: "empresarial",
@@ -87,7 +87,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
     allowsDxf: true,
     allowsUnlimited3d: true,
     isPremium: true,
-    features: ["Multi-usuario por empresa", "Todos com acesso PRO", "Gestao centralizada", "Sem anuncios"],
+    features: ["Multiusuário por empresa", "Todos com acesso PRO", "Gestão centralizada", "Sem anúncios"],
   },
   enterprise: {
     id: "empresarial",
@@ -104,7 +104,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
     allowsDxf: true,
     allowsUnlimited3d: true,
     isPremium: true,
-    features: ["Multi-usuario por empresa", "Todos com acesso PRO", "Gestao centralizada", "Sem anuncios"],
+    features: ["Multiusuário por empresa", "Todos com acesso PRO", "Gestão centralizada", "Sem anúncios"],
   },
 };
 

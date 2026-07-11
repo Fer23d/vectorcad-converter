@@ -4,28 +4,28 @@ import { PublicSiteShell } from "@/components/public-site-shell";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "VectorCAD Converter | PNG e JPG para SVG e DXF editavel",
-  description: "Converta imagens em vetores para CAD, corte laser, CNC, AutoCAD, CorelDRAW e Illustrator com exportacao SVG, DXF e preview 3D.",
+  title: "VectorCAD Converter | PNG e JPG para SVG e DXF editável",
+  description: "Converta imagens em vetores para CAD, corte laser, CNC, AutoCAD, CorelDRAW e Illustrator com exportação SVG, DXF e preview 3D.",
   alternates: { canonical: "https://vetorcad.com.br/" },
 };
 
 const benefits = [
-  "DXF com linhas e contornos editaveis para CAD/CAM",
+  "DXF com linhas e contornos editáveis para CAD/CAM",
   "SVG limpo para CorelDRAW, Illustrator e fluxos web",
-  "Ajustes de threshold, contraste, ruido e escala real em mm",
-  "Base para extrusao 3D e exportacao STL/GLB",
+  "Ajustes de threshold, contraste, ruído e escala real em mm",
+  "Base para extrusão 3D e exportação STL/GLB",
 ];
 
 const steps = [
-  { title: "1. Envie a imagem", text: "Use PNG, JPG, JPEG ou WEBP com boa resolucao e contraste." },
-  { title: "2. Limpe o desenho", text: "Ajuste brilho, contraste, limiar, ruido e bordas antes da vetorizacao." },
-  { title: "3. Gere o vetor", text: "Transforme areas da imagem em paths, contornos e polilinhas editaveis." },
-  { title: "4. Exporte para CAD", text: "Baixe SVG ou DXF com escala correta para abrir em softwares tecnicos." },
+  { title: "1. Envie a imagem", text: "Use PNG, JPG, JPEG ou WEBP com boa resolução e contraste." },
+  { title: "2. Limpe o desenho", text: "Ajuste brilho, contraste, limiar, ruído e bordas antes da vetorização." },
+  { title: "3. Gere o vetor", text: "Transforme áreas da imagem em paths, contornos e polilinhas editáveis." },
+  { title: "4. Exporte para CAD", text: "Baixe SVG ou DXF com escala correta para abrir em softwares técnicos." },
 ];
 
 const faqs = [
-  { q: "O VectorCAD substitui um desenhista CAD?", a: "Ele reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessario revisar e ajustar o arquivo final." },
-  { q: "O DXF abre no AutoCAD?", a: "Sim. A exportacao e feita com entidades editaveis como polilinhas e layers, pensadas para importacao em AutoCAD e fluxos CAD/CAM." },
+  { q: "O VectorCAD substitui um desenhista CAD?", a: "Ele reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final." },
+  { q: "O DXF abre no AutoCAD?", a: "Sim. A exportação é feita com entidades editáveis, como polilinhas e layers, pensadas para importação em AutoCAD e fluxos CAD/CAM." },
   { q: "Qual imagem gera melhor resultado?", a: "Imagens com fundo simples, alto contraste, poucas sombras e bordas bem definidas geram vetores mais limpos." },
   { q: "Consigo usar para corte laser?", a: "Sim. O modo simplificado ajuda a reduzir pontos e manter contornos mais adequados para corte CNC e laser." },
 ];
@@ -39,16 +39,16 @@ export default function Home() {
           <div>
             <div className="mb-5 inline-flex rounded-full border border-[#b7f34a]/30 bg-[#111915] px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Imagem para CAD em minutos</div>
             <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-[-.04em] md:text-6xl">Transforme imagens em vetores para CAD, CNC e corte laser</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#b8c8c0]">O VectorCAD Converter converte PNG, JPG e WEBP em SVG e DXF editaveis, com pre-processamento de imagem, vetorizacao por contorno, escala em milimetros e exportacao pronta para softwares como AutoCAD, Fusion 360, CorelDRAW e Illustrator.</p>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#b8c8c0]">O VectorCAD Converter converte PNG, JPG e WEBP em SVG e DXF editáveis, com pré-processamento de imagem, vetorização por contorno, escala em milímetros e exportação pronta para softwares como AutoCAD, Fusion 360, CorelDRAW e Illustrator.</p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Comecar agora</Link>
+              <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Começar agora</Link>
               <Link href="/blog" className="rounded-2xl border border-[#304238] px-6 py-4 text-sm font-black text-[#edf5f0] transition hover:bg-[#111915]">Ler guias CAD</Link>
             </div>
           </div>
           <div className="rounded-[2rem] border border-[#26362f] bg-[#0d1411] p-5 shadow-2xl shadow-black/30">
             <div className="rounded-3xl border border-[#34463d] bg-[#050807] p-5">
               <div className="mb-4 flex items-center justify-between text-xs text-[#8ea098]">
-                <span>Preview tecnico</span>
+                <span>Preview técnico</span>
                 <span>SVG + DXF</span>
               </div>
               <div className="grid min-h-[360px] place-items-center rounded-2xl bg-[linear-gradient(45deg,#111915_25%,transparent_25%),linear-gradient(-45deg,#111915_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111915_75%),linear-gradient(-45deg,transparent_75%,#111915_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0]">
@@ -81,8 +81,8 @@ export default function Home() {
       <section className="border-y border-[#1c2822] bg-[#0a0f0d]">
         <div className="mx-auto max-w-7xl px-4 py-16 lg:px-8">
           <div className="max-w-3xl">
-            <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Como funciona a conversao CAD</h2>
-            <p className="mt-4 leading-7 text-[#aebeb6]">A ferramenta analisa a imagem, separa areas claras e escuras, remove pequenos ruidos e transforma bordas em caminhos vetoriais. O resultado pode ser exportado em SVG para design ou DXF para CAD/CAM.</p>
+            <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Como funciona a conversão CAD</h2>
+            <p className="mt-4 leading-7 text-[#aebeb6]">A ferramenta analisa a imagem, separa áreas claras e escuras, remove pequenos ruídos e transforma bordas em caminhos vetoriais. O resultado pode ser exportado em SVG para design ou DXF para CAD/CAM.</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-4">
             {steps.map((step) => (
@@ -97,8 +97,8 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 py-16 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
         <div>
-          <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Por que vetor CAD nao e apenas um SVG bonito?</h2>
-          <p className="mt-4 leading-7 text-[#aebeb6]">Para ser util em CAD, o arquivo precisa ter geometrias editaveis, escala coerente, contornos fechados quando possivel e poucos pontos desnecessarios. O VectorCAD prioriza esse fluxo tecnico para reduzir ajustes depois da importacao.</p>
+          <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Por que vetor CAD não é apenas um SVG bonito?</h2>
+          <p className="mt-4 leading-7 text-[#aebeb6]">Para ser útil em CAD, o arquivo precisa ter geometrias editáveis, escala coerente, contornos fechados quando possível e poucos pontos desnecessários. O VectorCAD prioriza esse fluxo técnico para reduzir ajustes depois da importação.</p>
         </div>
         <div className="grid gap-3">
           {faqs.map((faq) => (
@@ -115,7 +115,7 @@ export default function Home() {
           <div className="mb-8 flex items-end justify-between gap-4">
             <div>
               <h2 className="text-3xl font-black tracking-[-.03em]">Guias recentes</h2>
-              <p className="mt-3 text-[#aebeb6]">Conteudo editorial para preparar imagens, vetores e arquivos CAD com menos retrabalho.</p>
+              <p className="mt-3 text-[#aebeb6]">Conteúdo editorial para preparar imagens, vetores e arquivos CAD com menos retrabalho.</p>
             </div>
             <Link href="/blog" className="hidden rounded-xl border border-[#304238] px-4 py-3 text-xs font-black text-[#b7f34a] md:inline-flex">Ver blog</Link>
           </div>

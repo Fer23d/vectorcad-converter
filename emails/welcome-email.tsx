@@ -1,7 +1,7 @@
 import { Body, Head, Html, Preview } from "@react-email/components";
 
 function safeName(name: string) {
-  return name?.trim() || "Usuario VectorCAD";
+  return name?.trim() || "Usuário VectorCAD";
 }
 
 export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUrl: string }) {

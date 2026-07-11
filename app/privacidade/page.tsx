@@ -2,39 +2,39 @@ import type { Metadata } from "next";
 import { PublicSiteShell } from "@/components/public-site-shell";
 
 export const metadata: Metadata = {
-  title: "Politica de Privacidade | VectorCAD",
-  description: "Politica de privacidade do VectorCAD, incluindo dados coletados, uso, seguranca, cookies e direitos LGPD.",
+  title: "Política de Privacidade | VectorCAD",
+  description: "Política de privacidade do VectorCAD, incluindo dados coletados, uso, segurança, cookies e direitos LGPD.",
   alternates: { canonical: "https://vetorcad.com.br/privacidade" },
 };
 
 const sections = [
   {
     title: "Dados coletados",
-    text: "Podemos coletar dados de cadastro, como nome, email, identificador de usuario, empresa informada, dados de sessao, registros de uso, projetos criados e informacoes tecnicas necessarias para operar a plataforma.",
+    text: "Podemos coletar dados de cadastro, como nome, e-mail, identificador de usuário, empresa informada, dados de sessão, registros de uso, projetos criados e informações técnicas necessárias para operar a plataforma.",
   },
   {
     title: "Como usamos os dados",
-    text: "Usamos os dados para autenticar usuarios, salvar projetos, manter o workspace, enviar comunicacoes transacionais, controlar limites de uso, processar pagamentos, melhorar a experiencia e proteger a plataforma contra abuso.",
+    text: "Usamos os dados para autenticar usuários, salvar projetos, manter o workspace, enviar comunicações transacionais, controlar limites de uso, processar pagamentos, melhorar a experiência e proteger a plataforma contra abuso.",
   },
   {
     title: "Arquivos CAD enviados",
-    text: "Arquivos CAD, imagens e dados tecnicos enviados podem ser processados para entregar os recursos contratados, como analise, organizacao, conversao, visualizacao e exportacao. O usuário é responsável pelos arquivos enviados e declara possuir autorização para utilização desses arquivos.",
+    text: "Arquivos CAD, imagens e dados técnicos enviados podem ser processados para entregar os recursos contratados, como análise, organização, conversão, visualização e exportação. O usuário é responsável pelos arquivos enviados e declara possuir autorização para utilização desses arquivos.",
   },
   {
-    title: "Armazenamento e seguranca",
-    text: "Os dados podem ser armazenados em provedores de infraestrutura e banco de dados utilizados pelo VectorCAD. Aplicamos medidas tecnicas e organizacionais para reduzir riscos de acesso indevido, perda ou alteracao nao autorizada.",
+    title: "Armazenamento e segurança",
+    text: "Os dados podem ser armazenados em provedores de infraestrutura e banco de dados utilizados pelo VectorCAD. Aplicamos medidas técnicas e organizacionais para reduzir riscos de acesso indevido, perda ou alteração não autorizada.",
   },
   {
     title: "Cookies",
-    text: "Podemos usar cookies e tecnologias semelhantes para manter sessoes, medir desempenho, melhorar navegacao e, em paginas publicas, viabilizar recursos de publicidade ou analise conforme configuracao do site.",
+    text: "Podemos usar cookies e tecnologias semelhantes para manter sessões, medir desempenho, melhorar navegação e, em páginas públicas, viabilizar recursos de publicidade ou análise conforme a configuração do site.",
   },
   {
     title: "Direitos LGPD",
-    text: "Nos termos da LGPD, o titular pode solicitar confirmacao de tratamento, acesso, correcao, portabilidade, anonimizar, bloquear ou eliminar dados, alem de solicitar informacoes sobre compartilhamento quando aplicavel.",
+    text: "Nos termos da LGPD, o titular pode solicitar confirmação de tratamento, acesso, correção, portabilidade, anonimização, bloqueio ou eliminação de dados, além de informações sobre compartilhamento quando aplicável.",
   },
   {
-    title: "Exclusao de dados",
-    text: "O usuario pode solicitar exclusao de dados pessoais e projetos vinculados a sua conta. Algumas informacoes podem ser mantidas temporariamente quando necessarias para cumprimento legal, seguranca, auditoria ou prevencao a fraude.",
+    title: "Exclusão de dados",
+    text: "O usuário pode solicitar exclusão de dados pessoais e projetos vinculados à sua conta. Algumas informações podem ser mantidas temporariamente quando necessárias para cumprimento legal, segurança, auditoria ou prevenção a fraude.",
   },
 ];
 
@@ -45,9 +45,9 @@ export default function PrivacidadePage() {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(183,243,74,.16),transparent_44%)]" />
         <div className="relative mx-auto max-w-5xl px-4 py-16 lg:px-8 lg:py-20">
           <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Privacidade e LGPD</div>
-          <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Politica de Privacidade</h1>
+          <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Política de Privacidade</h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-[#b8c8c0]">
-            Esta politica explica como o VectorCAD trata dados pessoais e informacoes tecnicas para operar uma plataforma SaaS segura, profissional e preparada para clientes empresariais.
+            Esta política explica como o VectorCAD trata dados pessoais e informações técnicas para operar uma plataforma SaaS segura, profissional e preparada para clientes empresariais.
           </p>
         </div>
       </section>

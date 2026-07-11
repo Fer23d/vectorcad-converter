@@ -48,7 +48,7 @@ function isMissingTableOrColumn(error: { code?: string; message?: string }) {
 
 async function getUsageContext(request: Request) {
   if (!isSupabaseServerConfigured) {
-    return { response: NextResponse.json({ error: "Supabase nao configurado." }, { status: 500 }) };
+    return { response: NextResponse.json({ error: "Supabase não configurado." }, { status: 500 }) };
   }
 
   if (!isSupabaseAdminConfigured) {
@@ -57,13 +57,13 @@ async function getUsageContext(request: Request) {
 
   const token = bearerToken(request);
   if (!token) {
-    return { response: NextResponse.json({ error: "Faca login para usar o VectorCAD." }, { status: 401 }) };
+    return { response: NextResponse.json({ error: "Faça login para usar o VectorCAD." }, { status: 401 }) };
   }
 
   const authClient = createSupabaseAuthServerClient(token);
   const { data: userData, error: userError } = await authClient.auth.getUser(token);
   if (userError || !userData.user?.email) {
-    return { response: NextResponse.json({ error: "Sessao invalida." }, { status: 401 }) };
+    return { response: NextResponse.json({ error: "Sessão inválida." }, { status: 401 }) };
   }
 
   const adminClient = createSupabaseAdminClient();
@@ -175,11 +175,11 @@ export async function POST(request: Request) {
 
   if (action === "export3d") {
     if (context.export3dLimit === 0) {
-      return NextResponse.json({ error: "Exportacao 3D nao esta disponivel no plano FREE.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
+      return NextResponse.json({ error: "Exportação 3D não está disponível no plano FREE.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
     }
 
     if (context.export3dLimit !== null && context.current3d >= context.export3dLimit) {
-      return NextResponse.json({ error: "Limite diario de exportacao 3D atingido. Faca upgrade para PRO.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
+      return NextResponse.json({ error: "Limite diário de exportação 3D atingido. Faça upgrade para PRO.", plan: context.plan, export3d: context.current3d, export3dLimit: context.export3dLimit }, { status: 402 });
     }
   }
 
