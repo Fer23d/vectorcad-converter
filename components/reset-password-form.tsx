@@ -5,6 +5,37 @@ import { useEffect, useMemo, useState } from "react";
 import { Box, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 
+function friendlyRecoveryError(value?: string | null) {
+  const message = String(value || "").replace(/\+/g, " ");
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("expired") || lowerMessage.includes("expire")) {
+    return "Este link de recuperacao expirou. Solicite um novo email em Esqueci minha senha.";
+  }
+
+  if (lowerMessage.includes("invalid") || lowerMessage.includes("malformed")) {
+    return "Este link de recuperacao e invalido. Solicite um novo email em Esqueci minha senha.";
+  }
+
+  if (message) return message;
+  return "Nao foi possivel validar o link de recuperacao.";
+}
+
+function friendlyUpdateError(value?: string | null) {
+  const message = String(value || "");
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes("session") || lowerMessage.includes("jwt")) {
+    return "Sessao de recuperacao inexistente ou expirada. Solicite um novo link.";
+  }
+
+  if (lowerMessage.includes("password") || lowerMessage.includes("weak")) {
+    return "A senha nao atende aos requisitos de seguranca. Use pelo menos 6 caracteres e evite senhas muito simples.";
+  }
+
+  return message || "Nao foi possivel salvar a nova senha.";
+}
+
 function recoveryParams() {
   if (typeof window === "undefined") return new URLSearchParams();
 
@@ -40,7 +71,7 @@ export function ResetPasswordForm() {
       if (errorDescription) {
         if (!cancelled) {
           setLoading(false);
-          setMessage(errorDescription);
+          setMessage(friendlyRecoveryError(errorDescription));
         }
         return;
       }
@@ -57,7 +88,7 @@ export function ResetPasswordForm() {
         window.history.replaceState({}, document.title, "/reset-password");
         if (!cancelled) {
           setLoading(false);
-          setMessage(error ? "Link invalido ou expirado. Solicite um novo email de recuperacao." : "Digite sua nova senha.");
+          setMessage(error ? friendlyRecoveryError(error.message) : "Digite sua nova senha.");
         }
         return;
       }
@@ -65,7 +96,7 @@ export function ResetPasswordForm() {
       const { data } = await client.auth.getSession();
       if (!cancelled) {
         setLoading(false);
-        setMessage(data.session ? "Digite sua nova senha." : "Link invalido ou expirado. Solicite um novo email de recuperacao.");
+        setMessage(data.session ? "Digite sua nova senha." : "Sessao de recuperacao inexistente. Abra o link recebido por email ou solicite um novo.");
       }
     }
 
@@ -105,7 +136,7 @@ export function ResetPasswordForm() {
     setSaving(false);
 
     if (error) {
-      setMessage(error.message);
+      setMessage(friendlyUpdateError(error.message));
       return;
     }
 

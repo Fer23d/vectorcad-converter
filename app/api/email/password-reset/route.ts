@@ -17,6 +17,30 @@ function maskEmail(email: string) {
   return `${name.slice(0, 2)}***@${domain || "***"}`;
 }
 
+function cleanEnv(value: string | undefined) {
+  return value?.trim().replace(/^["']|["']$/g, "") || "";
+}
+
+function siteUrl() {
+  const configuredUrl =
+    cleanEnv(process.env.NEXT_PUBLIC_SITE_URL) ||
+    cleanEnv(process.env.NEXT_PUBLIC_APP_URL) ||
+    "https://vetorcad.com.br";
+
+  try {
+    const parsedUrl = new URL(configuredUrl);
+    if (parsedUrl.hostname === "localhost" || parsedUrl.hostname === "127.0.0.1") {
+      console.warn("[password-reset] ignoring local site URL for production reset link");
+      return "https://vetorcad.com.br";
+    }
+
+    return parsedUrl.origin;
+  } catch {
+    console.warn("[password-reset] invalid site URL configured, using production domain");
+    return "https://vetorcad.com.br";
+  }
+}
+
 export async function POST(request: Request) {
   if (!isSupabaseAdminConfigured) {
     console.error("[password-reset] Supabase admin is not configured", {
@@ -32,8 +56,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Informe um email valido." }, { status: 400 });
   }
 
-  const origin = new URL(request.url).origin;
-  const redirectTo = `${origin}/reset-password`;
+  const redirectTo = `${siteUrl()}/reset-password`;
   const adminClient = createSupabaseAdminClient();
   console.info("[password-reset] request received", { email: maskEmail(email), redirectTo });
 
