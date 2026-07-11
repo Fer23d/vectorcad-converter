@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminUser } from "@/lib/admin";
-import { isPremiumCompany, normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
+import { normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
+import { getUserEffectivePlan } from "@/lib/effective-plan";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 function bearerToken(request: Request) {
@@ -11,7 +12,7 @@ function bearerToken(request: Request) {
 
 function isMissingRelation(error: { code?: string; message?: string }) {
   const message = error.message?.toLowerCase() || "";
-  return error.code === "42P01" || error.code === "PGRST205" || message.includes("schema cache");
+  return error.code === "42P01" || error.code === "42703" || error.code === "PGRST205" || message.includes("schema cache");
 }
 
 export async function GET(request: Request) {
@@ -41,11 +42,17 @@ export async function GET(request: Request) {
 
   const requestedCompany = normalizeCompany(new URL(request.url).searchParams.get("company"));
   const adminClient = createSupabaseAdminClient();
-  const [{ data: usersData, error: usersError }, { data: projectsData, error: projectsError }, { data: appUsersData, error: appUsersError }, { data: membershipsData, error: membershipsError }, { data: logsData, error: logsError }] = await Promise.all([
+  const [
+    { data: usersData, error: usersError },
+    { data: projectsData, error: projectsError },
+    { data: appUsersData, error: appUsersError },
+    { data: companiesData, error: companiesError },
+    { data: logsData, error: logsError },
+  ] = await Promise.all([
     adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
-    adminClient.from("users").select("id,email,company,plan,is_premium"),
-    adminClient.from("companies_users").select("user_id,company_id,company_name,plan_grant"),
+    adminClient.from("users").select("id,email,company,company_id,plan,is_premium"),
+    adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("name", { ascending: true }),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
   ]);
 
@@ -57,39 +64,47 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: projectsError.message }, { status: 500 });
   }
 
+  if (companiesError && !isMissingRelation(companiesError)) {
+    return NextResponse.json({ error: companiesError.message }, { status: 500 });
+  }
+
   const appUsersById = new Map((appUsersError ? [] : appUsersData || []).map((appUser) => [appUser.id, appUser]));
-  const membershipsByUserId = new Map((membershipsError && !isMissingRelation(membershipsError) ? [] : membershipsData || []).map((membership) => [membership.user_id, membership]));
-  const resolveCompany = (value?: string | null) => {
-    const normalized = normalizeCompany(value);
-    return isPremiumCompany(normalized)
-      ? { id: "SM&A", name: "SM&A", plan: normalizeCompanyPlan("pro") }
-      : { id: null as string | null, name: null as string | null, plan: normalizeCompanyPlan("free") };
-  };
-  const selectedCompany = requestedCompany ? resolveCompany(requestedCompany) : null;
-  const users = usersData.users.map((user) => {
+  const companyRecords = companiesError ? [] : companiesData || [];
+  const companyById = new Map(companyRecords.map((company) => [company.id, company]));
+  const companyByName = new Map(companyRecords.map((company) => [company.name, company]));
+
+  const users = await Promise.all(usersData.users.map(async (user) => {
     const appUser = appUsersById.get(user.id);
-    const membership = membershipsByUserId.get(user.id);
-    const companyInfo = resolveCompany(membership?.company_name || "");
-    const individualPlan = normalizeCompanyPlan(appUser?.plan || String(user.user_metadata?.plan || ""));
-    const individualPremium = Boolean(appUser?.is_premium || user.user_metadata?.is_premium);
-    const membershipPlan = normalizeCompanyPlan(membership?.plan_grant || null);
-    const effectivePlan = companyInfo.name ? membershipPlan : resolveUserPlan({ plan: individualPlan, is_premium: individualPremium });
-    const premium = planHasPremiumAccess(effectivePlan);
+    const effective = await getUserEffectivePlan(adminClient, user.id, {
+      user,
+      profile: {
+        company: appUser?.company || String(user.user_metadata?.company || "") || null,
+        company_id: appUser?.company_id || String(user.user_metadata?.company_id || "") || null,
+        plan: appUser?.plan || String(user.user_metadata?.plan || "free"),
+        is_premium: Boolean(appUser?.is_premium || user.user_metadata?.is_premium),
+      },
+    });
+
+    const companyRecord = effective.companyId ? companyById.get(effective.companyId) : effective.company ? companyByName.get(effective.company) : null;
+    const companyPlan = normalizeCompanyPlan(companyRecord?.plan || effective.companyPlan || null);
+    const premium = planHasPremiumAccess(effective.plan);
 
     return {
       id: user.id,
-      email: user.email || appUser?.email || "sem email",
-      company: companyInfo.name,
-      company_id: companyInfo.id,
-      companyPlan: companyInfo.plan,
-      userPlan: individualPlan,
-      plan: effectivePlan,
+      email: user.email || appUser?.email || "sem e-mail",
+      company: effective.company,
+      company_id: effective.companyId,
+      companyPlan,
+      userPlan: effective.individualPlan,
+      plan: effective.plan,
+      planSource: effective.source,
       is_premium: premium,
       premium,
       created_at: user.created_at,
       last_sign_in_at: user.last_sign_in_at || null,
     };
-  });
+  }));
+
   const userCompanyById = new Map(users.map((user) => [user.id, user.company]));
   const projects = (projectsData || []).map((project) => ({
     ...project,
@@ -107,30 +122,50 @@ export async function GET(request: Request) {
     else totals[company].free += 1;
     return totals;
   }, {});
-  const smaCounts = companyCounts["SM&A"] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
-  const companies = [{
-    id: "SM&A",
-    name: "SM&A",
-    plan: normalizeCompanyPlan("pro"),
-    user_count: smaCounts.total,
-    premium_users: smaCounts.premium,
-    enterprise_users: smaCounts.enterprise,
-    pro_users: smaCounts.pro,
-    plus_users: smaCounts.plus,
-    free_users: smaCounts.free,
-    created_at: null,
-    updated_at: null,
-  }];
-  const smAUsers = users.filter((user) => isPremiumCompany(user.company));
+
+  const companies = companyRecords.map((company) => {
+    const counts = companyCounts[company.name] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
+    return {
+      id: company.id,
+      name: company.name,
+      plan: normalizeCompanyPlan(company.plan),
+      user_count: counts.total,
+      premium_users: counts.premium,
+      enterprise_users: counts.enterprise,
+      pro_users: counts.pro,
+      plus_users: counts.plus,
+      free_users: counts.free,
+      created_at: company.created_at || null,
+      updated_at: company.updated_at || null,
+    };
+  });
+
+  if (!companies.some((company) => company.name === "SM&A")) {
+    const counts = companyCounts["SM&A"] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
+    companies.unshift({
+      id: "SM&A",
+      name: "SM&A",
+      plan: normalizeCompanyPlan("empresarial"),
+      user_count: counts.total,
+      premium_users: counts.premium,
+      enterprise_users: counts.enterprise,
+      pro_users: counts.pro,
+      plus_users: counts.plus,
+      free_users: counts.free,
+      created_at: null,
+      updated_at: null,
+    });
+  }
+
+  const smAUsers = users.filter((user) => user.company === "SM&A");
   const usersWithoutCompany = users.filter((user) => !user.company);
   const latestLogins = [...usersWithLogin]
     .sort((a, b) => new Date(b.last_sign_in_at || 0).getTime() - new Date(a.last_sign_in_at || 0).getTime())
     .slice(0, 5);
   const matchesSelectedCompany = (company?: string | null) => {
-    if (!selectedCompany) return true;
-    if (!selectedCompany.name) return !company;
-    const resolved = resolveCompany(company);
-    return resolved.name === selectedCompany.name || resolved.id === selectedCompany.id || company === requestedCompany;
+    if (!requestedCompany || requestedCompany === "all") return true;
+    if (requestedCompany === "Sem empresa") return !company;
+    return company === requestedCompany;
   };
   const filteredUsers = users.filter((user) => matchesSelectedCompany(user.company));
   const filteredProjects = projects.filter((project) => matchesSelectedCompany(project.company));

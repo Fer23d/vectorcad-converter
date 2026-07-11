@@ -230,18 +230,21 @@ export function AdminDashboard() {
   const rebuildOverviewUsers = (current: AdminOverview, nextUsers: AdminUser[], nextCompanies = current.companies): AdminOverview => {
     const resolveUserCompany = (companyValue?: string | null) => {
       const normalized = companyValue?.trim() || null;
-      return isPremiumCompany(normalized)
-        ? { name: "SM&A", plan: normalizeCompanyPlan("pro") }
-        : { name: null as string | null, plan: normalizeCompanyPlan("free") };
+      const companyRecord = normalized ? nextCompanies.find((company) => company.name === normalized || company.id === normalized) : null;
+      return normalized
+        ? { id: companyRecord?.id || null, name: companyRecord?.name || normalized, plan: normalizeCompanyPlan(companyRecord?.plan || (isPremiumCompany(normalized) ? "empresarial" : "free")) }
+        : { id: null as string | null, name: null as string | null, plan: normalizeCompanyPlan("free") };
     };
     const normalizedUsers = nextUsers.map((user) => {
       const company = resolveUserCompany(user.company);
       const userPlan = normalizeCompanyPlan(user.userPlan || user.plan);
-      const effectivePlan = company.name ? normalizeCompanyPlan("pro") : resolveUserPlan({ plan: userPlan, is_premium: user.is_premium });
+      const companyGrantsPro = company.name && (company.plan === "empresarial" || company.plan === "pro" || isPremiumCompany(company.name));
+      const effectivePlan = companyGrantsPro ? normalizeCompanyPlan("pro") : resolveUserPlan({ plan: userPlan, is_premium: user.is_premium });
       const premium = planHasPremiumAccess(effectivePlan);
       return {
         ...user,
         company: company.name,
+        company_id: company.id,
         companyPlan: company.plan,
         userPlan,
         premium,
@@ -261,31 +264,45 @@ export function AdminDashboard() {
       return totals;
     }, {});
     const companyByUserId = new Map(normalizedUsers.map((user) => [user.id, user.company]));
-    const smaCounts = companyCounts["SM&A"] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
-    const companies = [{
-      id: "SM&A",
-      name: "SM&A",
-      plan: normalizeCompanyPlan("pro"),
-      user_count: smaCounts.total,
-      premium_users: smaCounts.premium,
-      enterprise_users: smaCounts.enterprise,
-      pro_users: smaCounts.pro,
-      plus_users: smaCounts.plus,
-      free_users: smaCounts.free,
-      created_at: nextCompanies.find((company) => company.name === "SM&A")?.created_at || null,
-      updated_at: nextCompanies.find((company) => company.name === "SM&A")?.updated_at || null,
-    }];
+    const companies = nextCompanies.map((company) => {
+      const counts = companyCounts[company.name] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
+      return {
+        ...company,
+        user_count: counts.total,
+        premium_users: counts.premium,
+        enterprise_users: counts.enterprise,
+        pro_users: counts.pro,
+        plus_users: counts.plus,
+        free_users: counts.free,
+      };
+    });
+    if (!companies.some((company) => company.name === "SM&A")) {
+      const smaCounts = companyCounts["SM&A"] || { total: 0, premium: 0, enterprise: 0, pro: 0, plus: 0, free: 0 };
+      companies.unshift({
+        id: "SM&A",
+        name: "SM&A",
+        plan: normalizeCompanyPlan("empresarial"),
+        user_count: smaCounts.total,
+        premium_users: smaCounts.premium,
+        enterprise_users: smaCounts.enterprise,
+        pro_users: smaCounts.pro,
+        plus_users: smaCounts.plus,
+        free_users: smaCounts.free,
+        created_at: null,
+        updated_at: null,
+      });
+    }
 
     return {
       ...current,
       stats: {
         ...current.stats,
-        smaUsers: normalizedUsers.filter((user) => isPremiumCompany(user.company)).length,
+        smaUsers: normalizedUsers.filter((user) => user.company === "SM&A").length,
       },
       companies,
       companyCounts,
       users: normalizedUsers,
-      smAUsers: normalizedUsers.filter((user) => isPremiumCompany(user.company)),
+      smAUsers: normalizedUsers.filter((user) => user.company === "SM&A"),
       usersWithoutCompany: normalizedUsers.filter((user) => !user.company),
       latestLogins: current.latestLogins.map((login) => normalizedUsers.find((user) => user.id === login.id) || login),
       projects: current.projects.map((project) => ({ ...project, company: companyByUserId.get(project.user_id) || null })),
@@ -296,8 +313,9 @@ export function AdminDashboard() {
     if (!adminToken || !overview) return false;
     const previousOverview = overview;
     const normalizedCompany = company?.trim() || null;
-    const nextCompany = isPremiumCompany(normalizedCompany) ? "SM&A" : null;
-    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: nextCompany, companyPlan: normalizeCompanyPlan(nextCompany ? "pro" : "free") } : user);
+    const nextCompany = normalizedCompany;
+    const selectedCompany = overview.companies.find((item) => item.name === nextCompany || item.id === nextCompany);
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, company: selectedCompany?.name || nextCompany, company_id: selectedCompany?.id || null, companyPlan: normalizeCompanyPlan(selectedCompany?.plan || (nextCompany ? "empresarial" : "free")) } : user);
 
     setCompanySavingUserId(targetUser.id);
     setOverview(rebuildOverviewUsers(overview, nextUsers));
@@ -312,6 +330,32 @@ export function AdminDashboard() {
         },
         body: JSON.stringify({ company: nextCompany }),
       });
+
+      if (response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const appliedCompany = typeof payload.company === "string" && payload.company.trim() ? payload.company.trim() : null;
+        const appliedCompanyId = typeof payload.company_id === "string" && payload.company_id.trim() ? payload.company_id.trim() : null;
+        const appliedPlan = normalizeCompanyPlan(payload.plan || "free");
+        const syncedUsers = previousOverview.users.map((user) => user.id === targetUser.id ? {
+          ...user,
+          company: appliedCompany,
+          company_id: appliedCompanyId,
+          companyPlan: payload.planSource === "company" ? "empresarial" : normalizeCompanyPlan(selectedCompany?.plan || "free"),
+          is_premium: Boolean(payload.premium),
+          plan: appliedPlan,
+          premium: Boolean(payload.premium),
+        } : user);
+
+        setOverview(rebuildOverviewUsers(previousOverview, syncedUsers));
+        console.log("[admin] usuário vinculado à empresa", {
+          email: targetUser.email,
+          empresa: appliedCompany,
+          plano_aplicado: appliedPlan.toUpperCase(),
+        });
+        showToast(appliedCompany ? `Usuário ${targetUser.email} vinculado à ${appliedCompany}. Plano aplicado: ${appliedPlan.toUpperCase()}.` : "Usuário removido da empresa.");
+        setMessage(appliedCompany ? `Empresa atualizada. Plano aplicado: ${appliedPlan.toUpperCase()}.` : "Usuário removido da empresa.");
+        return true;
+      }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -478,8 +522,8 @@ export function AdminDashboard() {
       return;
     }
 
-    setMessage("Projeto excluido com sucesso.");
-    showToast("Projeto excluido com sucesso.");
+    setMessage("Projeto excluído com sucesso.");
+    showToast("Projeto excluído com sucesso.");
   };
 
   if (loading) {
@@ -492,13 +536,13 @@ export function AdminDashboard() {
     return <main className="grid min-h-screen place-items-center bg-[#080c0b] p-6 text-[#e8efeb]">
       <div className="max-w-xl rounded-3xl border border-[#33413a] bg-[#101613] p-6 text-center">
         <ShieldAlert className="mx-auto text-[#b7f34a]" />
-        <h1 className="mt-4 text-xl font-black">Admin indisponivel</h1>
+        <h1 className="mt-4 text-xl font-black">Admin indisponível</h1>
         <p className="mt-2 text-sm leading-6 text-[#9caaa3]">{message}</p>
       </div>
     </main>;
   }
 
-  const companyNames = ["SM&A", "Sem empresa"];
+  const companyNames = Array.from(new Set(["SM&A", ...overview.companies.map((company) => company.name), "Sem empresa"]));
   const adminCompanies = [...overview.companies].sort((a, b) => a.name.localeCompare(b.name));
   const filteredUsers = companyFilter === "all" ? overview.users : backendFilteredUsers || overview.users.filter((user) => (user.company || "Sem empresa") === companyFilter);
   const filteredProjects = companyFilter === "all" ? overview.projects : backendFilteredProjects || overview.projects.filter((project) => (project.company || "Sem empresa") === companyFilter);
@@ -542,7 +586,7 @@ export function AdminDashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="truncate text-sm font-black text-[#e8efeb]">{company.name}</div>
-                  <div className="mt-2 inline-flex rounded-full bg-[#b7f34a] px-2 py-1 text-[10px] font-black uppercase text-[#09120d]">PRO AUTOMATICO</div>
+                  <div className="mt-2 inline-flex rounded-full bg-[#b7f34a] px-2 py-1 text-[10px] font-black uppercase text-[#09120d]">PRO AUTOMÁTICO</div>
                   <div className="mt-2 text-xs text-[#8c9a93]">{company.user_count} usuários · {company.premium_users} premium</div>
                   <div className="mt-2 text-[10px] font-bold uppercase tracking-[.12em] text-[#6f7d75]">
                     {company.pro_users || 0} pro · {company.plus_users || 0} plus · {company.free_users || 0} free
@@ -550,7 +594,7 @@ export function AdminDashboard() {
                 </div>
                 <CreditCard className="text-[#b7f34a]" size={16} />
               </div>
-              <div className="mt-4 rounded-xl border border-[#26312c] bg-[#080c0b] p-3 text-xs leading-5 text-[#8c9a93]">Não há planos por empresa nesta versão. Apenas vincule ou remova usuários da SM&A.</div>
+              <div className="mt-4 rounded-xl border border-[#26312c] bg-[#080c0b] p-3 text-xs leading-5 text-[#8c9a93]">Empresas com plano empresarial concedem PRO automaticamente aos usuários vinculados pelo admin.</div>
             </div>) : <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 text-sm text-[#8c9a93]">Nenhuma empresa criada ainda.</div>}
           </div>
         </section>
@@ -559,7 +603,7 @@ export function AdminDashboard() {
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="text-sm font-black uppercase tracking-[.14em]">Filtro por empresa</h2>
-              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuários e projetos no backend por tenant/company.</p>
+              <p className="mt-1 text-xs text-[#7c8b83]">Filtra usuários e projetos no backend por empresa.</p>
             </div>
             <label className="text-xs font-bold text-[#aab8b1]">Empresa
               <select value={companyFilter} onChange={(event) => {
@@ -589,7 +633,7 @@ export function AdminDashboard() {
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-black uppercase tracking-[.14em]">Ultimos logins</h2>
+              <h2 className="text-sm font-black uppercase tracking-[.14em]">Últimos logins</h2>
               <p className="mt-1 text-xs text-[#7c8b83]">Usuários com acesso recente ao SaaS</p>
             </div>
             <Clock3 className="text-[#b7f34a]" size={20} />

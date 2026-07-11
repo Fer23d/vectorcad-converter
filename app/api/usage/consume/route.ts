@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { daily3dLimitForPlan, dailyUsageLimitForPlan, normalizeCompanyPlan, planAllowsDxf, planAllowsUnlimited3d, planHasPremiumAccess, planRemovesAds, resolveUserPlan } from "@/lib/access-control";
+import { daily3dLimitForPlan, dailyUsageLimitForPlan, planAllowsDxf, planAllowsUnlimited3d, planHasPremiumAccess, planRemovesAds } from "@/lib/access-control";
+import { getUserEffectivePlan } from "@/lib/effective-plan";
 import { sendDailyLimitReachedEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
@@ -7,6 +8,7 @@ type UsageAction = "vectorize" | "export_svg" | "export_png" | "export3d" | "exp
 type UsageProfileRow = {
   user_id?: string;
   company?: string | null;
+  company_id?: string | null;
   plan?: string | null;
   is_premium?: boolean | null;
   usage_count_today?: number | null;
@@ -68,9 +70,13 @@ async function getUsageContext(request: Request) {
 
   const adminClient = createSupabaseAdminClient();
   const user = userData.user;
+  if (!user.email_confirmed_at) {
+    return { response: NextResponse.json({ error: "Confirme seu e-mail para usar o VectorCAD." }, { status: 403 }) };
+  }
+
   const { data: profileRow, error: profileError } = await adminClient
     .from("profiles")
-    .select("user_id,company,plan,is_premium,usage_count_today,export3d_count_today,last_usage_reset")
+    .select("user_id,company,company_id,plan,is_premium,usage_count_today,export3d_count_today,last_usage_reset")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -79,18 +85,30 @@ async function getUsageContext(request: Request) {
   }
 
   const profile = (profileRow || {}) as UsageProfileRow;
-  const company = typeof profile.company === "string" ? profile.company : String(user.user_metadata?.company || "");
-  const basePlan = normalizeCompanyPlan(String(profile.plan || user.user_metadata?.plan || "free"));
-  const plan = resolveUserPlan({ company, plan: basePlan, is_premium: Boolean(profile.is_premium || user.user_metadata?.is_premium) });
-
+  const effective = await getUserEffectivePlan(adminClient, user.id, { user, profile });
   const reset = !sameDay(profile.last_usage_reset);
   const currentUsage = reset ? 0 : Number(profile.usage_count_today || 0);
   const current3d = reset ? 0 : Number(profile.export3d_count_today || 0);
-  const usageLimit = dailyUsageLimitForPlan(plan);
-  const export3dLimit = daily3dLimitForPlan(plan);
+  const usageLimit = dailyUsageLimitForPlan(effective.plan);
+  const export3dLimit = daily3dLimitForPlan(effective.plan);
   const now = new Date().toISOString();
 
-  return { adminClient, basePlan, company, current3d, currentUsage, export3dLimit, plan, profile, reset, usageLimit, user, now };
+  return {
+    adminClient,
+    basePlan: effective.individualPlan,
+    company: effective.company,
+    companyId: effective.companyId,
+    current3d,
+    currentUsage,
+    effective,
+    export3dLimit,
+    plan: effective.plan,
+    profile,
+    reset,
+    usageLimit,
+    user,
+    now,
+  };
 }
 
 type UsageContext = Exclude<Awaited<ReturnType<typeof getUsageContext>>, { response: NextResponse }>;
@@ -103,6 +121,9 @@ function usagePayload(context: UsageContext, usage: number, export3d: number) {
     usageLimit: context.usageLimit,
     export3d,
     export3dLimit: context.export3dLimit,
+    company: context.company,
+    company_id: context.companyId,
+    planSource: context.effective.source,
     adsVisible: !planRemovesAds(context.plan),
     dxfAllowed: planAllowsDxf(context.plan),
     unlimited3d: planAllowsUnlimited3d(context.plan),
@@ -125,18 +146,27 @@ async function persistUsage(context: UsageContext, usage: number, export3d: numb
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  await context.adminClient.from("users").upsert({
+  const publicUserPayload = {
     id: context.user.id,
     email: context.user.email,
     company: context.company || null,
+    company_id: context.companyId || null,
     plan: context.basePlan,
     is_premium: updates.is_premium,
     usage_count_today: usage,
     export3d_count_today: export3d,
     last_usage_reset: updates.last_usage_reset,
     updated_at: updates.updated_at,
-  }, { onConflict: "id" }).then(({ error }) => {
-    if (error && !isMissingTableOrColumn(error)) console.error("[usage] public users sync failed", error);
+  };
+
+  await context.adminClient.from("users").upsert(publicUserPayload, { onConflict: "id" }).then(async ({ error }) => {
+    if (error && isMissingTableOrColumn(error)) {
+      const fallbackPayload: Record<string, unknown> = { ...publicUserPayload };
+      delete fallbackPayload.company_id;
+      await context.adminClient.from("users").upsert(fallbackPayload, { onConflict: "id" });
+      return;
+    }
+    if (error) console.error("[usage] public users sync failed", error);
   });
 
   return null;
@@ -162,7 +192,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || "vectorize") as UsageAction;
   if (!USAGE_ACTIONS.includes(action)) {
-    return NextResponse.json({ error: "Acao de uso invalida." }, { status: 400 });
+    return NextResponse.json({ error: "Ação de uso inválida." }, { status: 400 });
   }
 
   if (context.usageLimit !== null && DAILY_USAGE_ACTIONS.includes(action) && context.currentUsage >= context.usageLimit) {
@@ -170,7 +200,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "export_dxf" && !planAllowsDxf(context.plan)) {
-    return NextResponse.json({ error: "Exportacao DXF completa e recurso do plano PRO ou EMPRESARIAL.", plan: context.plan, usage: context.currentUsage, usageLimit: context.usageLimit }, { status: 402 });
+    return NextResponse.json({ error: "Exportação DXF completa é recurso do plano PRO ou EMPRESARIAL.", plan: context.plan, usage: context.currentUsage, usageLimit: context.usageLimit }, { status: 402 });
   }
 
   if (action === "export3d") {

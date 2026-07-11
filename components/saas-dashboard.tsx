@@ -18,6 +18,8 @@ type UserProfile = {
   name: string | null;
   surname: string | null;
   company: string | null;
+  company_id?: string | null;
+  companyPlan?: CompanyPlan | null;
   terms_accepted?: boolean | null;
   terms_accepted_at?: string | null;
   terms_version?: string | null;
@@ -35,6 +37,9 @@ type UsageSnapshot = {
   usageLimit: number | null;
   export3d: number;
   export3dLimit: number | null;
+  company?: string | null;
+  company_id?: string | null;
+  planSource?: string | null;
   adsVisible?: boolean;
 };
 
@@ -104,6 +109,8 @@ export function SaasDashboard() {
         name: fallbackName.firstName || null,
         surname: fallbackName.lastName || null,
         company: normalizeCompany(String(owner.user_metadata?.company || "")),
+        company_id: typeof owner.user_metadata?.company_id === "string" ? owner.user_metadata.company_id : null,
+        companyPlan: null,
         terms_accepted: fallbackTerms.accepted,
         terms_accepted_at: fallbackTerms.acceptedAt,
         terms_version: fallbackTerms.version,
@@ -117,6 +124,9 @@ export function SaasDashboard() {
       return base ? {
       ...base,
       plan: normalizeCompanyPlan(snapshot.plan),
+      company: typeof snapshot.company === "string" ? snapshot.company : base.company,
+      company_id: typeof snapshot.company_id === "string" ? snapshot.company_id : base.company_id,
+      companyPlan: snapshot.planSource === "company" ? "empresarial" : null,
       usage_count_today: snapshot.usage,
       export3d_count_today: snapshot.export3d,
       last_usage_reset: new Date().toISOString(),
@@ -173,6 +183,7 @@ export function SaasDashboard() {
         name: fallback.firstName || null,
         surname: fallback.lastName || null,
         company: metadataCompany,
+        company_id: typeof currentUser.user_metadata?.company_id === "string" ? currentUser.user_metadata.company_id : null,
         terms_accepted: terms.accepted,
         terms_accepted_at: terms.acceptedAt,
         terms_version: terms.version,
@@ -184,6 +195,7 @@ export function SaasDashboard() {
       });
       setProfileCompany(metadataCompany || "");
       setProfileLoading(false);
+      refreshUsage(currentUser);
       return;
     }
 
@@ -194,6 +206,7 @@ export function SaasDashboard() {
         name: profileRow.name || fallback.firstName || null,
         surname: profileRow.surname || fallback.lastName || null,
         company: profileRow.company || metadataCompany,
+        company_id: typeof profileRow.company_id === "string" ? profileRow.company_id : typeof currentUser.user_metadata?.company_id === "string" ? currentUser.user_metadata.company_id : null,
         terms_accepted: Boolean(profileRow.terms_accepted || terms.accepted),
         terms_accepted_at: typeof profileRow.terms_accepted_at === "string" ? profileRow.terms_accepted_at : terms.acceptedAt,
         terms_version: typeof profileRow.terms_version === "string" ? profileRow.terms_version : terms.version,
@@ -209,6 +222,7 @@ export function SaasDashboard() {
       setProfileLastName(nextProfile.surname || "");
       setProfileCompany(nextProfile.company || "");
       setProfileLoading(false);
+      refreshUsage(currentUser);
       return;
     }
 
@@ -217,6 +231,7 @@ export function SaasDashboard() {
       name: fallback.firstName || null,
       surname: fallback.lastName || null,
       company: metadataCompany,
+      company_id: typeof currentUser.user_metadata?.company_id === "string" ? currentUser.user_metadata.company_id : null,
       terms_accepted: terms.accepted,
       terms_accepted_at: terms.acceptedAt,
       terms_version: terms.version,
@@ -230,7 +245,8 @@ export function SaasDashboard() {
     setProfile(createdProfile);
     setProfileCompany(metadataCompany || "");
     setProfileLoading(false);
-  }, []);
+    refreshUsage(currentUser);
+  }, [refreshUsage]);
 
   const openProject = useCallback(async (projectId: string) => {
     if (!supabase || !user) return;
@@ -330,6 +346,10 @@ export function SaasDashboard() {
       setProfileLastName(name.lastName);
       setAuthLoading(false);
       if (data.user) {
+        if (!data.user.email_confirmed_at) {
+          router.replace(`/verify-email?email=${encodeURIComponent(data.user.email || "")}`);
+          return;
+        }
         loadProjects(data.user.id);
         loadProfile(data.user);
         refreshUsage(data.user);
@@ -349,6 +369,10 @@ export function SaasDashboard() {
       setActiveProject(null);
       setProjects([]);
       if (session?.user) {
+        if (!session.user.email_confirmed_at) {
+          router.replace(`/verify-email?email=${encodeURIComponent(session.user.email || "")}`);
+          return;
+        }
         loadProjects(session.user.id);
         loadProfile(session.user);
         refreshUsage(session.user);

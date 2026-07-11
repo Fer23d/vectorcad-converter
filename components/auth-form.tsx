@@ -5,26 +5,32 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Box, Eye, EyeOff, X } from "lucide-react";
 import { normalizeCompany } from "@/lib/access-control";
+import { isTemporaryEmail, normalizeEmail, temporaryEmailMessage } from "@/lib/auth/email-domain";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AuthMode = "login" | "signup";
 
-function authMessage(mode: AuthMode, message: string) {
+function authMessage(message: string) {
   const lowerMessage = message.toLowerCase();
 
   if (lowerMessage.includes("invalid login credentials")) {
     return "E-mail ou senha incorretos. Se ainda não criou conta, clique em Criar conta.";
   }
 
-  if (mode === "signup" && lowerMessage.includes("already")) {
+  if (lowerMessage.includes("email not confirmed")) {
+    return "Confirme seu e-mail para acessar o VectorCAD.";
+  }
+
+  if (lowerMessage.includes("already")) {
     return "Esse e-mail já existe. Tente fazer login.";
   }
 
-  if (lowerMessage.includes("email not confirmed")) {
-    return "A confirmação de e-mail ainda está ativa no Supabase. Desative em Auth > Sign In / Providers para liberar login imediato.";
-  }
-
   return message;
+}
+
+function storePendingVerification(email: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("vectorcad_pending_verification_email", normalizeEmail(email));
 }
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
@@ -46,13 +52,20 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     const client = supabase;
     if (!client) return;
 
-    client.auth.getSession().then(({ data }) => {
+    client.auth.getSession().then(async ({ data }) => {
       setLoading(false);
-      if (data.session) router.replace("/dashboard");
+      if (!data.session) return;
+
+      const { data: userData } = await client.auth.getUser();
+      if (userData.user?.email_confirmed_at) router.replace("/dashboard");
+      else router.replace("/verify-email");
     });
 
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/dashboard");
+    const { data: listener } = client.auth.onAuthStateChange(async (_event, session) => {
+      if (!session) return;
+      const { data: userData } = await client.auth.getUser();
+      if (userData.user?.email_confirmed_at) router.replace("/dashboard");
+      else router.replace("/verify-email");
     });
 
     return () => listener.subscription.unsubscribe();
@@ -63,74 +76,82 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     const client = supabase;
     if (!client) return;
 
+    const normalizedEmail = normalizeEmail(email);
+    if (isTemporaryEmail(normalizedEmail)) {
+      setMessage(temporaryEmailMessage());
+      return;
+    }
+
     if (mode === "signup" && !termsAccepted) {
       setMessage("Você precisa aceitar os Termos de Uso e a Política de Privacidade para criar sua conta.");
       return;
     }
 
     setLoading(true);
-    const acceptedAt = new Date().toISOString();
 
-    const { data, error } = mode === "login"
-      ? await client.auth.signInWithPassword({ email, password })
-      : await client.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName.trim(),
-            last_name: lastName.trim(),
-            company: normalizeCompany(company),
-            terms_accepted: true,
-            terms_accepted_at: acceptedAt,
-            terms_version: "1.0",
-          },
-        },
-      });
-
-    setLoading(false);
-    if (error) {
-      setMessage(authMessage(mode, error.message));
-      return;
-    }
-
-    if (mode === "signup" && data.session?.access_token) {
-      if (data.user) {
-        await client.from("profiles").upsert({
-          user_id: data.user.id,
-          name: firstName.trim() || null,
-          surname: lastName.trim() || null,
+    if (mode === "signup") {
+      const acceptedAt = new Date().toISOString();
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           company: normalizeCompany(company),
+          email: normalizedEmail,
+          password,
           terms_accepted: true,
           terms_accepted_at: acceptedAt,
           terms_version: "1.0",
-        }, { onConflict: "user_id" });
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      setLoading(false);
+
+      if (!response.ok) {
+        setMessage(payload.error || "Não foi possível criar sua conta.");
+        return;
       }
 
-      fetch("/api/email/welcome", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${data.session.access_token}` },
-      }).catch(() => null);
-    }
-
-    if (data.session) {
-      setMessage(mode === "signup" ? "Conta criada. Abrindo dashboard..." : "Login realizado.");
-      router.replace("/dashboard");
+      storePendingVerification(normalizedEmail);
+      setMessage("Conta criada. Enviamos um link de confirmação para o seu e-mail.");
+      router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
       return;
     }
 
-    setMessage("Conta criada, mas o Supabase ainda exige confirmação de e-mail. Desative essa opção no painel para login imediato.");
+    const { data, error } = await client.auth.signInWithPassword({ email: normalizedEmail, password });
+    setLoading(false);
+
+    if (error) {
+      if (error.message.toLowerCase().includes("email not confirmed")) {
+        storePendingVerification(normalizedEmail);
+        router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+        return;
+      }
+
+      setMessage(authMessage(error.message));
+      return;
+    }
+
+    if (!data.user?.email_confirmed_at) {
+      storePendingVerification(normalizedEmail);
+      router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
+      return;
+    }
+
+    setMessage("Login realizado.");
+    router.replace("/dashboard");
   };
 
   const openPasswordReset = () => {
-    setResetEmail(email.trim().toLowerCase());
+    setResetEmail(normalizeEmail(email));
     setShowResetModal(true);
     setMessage("Informe seu e-mail para receber um link seguro de redefinição.");
   };
 
   const requestPasswordReset = async (event?: React.FormEvent) => {
     event?.preventDefault();
-    const normalizedEmail = resetEmail.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(resetEmail);
     if (!normalizedEmail) {
       setMessage("Digite seu e-mail no modal para receber o link de redefinição.");
       return;
@@ -180,13 +201,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </button>
       </div>}
       {mode === "signup" && <label className="mb-5 flex items-start gap-3 rounded-2xl border border-[#26312c] bg-[#0b100e] p-4 text-xs leading-5 text-[#aab8b1]">
-        <input
-          checked={termsAccepted}
-          onChange={(event) => setTermsAccepted(event.target.checked)}
-          className="mt-1 h-4 w-4 accent-[#b7f34a]"
-          type="checkbox"
-          required
-        />
+        <input checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1 h-4 w-4 accent-[#b7f34a]" type="checkbox" required />
         <span>
           Li e concordo com os{" "}
           <Link href="/termos" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Termos de Uso</Link>

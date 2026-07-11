@@ -1,6 +1,7 @@
 import { createElement, type ReactElement } from "react";
 import { Resend } from "resend";
 import { DailyLimitReachedEmail } from "@/emails/daily-limit-reached-email";
+import { EmailConfirmationEmail } from "@/emails/email-confirmation-email";
 import { PaymentApprovedEmail } from "@/emails/payment-approved-email";
 import { WelcomeEmail } from "@/emails/welcome-email";
 
@@ -160,6 +161,17 @@ export async function sendWelcomeEmail({ to, name }: { to: string; name: string 
     subject: "Bem-vindo ao VectorCAD \u{1F680} Sua \u00e1rea de projetos est\u00e1 pronta",
     react: createElement(WelcomeEmail, { name: displayName, dashboardUrl: getAppUrl("/dashboard") }),
     text: `Olá, ${displayName}!\n\nSeja bem-vindo ao VectorCAD.\n\nSua conta foi criada com sucesso e agora você tem acesso a uma plataforma desenvolvida para facilitar análises, organização e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informações técnicas do projeto\n- Gerar relatórios organizados\n- Centralizar seus projetos em um único workspace\n\nSeu próximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos técnicos, unindo engenharia, automação e inteligência.\n\nAtenciosamente,\nEquipe VectorCAD\n\nASS Grupo ShiftCore\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
+  });
+}
+
+export async function sendEmailConfirmationEmail({ to, name, confirmUrl }: { to: string; name: string; confirmUrl: string }) {
+  const displayName = name || "usuário";
+
+  return sendVectorCadEmail({
+    to,
+    subject: "Confirme sua conta VectorCAD 🚀",
+    react: createElement(EmailConfirmationEmail, { name: displayName, confirmUrl }),
+    text: `Olá, ${displayName}.\n\nSua conta VectorCAD foi criada com sucesso.\n\nPara começar a utilizar a plataforma, confirme seu endereço de e-mail clicando no link abaixo:\n${confirmUrl}\n\nApós a confirmação, você terá acesso ao seu workspace.\n\nVectorCAD\nA inteligência aplicada aos seus projetos de engenharia.\n\nASS Grupo ShiftCore`,
   });
 }
 

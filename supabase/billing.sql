@@ -56,6 +56,7 @@ create table if not exists public.users (
   email text,
   plan text not null default 'free' check (plan in ('free', 'plus', 'pro', 'empresarial', 'enterprise')),
   company text,
+  company_id uuid references public.companies(id) on delete set null,
   is_premium boolean not null default false,
   usage_count_today integer not null default 0,
   export3d_count_today integer not null default 0,
@@ -70,6 +71,9 @@ create index if not exists users_plan_idx
 
 create index if not exists users_company_idx
   on public.users (company);
+
+create index if not exists users_company_id_idx
+  on public.users (company_id);
 
 alter table public.users enable row level security;
 

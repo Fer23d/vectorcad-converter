@@ -16,9 +16,15 @@ export function ProtectedEditor() {
       return;
     }
 
-    client.auth.getSession().then(({ data }) => {
+    client.auth.getSession().then(async ({ data }) => {
       if (!data.session) {
         router.replace("/login");
+        return;
+      }
+
+      const { data: userData } = await client.auth.getUser();
+      if (!userData.user?.email_confirmed_at) {
+        router.replace(`/verify-email?email=${encodeURIComponent(userData.user?.email || "")}`);
         return;
       }
 

@@ -4,6 +4,7 @@ create table if not exists public.profiles (
   name text,
   surname text,
   company text,
+  company_id uuid references public.companies(id) on delete set null,
   terms_accepted boolean not null default false,
   terms_accepted_at timestamptz,
   terms_version text,
@@ -13,6 +14,9 @@ create table if not exists public.profiles (
 
 create index if not exists profiles_company_idx
   on public.profiles (company);
+
+create index if not exists profiles_company_id_idx
+  on public.profiles (company_id);
 
 create index if not exists profiles_user_id_idx
   on public.profiles (user_id);
