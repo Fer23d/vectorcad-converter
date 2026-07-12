@@ -9,6 +9,12 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type AdminOverview = {
   role?: AdminRole;
+  adminUser?: {
+    id: string;
+    email?: string | null;
+    name: string;
+    role: AdminRole;
+  };
   stats: {
     totalUsers: number;
     totalProjects: number;
@@ -538,6 +544,8 @@ export function AdminDashboard() {
   const filteredUsers = companyFilter === "all" ? overview.users : backendFilteredUsers || overview.users.filter((user) => (user.company || "Sem empresa") === companyFilter);
   const filteredProjects = companyFilter === "all" ? overview.projects : backendFilteredProjects || overview.projects.filter((project) => (project.company || "Sem empresa") === companyFilter);
   const premiumByCompany = companyNames.filter((company) => (overview.companyCounts[company]?.premium || 0) > 0 || isPremiumCompany(company));
+  const adminDisplayName = overview.adminUser?.name || "Administrador VectorCAD";
+  const adminDisplayRole = overview.adminUser?.role || overview.role || "ADMIN";
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
     <header className="border-b border-[#26312c] bg-[#0d1210] px-5 py-5">
@@ -546,8 +554,8 @@ export function AdminDashboard() {
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><ShieldCheck size={22} /></div>
             <div>
-              <h1 className="text-xl font-black tracking-[-.03em]">Admin VectorCAD</h1>
-              <p className="text-sm text-[#8c9a93]">Painel global do sistema</p>
+              <h1 className="text-xl font-black tracking-[-.03em]">{adminDisplayName}</h1>
+              <p className="text-sm text-[#8c9a93]">Permissão: <span className="font-black text-[#b7f34a]">{adminDisplayRole}</span></p>
             </div>
           </div>
         </div>

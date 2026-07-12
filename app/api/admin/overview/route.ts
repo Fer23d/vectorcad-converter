@@ -13,7 +13,10 @@ export async function GET(request: Request) {
   if ("response" in adminAuth) return adminAuth.response;
 
   const requestedCompany = normalizeCompany(new URL(request.url).searchParams.get("company"));
-  const { adminClient, role } = adminAuth;
+  const { adminClient, role, user: adminUser } = adminAuth;
+  const adminFirstName = String(adminUser.user_metadata?.first_name || "").trim();
+  const adminLastName = String(adminUser.user_metadata?.last_name || "").trim();
+  const adminName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Administrador VectorCAD";
   const [
     { data: usersData, error: usersError },
     { data: projectsData, error: projectsError },
@@ -139,6 +142,12 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     role,
+    adminUser: {
+      id: adminUser.id,
+      email: adminUser.email,
+      name: adminName,
+      role,
+    },
     stats: {
       totalUsers: users.length,
       totalProjects: projects.length,

@@ -23,6 +23,32 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
 });
 
+async function syncPublicRole(userId, email) {
+  const now = new Date().toISOString();
+  await supabase.from("profiles").upsert({
+    user_id: userId,
+    name: "Admin",
+    surname: "VectorCAD",
+    admin_role: "SUPER_ADMIN",
+    updated_at: now,
+  }, { onConflict: "user_id" }).then(({ error }) => {
+    if (error && error.code !== "42P01" && error.code !== "42703" && error.code !== "PGRST205") {
+      console.warn(`Aviso ao sincronizar profiles: ${error.message}`);
+    }
+  });
+
+  await supabase.from("users").upsert({
+    id: userId,
+    email,
+    admin_role: "SUPER_ADMIN",
+    updated_at: now,
+  }, { onConflict: "id" }).then(({ error }) => {
+    if (error && error.code !== "42P01" && error.code !== "42703" && error.code !== "PGRST205") {
+      console.warn(`Aviso ao sincronizar users: ${error.message}`);
+    }
+  });
+}
+
 const { data: existingUsers, error: listError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
 if (listError) {
   console.error(listError.message);
@@ -44,6 +70,7 @@ if (existing) {
     process.exit(1);
   }
 
+  await syncPublicRole(existing.id, adminEmail);
   console.log(`Admin atualizado: ${adminEmail} (${existing.id})`);
   process.exit(0);
 }
@@ -61,4 +88,5 @@ if (error) {
   process.exit(1);
 }
 
+await syncPublicRole(data.user.id, adminEmail);
 console.log(`Admin criado: ${adminEmail} (${data.user.id})`);
