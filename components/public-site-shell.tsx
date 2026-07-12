@@ -37,25 +37,33 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
       </header>
       {children}
       <footer className="border-t border-[#1c2822] bg-[#050807]">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 text-sm text-[#94a49c] md:grid-cols-[1.3fr_.7fr_.7fr] lg:px-8">
-          <div>
-            <div className="text-lg font-black tracking-[.12em] text-[#edf5f0]">VectorCAD</div>
-            <p className="mt-3 max-w-xl leading-6">A inteligência aplicada aos seus projetos de engenharia.</p>
-            <p className="mt-5 text-sm font-black text-[#b7f34a]">Grupo ShiftCore</p>
-            <p className="mt-1 text-xs leading-5 text-[#94a49c]">Tecnologia, inovação e soluções inteligentes.</p>
+        <div className="mx-auto max-w-7xl px-4 py-10 lg:px-8">
+          <div className="grid gap-8 text-center text-sm text-[#94a49c] md:grid-cols-[1fr_auto_1fr] md:items-center md:text-left">
+            <div>
+              <div className="text-lg font-black tracking-[.12em] text-[#b7f34a]">VectorCAD</div>
+              <p className="mt-3 leading-6">A inteligência aplicada aos seus projetos de engenharia.</p>
+            </div>
+            <div className="mx-auto hidden h-16 w-px bg-[#304238] md:block" aria-hidden="true" />
+            <div className="md:text-right">
+              <div className="text-sm font-black tracking-[.08em] text-[#b7f34a]">Grupo ShiftCore</div>
+              <p className="mt-2 text-xs leading-5">Tecnologia, inovação e soluções inteligentes.</p>
+            </div>
           </div>
-          <div className="grid gap-2">
-            <div className="font-black text-[#edf5f0]">Institucional</div>
-            <Link href="/blog" className="hover:text-[#b7f34a]">Blog</Link>
-            <Link href="/sobre" className="hover:text-[#b7f34a]">Sobre</Link>
-            <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
-          </div>
-          <div className="grid gap-2">
-            <div className="font-black text-[#edf5f0]">Legal</div>
-            <Link href="/termos" className="hover:text-[#b7f34a]">Termos de Uso</Link>
-            <Link href="/privacidade" className="hover:text-[#b7f34a]">Política de Privacidade</Link>
-            <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
-            <Link href="/ads.txt" className="hover:text-[#b7f34a]">ads.txt</Link>
+
+          <div className="mt-10 grid gap-8 border-t border-[#1c2822] pt-8 text-center text-sm text-[#94a49c] sm:grid-cols-2 sm:text-left">
+            <div className="grid gap-2 sm:justify-items-start">
+              <div className="font-black text-[#edf5f0]">Institucional</div>
+              <Link href="/blog" className="hover:text-[#b7f34a]">Blog</Link>
+              <Link href="/sobre" className="hover:text-[#b7f34a]">Sobre</Link>
+              <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
+            </div>
+            <div className="grid gap-2 sm:justify-items-end">
+              <div className="font-black text-[#edf5f0]">Legal</div>
+              <Link href="/termos" className="hover:text-[#b7f34a]">Termos de Uso</Link>
+              <Link href="/privacidade" className="hover:text-[#b7f34a]">Política de Privacidade</Link>
+              <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
+              <Link href="/ads.txt" className="hover:text-[#b7f34a]">ads.txt</Link>
+            </div>
           </div>
         </div>
       </footer>
