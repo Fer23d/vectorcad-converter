@@ -8,6 +8,7 @@ create table if not exists public.profiles (
   terms_accepted boolean not null default false,
   terms_accepted_at timestamptz,
   terms_version text,
+  onboarding_completed boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

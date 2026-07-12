@@ -9,6 +9,8 @@ import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { OnboardingModal } from "@/components/onboarding-modal";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
@@ -23,6 +25,7 @@ type UserProfile = {
   terms_accepted?: boolean | null;
   terms_accepted_at?: string | null;
   terms_version?: string | null;
+  onboarding_completed?: boolean | null;
   plan: CompanyPlan;
   is_premium: boolean;
   payment_status: string | null;
@@ -88,6 +91,8 @@ export function SaasDashboard() {
   const [profileMessage, setProfileMessage] = useState("");
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsMessage, setTermsMessage] = useState("");
+  const [onboardingSaving, setOnboardingSaving] = useState(false);
+  const [onboardingMessage, setOnboardingMessage] = useState("");
   const [showUserId, setShowUserId] = useState(false);
   const [userIdCopied, setUserIdCopied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CadProject | null>(null);
@@ -119,6 +124,7 @@ export function SaasDashboard() {
         terms_accepted: fallbackTerms.accepted,
         terms_accepted_at: fallbackTerms.acceptedAt,
         terms_version: fallbackTerms.version,
+        onboarding_completed: false,
         plan: normalizeCompanyPlan(String(owner.user_metadata?.plan || "free")),
         is_premium: Boolean(owner.user_metadata?.is_premium),
         payment_status: String(owner.user_metadata?.payment_status || "none"),
@@ -192,6 +198,7 @@ export function SaasDashboard() {
         terms_accepted: terms.accepted,
         terms_accepted_at: terms.acceptedAt,
         terms_version: terms.version,
+        onboarding_completed: false,
         plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(currentUser.user_metadata?.is_premium),
         payment_status: String(currentUser.user_metadata?.payment_status || "none"),
@@ -215,6 +222,7 @@ export function SaasDashboard() {
         terms_accepted: Boolean(profileRow.terms_accepted || terms.accepted),
         terms_accepted_at: typeof profileRow.terms_accepted_at === "string" ? profileRow.terms_accepted_at : terms.acceptedAt,
         terms_version: typeof profileRow.terms_version === "string" ? profileRow.terms_version : terms.version,
+        onboarding_completed: Boolean(profileRow.onboarding_completed),
         plan: normalizeCompanyPlan(profileRow.plan || String(currentUser.user_metadata?.plan || "free")),
         is_premium: Boolean(profileRow.is_premium || currentUser.user_metadata?.is_premium),
         payment_status: profileRow.payment_status || String(currentUser.user_metadata?.payment_status || "none"),
@@ -240,6 +248,7 @@ export function SaasDashboard() {
       terms_accepted: terms.accepted,
       terms_accepted_at: terms.acceptedAt,
       terms_version: terms.version,
+      onboarding_completed: false,
       plan: normalizeCompanyPlan(String(currentUser.user_metadata?.plan || "free")),
       is_premium: Boolean(currentUser.user_metadata?.is_premium),
       payment_status: String(currentUser.user_metadata?.payment_status || "none"),
@@ -307,6 +316,27 @@ export function SaasDashboard() {
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
     setProjectSaveState("saved");
   }, [projects.length, user]);
+
+  const startFirstProject = useCallback(async () => {
+    if (!supabase || !user) return;
+    setOnboardingSaving(true);
+    setOnboardingMessage("");
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ onboarding_completed: true })
+      .eq("user_id", user.id);
+
+    if (error) {
+      setOnboardingSaving(false);
+      setOnboardingMessage(`Não foi possível salvar seu progresso: ${error.message}`);
+      return;
+    }
+
+    setProfile((current) => current ? { ...current, onboarding_completed: true } : current);
+    setOnboardingSaving(false);
+    await createProject();
+  }, [createProject, user]);
 
   const handleProjectChange = useCallback((data: CadProjectData) => {
     const projectId = editorProjectId.current;
@@ -582,6 +612,9 @@ export function SaasDashboard() {
 
   const sortedProjects = useMemo(() => [...projects].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [projects]);
   const hasAcceptedCurrentTerms = Boolean(profile?.terms_accepted && profile.terms_version === CURRENT_TERMS_VERSION);
+  const showOnboarding = Boolean(profile && !profile.onboarding_completed);
+  const hasFirstFile = projects.some((project) => Boolean(project.data?.sourceImageDataUrl));
+  const hasFirstAnalysis = projects.some((project) => Boolean(project.data?.document?.paths?.length));
 
   if (!canUseSupabase) {
     return <main className="min-h-screen bg-[#080c0b] p-6 text-[#e8efeb]">
@@ -634,6 +667,7 @@ export function SaasDashboard() {
   }
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">
+    {showOnboarding && <OnboardingModal saving={onboardingSaving} message={onboardingMessage} onStart={() => { void startFirstProject(); }} />}
     <header className={`sticky top-0 z-40 border-b border-[#26312c] bg-[#080c0b]/95 backdrop-blur transition-all duration-200 ${headerCollapsed ? "shadow-lg shadow-black/20" : ""}`}>
       <div className={`grid gap-3 px-3 transition-all duration-200 lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:px-5 ${headerCollapsed ? "min-h-12 grid-cols-[auto_1fr_auto] py-1.5" : "grid-cols-1 py-4"}`}>
         <div className={headerCollapsed ? "min-w-0 lg:justify-self-start" : "lg:justify-self-start"}>
@@ -697,6 +731,15 @@ export function SaasDashboard() {
         />
       </div>
 
+      <div className="mb-6">
+        <OnboardingChecklist
+          emailConfirmed={Boolean(user.email_confirmed_at)}
+          hasProject={projects.length > 0}
+          hasFile={hasFirstFile}
+          hasAnalysis={hasFirstAnalysis}
+        />
+      </div>
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {sortedProjects.map((project) => <Fragment key={project.id}>
         <article className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
@@ -718,6 +761,7 @@ export function SaasDashboard() {
       {!sortedProjects.length && <div className="rounded-3xl border border-dashed border-[#34413b] bg-[#101613] p-10 text-center">
         <FolderOpen className="mx-auto text-[#b7f34a]" />
         <h3 className="mt-4 text-lg font-black">Nenhum projeto salvo ainda</h3>
+        <button type="button" onClick={() => { void createProject(); }} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#b7f34a] px-5 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105"><FilePlus2 size={15} /> Criar primeiro projeto</button>
         <p className="mt-2 text-sm text-[#8c9a93]">O editor já está liberado. Crie um projeto para organizar seus arquivos.</p>
       </div>}
     </section>}
