@@ -44,6 +44,14 @@ type CameraAnimation = {
   duration: number;
 };
 
+type SelectedProperties = {
+  name: string | null;
+  type: string | null;
+  layer: string | null;
+  dimensions: string | null;
+  material: string | null;
+};
+
 const styleLabels: Record<ModelStyle, string> = {
   industrial: "Industrial",
   cad_clean: "CAD Clean",
@@ -168,6 +176,57 @@ function disposeObject(object: THREE.Object3D) {
     const materials = Array.isArray(child.material) ? child.material : [child.material];
     materials.forEach((material) => material.dispose());
   });
+}
+
+function getMeshMaterial(object: THREE.Object3D) {
+  if (!(object instanceof THREE.Mesh)) return null;
+  const material = Array.isArray(object.material) ? object.material[0] : object.material;
+  return material instanceof THREE.Material ? material : null;
+}
+
+function restoreSelection(object: THREE.Object3D | null) {
+  if (!object) return;
+  const material = getMeshMaterial(object);
+  const original = object.userData.vectorCadSelectionOriginal as { color?: number; emissive?: number; emissiveIntensity?: number } | undefined;
+  if (material && original) {
+    if ("color" in material && typeof original.color === "number") (material as THREE.MeshStandardMaterial).color.setHex(original.color);
+    if ("emissive" in material && typeof original.emissive === "number") (material as THREE.MeshStandardMaterial).emissive.setHex(original.emissive);
+    if ("emissiveIntensity" in material && typeof original.emissiveIntensity === "number") (material as THREE.MeshStandardMaterial).emissiveIntensity = original.emissiveIntensity;
+  }
+  delete object.userData.vectorCadSelectionOriginal;
+}
+
+function highlightSelection(object: THREE.Object3D) {
+  const material = getMeshMaterial(object);
+  if (!material) return;
+  const standardMaterial = material as THREE.MeshStandardMaterial;
+  object.userData.vectorCadSelectionOriginal = {
+    color: "color" in material ? standardMaterial.color.getHex() : undefined,
+    emissive: "emissive" in material ? standardMaterial.emissive.getHex() : undefined,
+    emissiveIntensity: "emissiveIntensity" in material ? standardMaterial.emissiveIntensity : undefined,
+  };
+  if ("emissive" in material) standardMaterial.emissive.setHex(0xb7f34a);
+  if ("emissiveIntensity" in material) standardMaterial.emissiveIntensity = 0.72;
+}
+
+function getSelectedProperties(object: THREE.Object3D, unit?: string): SelectedProperties {
+  const box = new THREE.Box3().setFromObject(object);
+  const dimensions = box.isEmpty() ? null : (() => {
+    const size = box.getSize(new THREE.Vector3());
+    const format = (value: number) => value.toFixed(2);
+    return `${format(size.x)} × ${format(size.y)} × ${format(size.z)} ${unit || ""}`.trim();
+  })();
+  const material = getMeshMaterial(object);
+  const materialLabel = material
+    ? `${material.type}${"color" in material ? ` • #${(material as THREE.MeshStandardMaterial).color.getHexString()}` : ""}`
+    : null;
+  return {
+    name: object.name || null,
+    type: object.type || null,
+    layer: typeof object.userData.layer === "string" ? object.userData.layer : null,
+    dimensions,
+    material: materialLabel,
+  };
 }
 
 function cleanPathData(pathData: string) {
@@ -376,11 +435,12 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   return model;
 }
 
-export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
+export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps) {
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);
   const cameraAnimation = useRef<CameraAnimation | null>(null);
+  const selectedObject = useRef<THREE.Object3D | null>(null);
   const [height, setHeight] = useState(5);
   const [enhanced, setEnhanced] = useState(false);
   const [aiClean, setAiClean] = useState(false);
@@ -389,7 +449,14 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
   const [qualityRun, setQualityRun] = useState(0);
   const [loading, setLoading] = useState(() => Boolean(svg));
   const [hasGeometry, setHasGeometry] = useState(false);
+  const [selectedProperties, setSelectedProperties] = useState<SelectedProperties | null>(null);
   const [message, setMessage] = useState("Clique e arraste para girar. Use o scroll para aproximar.");
+
+  const clearSelection = useCallback(() => {
+    restoreSelection(selectedObject.current);
+    selectedObject.current = null;
+    setSelectedProperties(null);
+  }, []);
 
   const getModelFocus = useCallback(() => {
     const current = state.current;
@@ -544,6 +611,35 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     scene.add(model);
     state.current = { scene, camera, renderer, controls, model };
 
+    const raycaster = new THREE.Raycaster();
+    let pointerStart: { x: number; y: number } | null = null;
+    const handlePointerDown = (event: PointerEvent) => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!pointerStart) return;
+      const moved = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+      pointerStart = null;
+      if (moved > 6) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const pointer = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(model.children, true)[0];
+      const object = hit?.object || null;
+      clearSelection();
+      if (!object) return;
+
+      highlightSelection(object);
+      selectedObject.current = object;
+      setSelectedProperties(getSelectedProperties(object, unit));
+    };
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    renderer.domElement.addEventListener("pointerup", handlePointerUp);
+
     const resize = () => {
       const width = Math.max(host.clientWidth, 1);
       const viewHeight = Math.max(host.clientHeight, 1);
@@ -596,6 +692,9 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       window.clearTimeout(loadingTimer);
       window.clearTimeout(completeTimer);
       window.clearTimeout(statusTimer);
+      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      clearSelection();
       if (frame.current) cancelAnimationFrame(frame.current);
       cameraAnimation.current = null;
       observer.disconnect();
@@ -610,7 +709,7 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       host.replaceChildren();
       state.current = null;
     };
-  }, [aiClean, enhanced, getModelFocus, height, qualityRun, resetCamera, svg]);
+  }, [aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, svg, unit]);
 
   useEffect(() => {
     const current = state.current;
@@ -705,6 +804,18 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
       </div>
       {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/70 backdrop-blur-[2px]"><div className="rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 px-4 py-3 text-center text-xs font-bold text-[#dce8e1]"><div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-[#34443b] border-t-[#b7f34a]" />Carregando modelo 3D...</div></div>}
       {!loading && !hasGeometry && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/55 px-5 text-center"><div className="rounded-xl border border-[#56665d] bg-[#101613]/95 px-4 py-3 text-xs text-[#b9c8c0]">Nenhuma geometria encontrada.<br /><span className="text-[10px] text-[#829087]">Ajuste o SVG e tente gerar o modelo novamente.</span></div></div>}
+      {selectedProperties && <aside className="absolute right-2 top-2 z-20 w-56 rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 p-3 text-xs shadow-2xl shadow-black/40 backdrop-blur" aria-label="Propriedades do objeto selecionado">
+        <div className="flex items-center justify-between gap-2 border-b border-[#26332e] pb-2">
+          <div className="font-black uppercase tracking-[.14em] text-[#b7f34a]">Propriedades</div>
+          <button type="button" onClick={clearSelection} aria-label="Fechar propriedades" className="rounded-md px-2 py-1 text-[#8d9a93] transition hover:bg-[#26332e] hover:text-white">×</button>
+        </div>
+        <dl className="mt-3 grid gap-2.5">
+          {([["Objeto", selectedProperties.name], ["Tipo", selectedProperties.type], ["Camada", selectedProperties.layer], ["Dimensões", selectedProperties.dimensions], ["Material", selectedProperties.material]] as const).map(([label, value]) => <div key={label}>
+            <dt className="text-[9px] font-black uppercase tracking-[.12em] text-[#718078]">{label}</dt>
+            <dd className="mt-0.5 break-words text-[#e3ece6]">{value || "Informação não disponível"}</dd>
+          </div>)}
+        </dl>
+      </aside>}
     </div>
 
     <div className="mt-3 grid gap-2">
