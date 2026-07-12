@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Box, Eye, EyeOff, LockKeyhole } from "lucide-react";
+import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
+
+const RECOVERY_TIMEOUT_MS = 9000;
 
 function friendlyRecoveryError(value?: string | null) {
   const message = String(value || "").replace(/\+/g, " ");
@@ -13,8 +16,8 @@ function friendlyRecoveryError(value?: string | null) {
     return "Este link de recuperação expirou. Solicite um novo e-mail em Esqueci minha senha.";
   }
 
-  if (lowerMessage.includes("invalid") || lowerMessage.includes("malformed")) {
-    return "Este link de recuperação é inválido. Solicite um novo e-mail em Esqueci minha senha.";
+  if (lowerMessage.includes("invalid") || lowerMessage.includes("malformed") || lowerMessage.includes("otp")) {
+    return "Este link de recuperação expirou ou é inválido.";
   }
 
   if (message) return message;
@@ -39,9 +42,31 @@ function friendlyUpdateError(value?: string | null) {
 function recoveryParams() {
   if (typeof window === "undefined") return new URLSearchParams();
 
+  const params = new URLSearchParams(window.location.search);
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const queryParams = new URLSearchParams(window.location.search);
-  return hashParams.size ? hashParams : queryParams;
+
+  hashParams.forEach((value, key) => {
+    if (!params.has(key)) params.set(key, value);
+  });
+
+  return params;
+}
+
+function cleanRecoveryUrl() {
+  if (typeof window !== "undefined") {
+    window.history.replaceState({}, document.title, "/reset-password");
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, fallbackMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(fallbackMessage)), RECOVERY_TIMEOUT_MS);
+
+    promise
+      .then((result) => resolve(result))
+      .catch((error) => reject(error))
+      .finally(() => window.clearTimeout(timer));
+  });
 }
 
 export function ResetPasswordForm() {
@@ -56,84 +81,114 @@ export function ResetPasswordForm() {
 
   useEffect(() => {
     let cancelled = false;
+    let authEventResolved = false;
+
+    function finish(session: Session | null, successMessage = "Digite sua nova senha.") {
+      if (cancelled) return;
+      setHasRecoverySession(Boolean(session));
+      setLoading(false);
+      setMessage(session ? successMessage : "Este link de recuperação expirou ou é inválido.");
+    }
+
+    function fail(value?: string | null) {
+      if (cancelled) return;
+      setHasRecoverySession(false);
+      setLoading(false);
+      setMessage(friendlyRecoveryError(value));
+    }
+
+    async function confirmCurrentSession() {
+      const client = supabase;
+      if (!client) return null;
+      const { data } = await withTimeout(
+        client.auth.getSession(),
+        "Tempo esgotado ao validar a sessão de recuperação.",
+      );
+      return data.session;
+    }
 
     async function prepareRecovery() {
       const client = supabase;
       if (!client) {
-        if (!cancelled) {
-          setLoading(false);
-          setMessage("Supabase não configurado.");
-        }
+        fail("Supabase não configurado.");
         return;
       }
+
+      const subscription = client.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
+        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+          authEventResolved = true;
+          cleanRecoveryUrl();
+          finish(session, "Link validado. Digite sua nova senha.");
+        }
+      }).data.subscription;
 
       const params = recoveryParams();
       const errorDescription = params.get("error_description") || params.get("error");
       if (errorDescription) {
-        if (!cancelled) {
-          setLoading(false);
-          setMessage(friendlyRecoveryError(errorDescription));
-        }
+        subscription.unsubscribe();
+        fail(errorDescription);
         return;
       }
 
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
       const code = params.get("code");
+      const tokenHash = params.get("token_hash");
       const linkType = params.get("type");
 
       if (linkType && linkType !== "recovery") {
-        if (!cancelled) {
-          setLoading(false);
-          setHasRecoverySession(false);
-          setMessage("Link de recuperação inválido ou expirado.");
-        }
+        subscription.unsubscribe();
+        fail("Link de recuperação inválido ou expirado.");
         return;
       }
 
-      if (accessToken && refreshToken) {
-        const { error } = await client.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-        const { data: sessionData } = error ? { data: { session: null } } : await client.auth.getSession();
-
-        window.history.replaceState({}, document.title, "/reset-password");
-        if (!cancelled) {
-          setHasRecoverySession(Boolean(sessionData.session));
-          setLoading(false);
-          setMessage(error || !sessionData.session ? friendlyRecoveryError(error?.message) : "Digite sua nova senha.");
+      try {
+        if (accessToken && refreshToken) {
+          const { error } = await withTimeout(
+            client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
+            "Tempo esgotado ao validar o link de recuperação.",
+          );
+          if (error) throw error;
+          cleanRecoveryUrl();
+          finish(await confirmCurrentSession());
+          subscription.unsubscribe();
+          return;
         }
-        return;
-      }
 
-      if (code) {
-        const { error } = await client.auth.exchangeCodeForSession(code);
-        const { data: sessionData } = error ? { data: { session: null } } : await client.auth.getSession();
-
-        window.history.replaceState({}, document.title, "/reset-password");
-        if (!cancelled) {
-          setHasRecoverySession(Boolean(sessionData.session));
-          setLoading(false);
-          setMessage(error || !sessionData.session ? friendlyRecoveryError(error?.message) : "Digite sua nova senha.");
+        if (code) {
+          const { error } = await withTimeout(
+            client.auth.exchangeCodeForSession(code),
+            "Tempo esgotado ao trocar o código de recuperação.",
+          );
+          if (error) throw error;
+          cleanRecoveryUrl();
+          finish(await confirmCurrentSession());
+          subscription.unsubscribe();
+          return;
         }
-        return;
-      }
 
-      const { data } = await client.auth.getSession();
-      if (!cancelled) {
-        setHasRecoverySession(Boolean(data.session));
-        setLoading(false);
-        setMessage(data.session ? "Digite sua nova senha." : "Link de recuperação inválido ou expirado.");
+        if (tokenHash) {
+          const { error } = await withTimeout(
+            client.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" }),
+            "Tempo esgotado ao validar o token de recuperação.",
+          );
+          if (error) throw error;
+          cleanRecoveryUrl();
+          finish(await confirmCurrentSession());
+          subscription.unsubscribe();
+          return;
+        }
+
+        const session = await confirmCurrentSession();
+        if (!authEventResolved) finish(session);
+      } catch (error) {
+        fail(error instanceof Error ? error.message : null);
+      } finally {
+        window.setTimeout(() => subscription.unsubscribe(), 250);
       }
     }
 
-    prepareRecovery().catch(() => {
-      if (!cancelled) {
-        setLoading(false);
-        setMessage("Não foi possível validar o link de recuperação.");
-      }
-    });
+    prepareRecovery();
 
     return () => {
       cancelled = true;
@@ -164,7 +219,7 @@ export function ResetPasswordForm() {
     if (!sessionData.session) {
       setSaving(false);
       setHasRecoverySession(false);
-      setMessage("Link de recuperação inválido ou expirado.");
+      setMessage("Este link de recuperação expirou ou é inválido.");
       return;
     }
 
