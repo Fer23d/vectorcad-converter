@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Box, Eye, EyeOff, LockKeyhole } from "lucide-react";
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 
 const RECOVERY_TIMEOUT_MS = 9000;
@@ -49,20 +49,35 @@ function friendlyUpdateError(value?: string | null) {
   return message || "Não foi possível salvar a nova senha.";
 }
 
-function recoveryParams() {
-  if (typeof window === "undefined") return new URLSearchParams();
+type RecoveryUrlSnapshot = {
+  href: string;
+  hash: string;
+  search: string;
+  hashParams: URLSearchParams;
+  searchParams: URLSearchParams;
+};
 
-  const params = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+function captureRecoveryUrlSnapshot(): RecoveryUrlSnapshot {
+  if (typeof window === "undefined") {
+    return {
+      href: "",
+      hash: "",
+      search: "",
+      hashParams: new URLSearchParams(),
+      searchParams: new URLSearchParams(),
+    };
+  }
 
-  hashParams.forEach((value, key) => {
-    if (!params.has(key)) params.set(key, value);
-  });
-
-  return params;
+  return {
+    href: window.location.href,
+    hash: window.location.hash,
+    search: window.location.search,
+    hashParams: new URLSearchParams(window.location.hash.replace(/^#/, "")),
+    searchParams: new URLSearchParams(window.location.search),
+  };
 }
 
-function recoveryLocationSummary(params: URLSearchParams) {
+function recoveryLocationSummary(snapshot: RecoveryUrlSnapshot) {
   if (typeof window === "undefined") {
     return {
       pathname: null,
@@ -79,21 +94,19 @@ function recoveryLocationSummary(params: URLSearchParams) {
     };
   }
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-
   return {
     pathname: window.location.pathname,
-    hasSearch: Boolean(window.location.search),
-    hasHash: Boolean(window.location.hash),
-    searchKeys: Array.from(searchParams.keys()),
-    hashKeys: Array.from(hashParams.keys()),
-    recoveryType: params.get("type"),
-    hasAccessToken: params.has("access_token"),
-    hasRefreshToken: params.has("refresh_token"),
-    hasCode: params.has("code"),
-    hasTokenHash: params.has("token_hash"),
-    hasToken: params.has("token"),
+    hasHref: Boolean(snapshot.href),
+    hasSearch: Boolean(snapshot.search),
+    hasHash: Boolean(snapshot.hash),
+    searchKeys: Array.from(snapshot.searchParams.keys()),
+    hashKeys: Array.from(snapshot.hashParams.keys()),
+    recoveryType: snapshot.hashParams.get("type") || snapshot.searchParams.get("type"),
+    hasAccessToken: snapshot.hashParams.has("access_token"),
+    hasRefreshToken: snapshot.hashParams.has("refresh_token"),
+    hasCode: snapshot.searchParams.has("code"),
+    hasTokenHash: snapshot.searchParams.has("token_hash"),
+    hasToken: snapshot.searchParams.has("token"),
   };
 }
 
@@ -126,7 +139,7 @@ export function ResetPasswordForm() {
 
   useEffect(() => {
     let cancelled = false;
-    let authEventResolved = false;
+    const snapshot = captureRecoveryUrlSnapshot();
 
     function finish(session: Session | null, successMessage = "Digite sua nova senha.") {
       if (cancelled) return;
@@ -162,39 +175,33 @@ export function ResetPasswordForm() {
         return;
       }
 
-      const subscription = client.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
-        recoveryLog("auth state change", { event, hasSession: Boolean(session) });
-        if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
-          authEventResolved = true;
-          cleanRecoveryUrl();
-          finish(session, "Link validado. Digite sua nova senha.");
-        }
-      }).data.subscription;
-
-      const params = recoveryParams();
-      recoveryLog("location parsed", recoveryLocationSummary(params));
-      const errorDescription = params.get("error_description") || params.get("error");
+      recoveryLog("location captured", recoveryLocationSummary(snapshot));
+      const errorDescription =
+        snapshot.hashParams.get("error_description") ||
+        snapshot.hashParams.get("error") ||
+        snapshot.searchParams.get("error_description") ||
+        snapshot.searchParams.get("error");
       if (errorDescription) {
-        subscription.unsubscribe();
         fail(errorDescription);
         return;
       }
 
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      const code = params.get("code");
-      const tokenHash = params.get("token_hash") || params.get("token");
-      const linkType = params.get("type");
+      const accessToken = snapshot.hashParams.get("access_token");
+      const refreshToken = snapshot.hashParams.get("refresh_token");
+      const hashType = snapshot.hashParams.get("type");
+      const code = snapshot.searchParams.get("code");
+      const tokenHash = snapshot.searchParams.get("token_hash") || snapshot.searchParams.get("token");
+      const searchType = snapshot.searchParams.get("type");
+      const linkType = hashType || searchType;
 
       if (linkType && linkType !== "recovery") {
-        subscription.unsubscribe();
         fail("Link de recuperação inválido ou expirado.");
         return;
       }
 
       try {
         if (accessToken && refreshToken) {
-          recoveryLog("attempt setSession", { recoveryType: linkType || "implicit", hasAccessToken: true, hasRefreshToken: true });
+          recoveryLog("attempt setSession", { recoveryType: hashType || "implicit", hasAccessToken: true, hasRefreshToken: true });
           const { error } = await withTimeout(
             client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
             "Tempo esgotado ao validar o link de recuperação.",
@@ -203,12 +210,11 @@ export function ResetPasswordForm() {
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
-          subscription.unsubscribe();
           return;
         }
 
         if (code) {
-          recoveryLog("attempt exchangeCodeForSession", { recoveryType: linkType || "code", hasCode: true });
+          recoveryLog("attempt exchangeCodeForSession", { recoveryType: searchType || "code", hasCode: true });
           const { error } = await withTimeout(
             client.auth.exchangeCodeForSession(code),
             "Tempo esgotado ao trocar o código de recuperação.",
@@ -217,12 +223,15 @@ export function ResetPasswordForm() {
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
-          subscription.unsubscribe();
           return;
         }
 
         if (tokenHash) {
-          recoveryLog("attempt verifyOtp", { recoveryType: linkType || "recovery", hasTokenHash: params.has("token_hash"), hasToken: params.has("token") });
+          recoveryLog("attempt verifyOtp", {
+            recoveryType: searchType || "recovery",
+            hasTokenHash: snapshot.searchParams.has("token_hash"),
+            hasToken: snapshot.searchParams.has("token"),
+          });
           const { error } = await withTimeout(
             client.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" }),
             "Tempo esgotado ao validar o token de recuperação.",
@@ -231,18 +240,17 @@ export function ResetPasswordForm() {
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
-          subscription.unsubscribe();
           return;
         }
 
-        const session = await confirmCurrentSession();
-        recoveryLog("fallback session check", { hasSession: Boolean(session), authEventResolved });
-        if (!authEventResolved) finish(session);
+        recoveryLog("no recovery params found", {
+          hasHash: Boolean(snapshot.hash),
+          hasSearch: Boolean(snapshot.search),
+        });
+        fail("Este link de recuperação expirou ou é inválido.");
       } catch (error) {
         recoveryLog("recovery validation exception", { message: error instanceof Error ? error.message : "unknown_error" });
         fail(error instanceof Error ? error.message : null);
-      } finally {
-        window.setTimeout(() => subscription.unsubscribe(), 250);
       }
     }
 
