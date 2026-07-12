@@ -52,6 +52,18 @@ type SelectedProperties = {
   material: string | null;
 };
 
+type ObjectTreeNode = {
+  id: string;
+  label: string;
+  type: string;
+  children: ObjectTreeNode[];
+};
+
+type LayerState = {
+  name: string;
+  visible: boolean;
+};
+
 const styleLabels: Record<ModelStyle, string> = {
   industrial: "Industrial",
   cad_clean: "CAD Clean",
@@ -227,6 +239,34 @@ function getSelectedProperties(object: THREE.Object3D, unit?: string): SelectedP
     dimensions,
     material: materialLabel,
   };
+}
+
+function buildObjectTree(object: THREE.Object3D): ObjectTreeNode {
+  return {
+    id: object.uuid,
+    label: object.name || object.type,
+    type: object.type,
+    children: object.children.map(buildObjectTree),
+  };
+}
+
+function collectLayerNames(object: THREE.Object3D) {
+  const names = new Set<string>();
+  object.traverse((child) => {
+    if (typeof child.userData.layer === "string" && child.userData.layer.trim()) names.add(child.userData.layer.trim());
+  });
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+function ObjectTreeItem({ node, depth, onSelect }: { node: ObjectTreeNode; depth: number; onSelect: (id: string) => void }) {
+  return <div>
+    <button type="button" onClick={() => onSelect(node.id)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-[#cbd8d0] transition hover:bg-[#1c2b21] hover:text-[#b7f34a]" style={{ paddingLeft: `${8 + depth * 14}px` }}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#b7f34a]" />
+      <span className="min-w-0 truncate">{node.label}</span>
+      <span className="ml-auto shrink-0 text-[9px] text-[#68786e]">{node.type}</span>
+    </button>
+    {node.children.map((child) => <ObjectTreeItem key={child.id} node={child} depth={depth + 1} onSelect={onSelect} />)}
+  </div>;
 }
 
 function cleanPathData(pathData: string) {
@@ -412,6 +452,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   });
 
   const model = new THREE.Group();
+  model.name = "Projeto 3D";
   if (geometries.length === 0) return model;
 
   const merged = mergeGeometries(geometries, false);
@@ -450,6 +491,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const [loading, setLoading] = useState(() => Boolean(svg));
   const [hasGeometry, setHasGeometry] = useState(false);
   const [selectedProperties, setSelectedProperties] = useState<SelectedProperties | null>(null);
+  const [objectTree, setObjectTree] = useState<ObjectTreeNode | null>(null);
+  const [layers, setLayers] = useState<LayerState[]>([]);
+  const [activeLayer, setActiveLayer] = useState<string | null>(null);
   const [message, setMessage] = useState("Clique e arraste para girar. Use o scroll para aproximar.");
 
   const clearSelection = useCallback(() => {
@@ -531,6 +575,57 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     setMessage("Auto Fit View aplicado ao modelo.");
   }, [animateCameraTo, getModelFocus]);
 
+  const focusObject = useCallback((object: THREE.Object3D) => {
+    const current = state.current;
+    if (!current) return;
+    const box = new THREE.Box3().setFromObject(object);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    if (!Number.isFinite(sphere.radius) || sphere.radius <= 0) return;
+    const direction = current.camera.position.clone().sub(current.controls.target).normalize();
+    const safeDirection = direction.lengthSq() > 0 ? direction : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
+    const distance = Math.max(sphere.radius * 3.8, 40);
+    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, sphere.radius);
+    current.camera.near = Math.max(sphere.radius / 1000, 0.01);
+    current.camera.far = Math.max(distance * 10, 1000);
+    current.camera.updateProjectionMatrix();
+    animateCameraTo(sphere.center.clone().add(safeDirection.multiplyScalar(distance)), sphere.center.clone(), 650);
+  }, [animateCameraTo]);
+
+  const selectObject = useCallback((object: THREE.Object3D | null, center = false) => {
+    clearSelection();
+    if (!object) return;
+    highlightSelection(object);
+    selectedObject.current = object;
+    setSelectedProperties(getSelectedProperties(object, unit));
+    if (center) focusObject(object);
+  }, [clearSelection, focusObject, unit]);
+
+  const updateLayerVisibility = useCallback((layerName: string, visible: boolean) => {
+    const model = state.current?.model;
+    if (!model) return;
+    model.traverse((object) => {
+      if (object.userData.layer === layerName) object.visible = visible;
+    });
+    if (!visible && selectedObject.current?.userData.layer === layerName) clearSelection();
+    setLayers((current) => current.map((layer) => layer.name === layerName ? { ...layer, visible } : layer));
+  }, [clearSelection]);
+
+  const selectLayer = useCallback((layerName: string) => {
+    setActiveLayer(layerName);
+    const model = state.current?.model;
+    if (!model) return;
+    let firstObject: THREE.Object3D | null = null;
+    model.traverse((object) => {
+      if (!firstObject && object.userData.layer === layerName) firstObject = object;
+    });
+    if (firstObject) selectObject(firstObject, true);
+  }, [selectObject]);
+
+  const selectTreeNode = useCallback((id: string) => {
+    const object = state.current?.model.getObjectByProperty("uuid", id) || null;
+    selectObject(object, true);
+  }, [selectObject]);
+
   useEffect(() => {
     const host = mount.current;
     if (!host) return;
@@ -538,6 +633,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       const emptyTimer = window.setTimeout(() => {
         setLoading(false);
         setHasGeometry(false);
+        setObjectTree(null);
+        setLayers([]);
+        setActiveLayer(null);
         setMessage("Nenhum SVG disponível para gerar a geometria 3D.");
       }, 0);
       return () => window.clearTimeout(emptyTimer);
@@ -630,12 +728,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(model.children, true)[0];
       const object = hit?.object || null;
-      clearSelection();
-      if (!object) return;
-
-      highlightSelection(object);
-      selectedObject.current = object;
-      setSelectedProperties(getSelectedProperties(object, unit));
+      selectObject(object);
     };
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointerup", handlePointerUp);
@@ -680,6 +773,15 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const statusTimer = window.setTimeout(() => {
       if (!disposed) setMessage(statusMessage);
     }, 0);
+    const treeSnapshot = buildObjectTree(model);
+    const layerSnapshot = collectLayerNames(model);
+    const metadataTimer = window.setTimeout(() => {
+      if (!disposed) {
+        setObjectTree(treeSnapshot);
+        setLayers(layerSnapshot.map((name) => ({ name, visible: true })));
+        setActiveLayer(null);
+      }
+    }, 0);
     const completeTimer = window.setTimeout(() => {
       if (!disposed) {
         setHasGeometry(Boolean(mesh));
@@ -692,6 +794,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       window.clearTimeout(loadingTimer);
       window.clearTimeout(completeTimer);
       window.clearTimeout(statusTimer);
+      window.clearTimeout(metadataTimer);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
       clearSelection();
@@ -709,7 +812,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       host.replaceChildren();
       state.current = null;
     };
-  }, [aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, svg, unit]);
+  }, [aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, selectObject, svg]);
 
   useEffect(() => {
     const current = state.current;
@@ -816,6 +919,20 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
           </div>)}
         </dl>
       </aside>}
+    </div>
+
+    <div className="mt-3 grid gap-2 lg:grid-cols-2">
+      <section className="rounded-xl border border-[#2b3832] bg-[#0d1411] p-3" aria-label="Estrutura do projeto">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">Estrutura do projeto</div>
+        {objectTree ? <div className="max-h-40 overflow-y-auto rounded-lg border border-[#26332e] bg-[#0a0f0d] py-1"><ObjectTreeItem node={objectTree} depth={0} onSelect={selectTreeNode} /></div> : <p className="rounded-lg border border-dashed border-[#34443b] px-3 py-4 text-[11px] text-[#829087]">Nenhum objeto carregado.</p>}
+      </section>
+      <section className="rounded-xl border border-[#2b3832] bg-[#0d1411] p-3" aria-label="Layers">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">Layers</div>
+        {layers.length ? <div className="max-h-40 overflow-y-auto rounded-lg border border-[#26332e] bg-[#0a0f0d] p-1">{layers.map((layer) => <div key={layer.name} className={`flex items-center gap-1 rounded-md p-1 ${activeLayer === layer.name ? "bg-[#1c2b21]" : ""}`}>
+          <button type="button" onClick={() => updateLayerVisibility(layer.name, !layer.visible)} aria-label={`${layer.visible ? "Ocultar" : "Exibir"} layer ${layer.name}`} className="grid h-7 w-7 place-items-center rounded text-[#b7f34a] transition hover:bg-[#26332e]">{layer.visible ? "☑" : "☐"}</button>
+          <button type="button" onClick={() => selectLayer(layer.name)} className="min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-[11px] text-[#dce8e1] hover:text-[#b7f34a]">{layer.name}</button>
+        </div>)}</div> : <p className="rounded-lg border border-dashed border-[#34443b] px-3 py-4 text-[11px] text-[#829087]">Nenhuma camada disponível neste modelo.</p>}
+      </section>
     </div>
 
     <div className="mt-3 grid gap-2">
