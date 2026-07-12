@@ -15,6 +15,7 @@ import { cancelLocalProjectDraftTimer, clearLocalProjectDraft } from "@/componen
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
+const BACKEND_AUTO_SAVE_DELAY_MS = 900;
 
 type UserProfile = {
   user_id: string;
@@ -391,7 +392,8 @@ export function SaasDashboard() {
 
   useEffect(() => {
     if (projectSaveState !== "dirty" || !activeProject) return;
-    const timer = window.setTimeout(() => { void saveProject(); }, 900);
+    // Keep the existing fast Supabase autosave independent from the one-minute local draft.
+    const timer = window.setTimeout(() => { void saveProject(); }, BACKEND_AUTO_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [activeProject, projectSaveState, saveProject]);
 
@@ -704,7 +706,7 @@ export function SaasDashboard() {
             sessão protegida
           </div>}
           {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
-          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving" || projectSaveState === "saved"} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{projectSaveState === "saving" ? "Salvando..." : projectSaveState === "saved" ? "Projeto salvo" : "Salvar projeto"}</span><span className="sm:hidden">{projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
+          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving"} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{projectSaveState === "saving" ? "Salvando..." : "Salvar projeto"}</span><span className="sm:hidden">{projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
           <button
             type="button"
             onClick={() => setHeaderCollapsed((value) => !value)}
