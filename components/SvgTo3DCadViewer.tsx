@@ -552,6 +552,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);
+  const renderRequest = useRef<(() => void) | null>(null);
   const cameraAnimation = useRef<CameraAnimation | null>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
   const measurementPoints = useRef<THREE.Vector3[]>([]);
@@ -563,6 +564,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const [appliedStyle, setAppliedStyle] = useState<ModelStyle>("cad_clean");
   const [qualityRun, setQualityRun] = useState(0);
   const [loading, setLoading] = useState(() => Boolean(svg));
+  const [loadingStage, setLoadingStage] = useState("Preparando modelo 3D...");
+  const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
   const [hasGeometry, setHasGeometry] = useState(false);
   const [selectedProperties, setSelectedProperties] = useState<SelectedProperties | null>(null);
   const [objectTree, setObjectTree] = useState<ObjectTreeNode | null>(null);
@@ -591,6 +594,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     }
     measurementPoints.current = [];
     setMeasurements([]);
+    renderRequest.current?.();
     setMessage("Medições limpas.");
   }, []);
 
@@ -620,6 +624,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     if (current) current.measurementGroup.add(createMeasurementVisual(start, end, formatMeasurement(measurement.distance, unit)));
     measurementPoints.current = [];
     setMeasurements((previous) => [...previous, measurement]);
+    renderRequest.current?.();
     setMessage(`Distância medida: ${formatMeasurement(measurement.distance, unit)}.`);
   }, [unit]);
 
@@ -644,6 +649,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       startedAt: performance.now(),
       duration,
     };
+    renderRequest.current?.();
   }, []);
 
   const resetCamera = useCallback(() => {
@@ -716,6 +722,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     clearSelection();
     if (!object) return;
     highlightSelection(object);
+    renderRequest.current?.();
     selectedObject.current = object;
     setSelectedProperties(getSelectedProperties(object, unit));
     if (center) focusObject(object);
@@ -728,6 +735,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       if (object.userData.layer === layerName) object.visible = visible;
     });
     if (!visible && selectedObject.current?.userData.layer === layerName) clearSelection();
+    renderRequest.current?.();
     setLayers((current) => current.map((layer) => layer.name === layerName ? { ...layer, visible } : layer));
   }, [clearSelection]);
 
@@ -753,6 +761,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     if (!svg) {
       const emptyTimer = window.setTimeout(() => {
         setLoading(false);
+        setLoadingStage("Nenhum modelo carregado");
+        setLoadTimeMs(null);
         setHasGeometry(false);
         setObjectTree(null);
         setLayers([]);
@@ -763,8 +773,13 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     }
 
     let disposed = false;
+    const loadStartedAt = performance.now();
     const loadingTimer = window.setTimeout(() => {
-      if (!disposed) setLoading(true);
+      if (!disposed) {
+        setLoading(true);
+        setLoadingStage("Preparando modelo 3D...");
+        setLoadTimeMs(null);
+      }
     }, 0);
 
     const scene = new THREE.Scene();
@@ -807,7 +822,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
 
     const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 0.1, 100000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -826,7 +841,15 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     controls.minZoom = 0.35;
     controls.maxZoom = 8;
 
-    const model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+    const geometryStageTimer = window.setTimeout(() => {
+      if (!disposed) setLoadingStage("Carregando geometria...");
+    }, 0);
+    let model: THREE.Group;
+    try {
+      model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+    } catch {
+      model = new THREE.Group();
+    }
     const measurementGroup = new THREE.Group();
     measurementGroup.name = "Medições";
     scene.add(model);
@@ -868,12 +891,25 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       renderer.setSize(width, viewHeight, false);
       const focus = getModelFocus();
       fitOrthographicCamera(camera, width, viewHeight, focus?.radius || 80);
+      renderRequest.current?.();
     };
 
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     resize();
     resetCamera();
+
+    let renderDirty = true;
+    let renderLoopActive = false;
+    const requestRender = () => {
+      renderDirty = true;
+      if (!renderLoopActive) {
+        renderLoopActive = true;
+        frame.current = requestAnimationFrame(animate);
+      }
+    };
+    renderRequest.current = requestRender;
+    controls.addEventListener("change", requestRender);
 
     const animate = () => {
       const animation = cameraAnimation.current;
@@ -888,19 +924,32 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
           controls.enabled = true;
         }
       }
-      controls.update();
-      renderer.render(scene, camera);
-      frame.current = requestAnimationFrame(animate);
+      const controlsChanged = controls.update();
+      if (animation || controlsChanged || renderDirty) {
+        renderer.render(scene, camera);
+        renderDirty = false;
+      }
+      if (animation || controlsChanged || renderDirty) {
+        frame.current = requestAnimationFrame(animate);
+      } else {
+        frame.current = null;
+        renderLoopActive = false;
+      }
     };
-    animate();
+    requestRender();
 
     const mesh = model.children[0] as THREE.Mesh | undefined;
     const count = mesh?.geometry.getAttribute("position")?.count || 0;
+    renderer.shadowMap.enabled = count > 0 && count <= 150000;
     const statusMessage = mesh
       ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
       : "Nenhuma forma fechada foi encontrada no SVG para extrusao.";
     const statusTimer = window.setTimeout(() => {
-      if (!disposed) setMessage(statusMessage);
+      if (!disposed) {
+        setLoadingStage(mesh ? "Modelo pronto" : "Falha ao carregar modelo");
+        setLoadTimeMs(Math.round(performance.now() - loadStartedAt));
+        setMessage(mesh ? statusMessage : "Não foi possível carregar o modelo 3D. Tente novamente.");
+      }
     }, 0);
     const treeSnapshot = buildObjectTree(model);
     const layerSnapshot = collectLayerNames(model);
@@ -921,13 +970,17 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     return () => {
       disposed = true;
       window.clearTimeout(loadingTimer);
+      window.clearTimeout(geometryStageTimer);
       window.clearTimeout(completeTimer);
       window.clearTimeout(statusTimer);
       window.clearTimeout(metadataTimer);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      controls.removeEventListener("change", requestRender);
       clearSelection();
       if (frame.current) cancelAnimationFrame(frame.current);
+      renderRequest.current = null;
+      renderLoopActive = false;
       cameraAnimation.current = null;
       observer.disconnect();
       controls.dispose();
@@ -952,6 +1005,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     if (!current || !(mesh instanceof THREE.Mesh)) return;
     apply3DStyle(mesh, appliedStyle);
     applySceneStyle(current.scene, appliedStyle);
+    renderRequest.current?.();
     setMessage(`Estilo ${styleLabels[appliedStyle]} aplicado em tempo real.`);
   }, [appliedStyle]);
 
@@ -1042,7 +1096,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
         <button type="button" onClick={() => chooseTool("measure")} className={`rounded px-2 py-1.5 text-[9px] font-black transition ${activeTool === "measure" ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#18231d] text-[#dce8e1] hover:bg-[#26332e]"}`}>Medir</button>
         <button type="button" onClick={clearMeasurements} disabled={!measurements.length} className="rounded border border-[#6b3939] px-2 py-1.5 text-[9px] font-black text-[#ffb4ae] transition hover:bg-[#6b3939] disabled:cursor-not-allowed disabled:opacity-40">Limpar medições</button>
       </div>
-      {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/70 backdrop-blur-[2px]"><div className="rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 px-4 py-3 text-center text-xs font-bold text-[#dce8e1]"><div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-[#34443b] border-t-[#b7f34a]" />Carregando modelo 3D...</div></div>}
+      {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/70 backdrop-blur-[2px]"><div className="rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 px-4 py-3 text-center text-xs font-bold text-[#dce8e1]"><div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-[#34443b] border-t-[#b7f34a]" />{loadingStage}</div></div>}
       {!loading && !hasGeometry && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/55 px-5 text-center"><div className="rounded-xl border border-[#56665d] bg-[#101613]/95 px-4 py-3 text-xs text-[#b9c8c0]">Nenhuma geometria encontrada.<br /><span className="text-[10px] text-[#829087]">Ajuste o SVG e tente gerar o modelo novamente.</span></div></div>}
       {selectedProperties && <aside className="absolute right-2 top-2 z-20 w-56 rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 p-3 text-xs shadow-2xl shadow-black/40 backdrop-blur" aria-label="Propriedades do objeto selecionado">
         <div className="flex items-center justify-between gap-2 border-b border-[#26332e] pb-2">
@@ -1104,7 +1158,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       </div>
       <button type="button" onClick={exportCad2DSvg} className="flex items-center justify-center gap-2 rounded-lg border border-[#6fb8ff]/60 bg-[#102033] py-2.5 text-xs font-black text-[#b9dcff]"><Download size={14} /> Export CAD 2D (SVG)</button>
     </div>
-    <p className="mt-2 text-[10px] leading-4 text-[#8f9d96]">{message}</p>
+    <p className="mt-2 text-[10px] leading-4 text-[#8f9d96]">{message}{loadTimeMs !== null && <span className="ml-2 text-[#65746c]">({loadTimeMs} ms)</span>}</p>
   </section>;
 }
 
