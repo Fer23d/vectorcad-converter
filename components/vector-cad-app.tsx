@@ -11,6 +11,7 @@ import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import type { OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
+import type { CadProjectData } from "@/types/project";
 
 const MAX_FILE = 12 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
@@ -46,22 +47,24 @@ function download(name: string, body: string, type: string) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageInfo) => void }) {
+export function VectorCadApp({ onUsageChange, initialData, onProjectChange }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
-  const [fileName, setFileName] = useState("");
-  const [processing, setProcessing] = useState(defaultProcessing);
-  const [vector, setVector] = useState(defaultVector);
-  const [doc, setDoc] = useState<VectorDocument | null>(null);
-  const [unit, setUnit] = useState<Unit>("mm");
-  const [realWidth, setRealWidth] = useState(100);
-  const [realHeight, setRealHeight] = useState(100);
-  const [locked, setLocked] = useState(true);
-  const [activeView, setActiveView] = useState<"original" | "processed" | "vector">("vector");
+  const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
+  const [fileName, setFileName] = useState(initialData?.fileName || "");
+  const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
+  const [vector, setVector] = useState(initialData?.vector || defaultVector);
+  const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
+  const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
+  const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
+  const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
+  const [locked, setLocked] = useState(initialData?.locked ?? true);
+  const [activeView, setActiveView] = useState<"original" | "processed" | "vector">(initialData?.activeView || "vector");
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
-  const [show3d, setShow3d] = useState(false);
+  const [show3d, setShow3d] = useState(initialData?.editorMode === "cad3d");
   const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
   const [upgradeModal, setUpgradeModal] = useState("");
+  const hydrating = useRef(true);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -73,6 +76,47 @@ export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageI
   const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
+
+  useEffect(() => {
+    const saved = initialData;
+    hydrating.current = true;
+
+    if (!saved?.sourceImageDataUrl) {
+      hydrating.current = false;
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      setSource(image);
+      hydrating.current = false;
+      setMessage("Projeto carregado. Você pode continuar a edição.");
+    };
+    image.onerror = () => {
+      hydrating.current = false;
+      setMessage("O projeto foi carregado, mas a imagem original não pôde ser restaurada.");
+    };
+    image.src = saved.sourceImageDataUrl;
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!onProjectChange || hydrating.current) return;
+    onProjectChange({
+      notes: "",
+      editorMode: show3d ? "cad3d" : "cad2d",
+      schemaVersion: 1,
+      sourceImageDataUrl,
+      fileName,
+      processing,
+      vector,
+      document: doc,
+      unit,
+      realWidth,
+      realHeight,
+      locked,
+      activeView,
+    });
+  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, show3d, sourceImageDataUrl, unit, vector]);
 
   const consumeUsage = useCallback(async (action: "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf") => {
     if (!isSupabaseConfigured || !supabase) return true;
@@ -110,7 +154,12 @@ export function VectorCadApp({ onUsageChange }: { onUsageChange?: (usage: UsageI
     const allowed = await consumeUsage("vectorize");
     if (!allowed) return;
     const url = URL.createObjectURL(file), image = new Image();
-    image.onload = () => { setSource(image); setFileName(file.name); setRealHeight(Number((100 * image.height / image.width).toFixed(2))); setMessage("Imagem carregada. Ajuste o limiar para refinar os contornos."); URL.revokeObjectURL(url); };
+    image.onload = () => {
+      const reader = new FileReader();
+      reader.onload = () => setSourceImageDataUrl(String(reader.result || ""));
+      reader.readAsDataURL(file);
+      setSource(image); setFileName(file.name); setRealHeight(Number((100 * image.height / image.width).toFixed(2))); setMessage("Imagem carregada. Ajuste o limiar para refinar os contornos."); URL.revokeObjectURL(url);
+    };
     image.onerror = () => setMessage("Não foi possível processar essa imagem. Tente outro arquivo.");
     image.src = url;
   }, [consumeUsage]);

@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Save, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
 import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
 import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
@@ -93,6 +93,11 @@ export function SaasDashboard() {
   const [deleteTarget, setDeleteTarget] = useState<CadProject | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
+  const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
+  const latestProjectData = useRef<CadProjectData | null>(null);
+  const editorProjectId = useRef<string | null>(null);
+  const editorCallbackSeen = useRef<string | null>(null);
+  const savingProject = useRef(false);
 
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
@@ -263,18 +268,13 @@ export function SaasDashboard() {
     }
 
     const project = data as CadProject;
-    const updatedAt = new Date().toISOString();
-    const nextData = { ...(project.data || emptyProjectData), lastOpenedAt: updatedAt };
-
-    setActiveProject({ ...project, data: nextData, updated_at: updatedAt });
+    setActiveProject(project);
+    editorProjectId.current = project.id;
+    editorCallbackSeen.current = null;
+    latestProjectData.current = project.data;
+    setProjectSaveState("saved");
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
-
-    await supabase
-      .from("projects")
-      .update({ data: nextData, updated_at: updatedAt })
-      .eq("id", project.id)
-      .eq("user_id", user.id);
   }, [user]);
 
   const createProject = useCallback(async () => {
@@ -300,9 +300,69 @@ export function SaasDashboard() {
 
     setProjects((current) => [data as CadProject, ...current]);
     setActiveProject(data as CadProject);
+    editorProjectId.current = (data as CadProject).id;
+    editorCallbackSeen.current = null;
+    latestProjectData.current = (data as CadProject).data;
     setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
+    setProjectSaveState("saved");
   }, [projects.length, user]);
+
+  const handleProjectChange = useCallback((data: CadProjectData) => {
+    const projectId = editorProjectId.current;
+    if (!projectId) return;
+    latestProjectData.current = data;
+
+    // The first snapshot is the restored state. Only subsequent snapshots are edits.
+    if (editorCallbackSeen.current !== projectId) {
+      editorCallbackSeen.current = projectId;
+      return;
+    }
+    setProjectSaveState("dirty");
+  }, []);
+
+  const saveProject = useCallback(async () => {
+    if (!supabase || !user || !activeProject || !latestProjectData.current || savingProject.current) return;
+
+    savingProject.current = true;
+    setProjectSaveState("saving");
+    const updatedAt = new Date().toISOString();
+    const data = latestProjectData.current;
+    const { error } = await supabase
+      .from("projects")
+      .update({ data, updated_at: updatedAt })
+      .eq("id", activeProject.id)
+      .eq("user_id", user.id);
+
+    savingProject.current = false;
+    if (error) {
+      setProjectSaveState("error");
+      setStatus(`Erro ao salvar projeto: ${error.message}`);
+      return;
+    }
+
+    const savedProject = { ...activeProject, data, updated_at: updatedAt };
+    setActiveProject(savedProject);
+    setProjects((current) => current.map((project) => project.id === savedProject.id ? savedProject : project));
+    setProjectSaveState("saved");
+    setStatus("Projeto salvo");
+  }, [activeProject, user]);
+
+  useEffect(() => {
+    if (projectSaveState !== "dirty" || !activeProject) return;
+    const timer = window.setTimeout(() => { void saveProject(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [activeProject, projectSaveState, saveProject]);
+
+  useEffect(() => {
+    if (projectSaveState !== "dirty") return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "Existem alterações não salvas.";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [projectSaveState]);
 
   const confirmDeleteProject = useCallback(async () => {
     if (!supabase || !user || !deleteTarget) return;
@@ -312,7 +372,12 @@ export function SaasDashboard() {
 
     setDeletingProjectId(target.id);
     setProjects((current) => current.filter((project) => project.id !== target.id));
-    if (activeProject?.id === target.id) setActiveProject(null);
+    if (activeProject?.id === target.id) {
+      setActiveProject(null);
+      editorProjectId.current = null;
+      editorCallbackSeen.current = null;
+      latestProjectData.current = null;
+    }
     setDeleteTarget(null);
 
     const { error } = await supabase
@@ -367,6 +432,9 @@ export function SaasDashboard() {
       setProfileLoading(false);
       setTermsMessage("");
       setActiveProject(null);
+      editorProjectId.current = null;
+      editorCallbackSeen.current = null;
+      latestProjectData.current = null;
       setProjects([]);
       if (session?.user) {
         if (!session.user.email_confirmed_at) {
@@ -591,6 +659,7 @@ export function SaasDashboard() {
             sessão protegida
           </div>}
           {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
+          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving" || projectSaveState === "saved"} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{projectSaveState === "saving" ? "Salvando..." : projectSaveState === "saved" ? "Projeto salvo" : "Salvar projeto"}</span><span className="sm:hidden">{projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
           <button
             type="button"
             onClick={() => setHeaderCollapsed((value) => !value)}
@@ -670,7 +739,8 @@ export function SaasDashboard() {
     </div>}
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
-      <VectorCadApp onUsageChange={applyUsageSnapshot} />
+      {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
+      <VectorCadApp key={activeProject?.id || "empty-editor"} initialData={activeProject?.data} onProjectChange={handleProjectChange} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
