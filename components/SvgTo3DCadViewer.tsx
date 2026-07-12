@@ -33,6 +33,7 @@ type ThreeState = {
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
   model: THREE.Group;
+  measurementGroup: THREE.Group;
 };
 
 type CameraAnimation = {
@@ -63,6 +64,15 @@ type LayerState = {
   name: string;
   visible: boolean;
 };
+
+type Measurement = {
+  id: string;
+  start: THREE.Vector3;
+  end: THREE.Vector3;
+  distance: number;
+};
+
+type ViewerTool = "select" | "measure";
 
 const styleLabels: Record<ModelStyle, string> = {
   industrial: "Industrial",
@@ -183,11 +193,73 @@ function baseName(fileName?: string) {
 
 function disposeObject(object: THREE.Object3D) {
   object.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
-    child.geometry.dispose();
-    const materials = Array.isArray(child.material) ? child.material : [child.material];
-    materials.forEach((material) => material.dispose());
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => material.dispose());
+    }
+    if (child instanceof THREE.Line || child instanceof THREE.Sprite) {
+      child.geometry?.dispose();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      materials.forEach((material) => {
+        if (material.map) material.map.dispose();
+        material.dispose();
+      });
+    }
   });
+}
+
+function formatMeasurement(distance: number, unit?: string) {
+  const label = unit || "unidades";
+  return `${distance.toFixed(2)} ${label}`;
+}
+
+function createMeasurementVisual(start: THREE.Vector3, end: THREE.Vector3, label: string) {
+  const group = new THREE.Group();
+  group.name = "Medição";
+  const distance = start.distanceTo(end);
+  const pointRadius = Math.max(Math.min(distance * 0.018, 2.5), 0.35);
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([start, end]),
+    new THREE.LineBasicMaterial({ color: 0xb7f34a, linewidth: 2, depthTest: false }),
+  );
+  line.renderOrder = 20;
+  group.add(line);
+
+  [start, end].forEach((point) => {
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(pointRadius, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }),
+    );
+    marker.position.copy(point);
+    marker.renderOrder = 21;
+    group.add(marker);
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 96;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "rgba(8,16,13,.88)";
+    context.roundRect(4, 4, 504, 88, 18);
+    context.fill();
+    context.strokeStyle = "#b7f34a";
+    context.lineWidth = 3;
+    context.stroke();
+    context.fillStyle = "#f1f8f3";
+    context.font = "700 34px Arial";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(label, 256, 48);
+  }
+  const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false }));
+  labelSprite.position.copy(start).add(end).multiplyScalar(0.5);
+  const labelWidth = Math.max(distance * 0.18, pointRadius * 12);
+  labelSprite.scale.set(labelWidth, labelWidth * 0.19, 1);
+  labelSprite.renderOrder = 22;
+  group.add(labelSprite);
+  return group;
 }
 
 function getMeshMaterial(object: THREE.Object3D) {
@@ -482,6 +554,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const frame = useRef<number | null>(null);
   const cameraAnimation = useRef<CameraAnimation | null>(null);
   const selectedObject = useRef<THREE.Object3D | null>(null);
+  const measurementPoints = useRef<THREE.Vector3[]>([]);
+  const activeToolRef = useRef<ViewerTool>("select");
   const [height, setHeight] = useState(5);
   const [enhanced, setEnhanced] = useState(false);
   const [aiClean, setAiClean] = useState(false);
@@ -494,6 +568,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const [objectTree, setObjectTree] = useState<ObjectTreeNode | null>(null);
   const [layers, setLayers] = useState<LayerState[]>([]);
   const [activeLayer, setActiveLayer] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState<ViewerTool>("select");
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [message, setMessage] = useState("Clique e arraste para girar. Use o scroll para aproximar.");
 
   const clearSelection = useCallback(() => {
@@ -501,6 +577,51 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     selectedObject.current = null;
     setSelectedProperties(null);
   }, []);
+
+  const clearMeasurements = useCallback(() => {
+    const group = state.current?.measurementGroup;
+    if (group) {
+      while (group.children.length) {
+        const child = group.children.pop();
+        if (child) {
+          group.remove(child);
+          disposeObject(child);
+        }
+      }
+    }
+    measurementPoints.current = [];
+    setMeasurements([]);
+    setMessage("Medições limpas.");
+  }, []);
+
+  const chooseTool = useCallback((tool: ViewerTool) => {
+    activeToolRef.current = tool;
+    measurementPoints.current = [];
+    setActiveTool(tool);
+    setMessage(tool === "measure" ? "Clique no ponto inicial da medição." : "Modo de seleção ativo.");
+  }, []);
+
+  const addMeasurementPoint = useCallback((point: THREE.Vector3) => {
+    const nextPoints = [...measurementPoints.current, point.clone()];
+    if (nextPoints.length < 2) {
+      measurementPoints.current = nextPoints;
+      setMessage("Ponto inicial definido. Clique no ponto final.");
+      return;
+    }
+
+    const [start, end] = nextPoints;
+    const measurement: Measurement = {
+      id: crypto.randomUUID(),
+      start,
+      end,
+      distance: start.distanceTo(end),
+    };
+    const current = state.current;
+    if (current) current.measurementGroup.add(createMeasurementVisual(start, end, formatMeasurement(measurement.distance, unit)));
+    measurementPoints.current = [];
+    setMeasurements((previous) => [...previous, measurement]);
+    setMessage(`Distância medida: ${formatMeasurement(measurement.distance, unit)}.`);
+  }, [unit]);
 
   const getModelFocus = useCallback(() => {
     const current = state.current;
@@ -706,8 +827,11 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     controls.maxZoom = 8;
 
     const model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+    const measurementGroup = new THREE.Group();
+    measurementGroup.name = "Medições";
     scene.add(model);
-    state.current = { scene, camera, renderer, controls, model };
+    scene.add(measurementGroup);
+    state.current = { scene, camera, renderer, controls, model, measurementGroup };
 
     const raycaster = new THREE.Raycaster();
     let pointerStart: { x: number; y: number } | null = null;
@@ -728,6 +852,11 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(model.children, true)[0];
       const object = hit?.object || null;
+      if (activeToolRef.current === "measure") {
+        if (hit) addMeasurementPoint(hit.point);
+        else setMessage("Selecione um ponto sobre a geometria do modelo.");
+        return;
+      }
       selectObject(object);
     };
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
@@ -803,6 +932,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       observer.disconnect();
       controls.dispose();
       disposeObject(model);
+      disposeObject(measurementGroup);
+      measurementPoints.current = [];
+      setMeasurements([]);
       ground.geometry.dispose();
       ground.material.dispose();
       grid.geometry.dispose();
@@ -812,7 +944,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       host.replaceChildren();
       state.current = null;
     };
-  }, [aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, selectObject, svg]);
+  }, [addMeasurementPoint, aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, selectObject, svg]);
 
   useEffect(() => {
     const current = state.current;
@@ -905,6 +1037,11 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
         <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-[#eef5f1] px-2 py-1.5 text-[9px] font-black text-[#111713] transition hover:bg-white">Resetar</button>
         <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Auto Fit</button>
       </div>
+      <div className="absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/85 p-1 backdrop-blur" aria-label="Ferramentas de medição 3D">
+        <button type="button" onClick={() => chooseTool("select")} className={`rounded px-2 py-1.5 text-[9px] font-black transition ${activeTool === "select" ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#18231d] text-[#dce8e1] hover:bg-[#26332e]"}`}>Selecionar</button>
+        <button type="button" onClick={() => chooseTool("measure")} className={`rounded px-2 py-1.5 text-[9px] font-black transition ${activeTool === "measure" ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#18231d] text-[#dce8e1] hover:bg-[#26332e]"}`}>Medir</button>
+        <button type="button" onClick={clearMeasurements} disabled={!measurements.length} className="rounded border border-[#6b3939] px-2 py-1.5 text-[9px] font-black text-[#ffb4ae] transition hover:bg-[#6b3939] disabled:cursor-not-allowed disabled:opacity-40">Limpar medições</button>
+      </div>
       {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/70 backdrop-blur-[2px]"><div className="rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 px-4 py-3 text-center text-xs font-bold text-[#dce8e1]"><div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-[#34443b] border-t-[#b7f34a]" />Carregando modelo 3D...</div></div>}
       {!loading && !hasGeometry && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/55 px-5 text-center"><div className="rounded-xl border border-[#56665d] bg-[#101613]/95 px-4 py-3 text-xs text-[#b9c8c0]">Nenhuma geometria encontrada.<br /><span className="text-[10px] text-[#829087]">Ajuste o SVG e tente gerar o modelo novamente.</span></div></div>}
       {selectedProperties && <aside className="absolute right-2 top-2 z-20 w-56 rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 p-3 text-xs shadow-2xl shadow-black/40 backdrop-blur" aria-label="Propriedades do objeto selecionado">
@@ -920,6 +1057,19 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
         </dl>
       </aside>}
     </div>
+
+    {measurements.length > 0 && <section className="mt-3 rounded-xl border border-[#2b3832] bg-[#0d1411] p-3" aria-label="Medições">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">Medições</div>
+        <span className="text-[10px] text-[#829087]">{measurements.length} registrada{measurements.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {measurements.map((measurement, index) => <div key={measurement.id} className="rounded-lg border border-[#26332e] bg-[#0a0f0d] px-3 py-2 text-[11px] text-[#dce8e1]">
+          <span className="mr-2 text-[#829087]">#{index + 1}</span>
+          <strong className="text-[#b7f34a]">{formatMeasurement(measurement.distance, unit)}</strong>
+        </div>)}
+      </div>
+    </section>}
 
     <div className="mt-3 grid gap-2 lg:grid-cols-2">
       <section className="rounded-xl border border-[#2b3832] bg-[#0d1411] p-3" aria-label="Estrutura do projeto">
