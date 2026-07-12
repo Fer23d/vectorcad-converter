@@ -73,6 +73,7 @@ type Measurement = {
 };
 
 type ViewerTool = "select" | "measure";
+type ImageQuality = "best" | "ultra";
 
 const styleLabels: Record<ModelStyle, string> = {
   industrial: "Industrial",
@@ -559,6 +560,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const activeToolRef = useRef<ViewerTool>("select");
   const [height, setHeight] = useState(5);
   const [enhanced, setEnhanced] = useState(false);
+  const [imageQuality, setImageQuality] = useState<ImageQuality>("best");
+  const imageQualityRef = useRef<ImageQuality>("best");
   const [aiClean, setAiClean] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<ModelStyle>("cad_clean");
   const [appliedStyle, setAppliedStyle] = useState<ModelStyle>("cad_clean");
@@ -822,7 +825,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
 
     const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 0.1, 100000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    const initialUltra = imageQualityRef.current === "ultra";
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio * (initialUltra ? 1.25 : 1), initialUltra ? 2 : 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -940,7 +944,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
 
     const mesh = model.children[0] as THREE.Mesh | undefined;
     const count = mesh?.geometry.getAttribute("position")?.count || 0;
-    renderer.shadowMap.enabled = count > 0 && count <= 150000;
+    renderer.shadowMap.enabled = count > 0 && count <= (imageQualityRef.current === "ultra" ? 250000 : 150000);
     const statusMessage = mesh
       ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
       : "Nenhuma forma fechada foi encontrada no SVG para extrusao.";
@@ -1008,6 +1012,22 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     renderRequest.current?.();
     setMessage(`Estilo ${styleLabels[appliedStyle]} aplicado em tempo real.`);
   }, [appliedStyle]);
+
+  useEffect(() => {
+    imageQualityRef.current = imageQuality;
+    const current = state.current;
+    if (!current) return;
+    const mesh = current.model.children[0];
+    const position = mesh instanceof THREE.Mesh ? mesh.geometry.getAttribute("position") : null;
+    const vertexCount = position?.count || 0;
+    const ultra = imageQuality === "ultra";
+    current.renderer.setPixelRatio(Math.min(window.devicePixelRatio * (ultra ? 1.25 : 1), ultra ? 2 : 1.5));
+    current.renderer.shadowMap.enabled = vertexCount > 0 && vertexCount <= (ultra ? 250000 : 150000);
+    current.renderer.toneMappingExposure = ultra ? 1.12 : 1.08;
+    current.renderer.setSize(Math.max(mount.current?.clientWidth || 1, 1), Math.max(mount.current?.clientHeight || 1, 1), false);
+    renderRequest.current?.();
+    setMessage(ultra ? "Qualidade Ultra aplicada sem reiniciar o modelo." : "Melhor imagem aplicada.");
+  }, [imageQuality]);
 
   const improveModel = () => {
     setEnhanced(true);
@@ -1080,6 +1100,21 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       <span>Modo qualidade alta</span>
       <button type="button" aria-pressed={enhanced} onClick={() => setEnhanced((value) => !value)} className={`h-5 w-9 rounded-full p-0.5 transition ${enhanced ? "bg-[#b7f34a]" : "bg-[#39443f]"}`}><span className={`block h-4 w-4 rounded-full bg-[#07100a] transition ${enhanced ? "translate-x-4" : ""}`} /></button>
     </label>
+
+    <fieldset className="mb-3 rounded-lg border border-[#26332e] bg-[#0d1411] p-3" title="Melhor imagem usa o perfil padrão. Ultra aumenta a resolução e a qualidade das sombras quando a GPU comporta.">
+      <legend className="px-1 text-[10px] font-black uppercase tracking-[.14em] text-[#b7f34a]">Qualidade da imagem</legend>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-2 text-[11px] transition ${imageQuality === "best" ? "border-[#b7f34a] bg-[#1b281d] text-[#eef6f0]" : "border-[#34413b] text-[#9aa9a1] hover:border-[#667a6c]"}`}>
+          <input type="radio" name="image-quality" value="best" checked={imageQuality === "best"} onChange={() => setImageQuality("best")} />
+          <span>Melhor imagem</span>
+        </label>
+        <label className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-2 text-[11px] transition ${imageQuality === "ultra" ? "border-[#b7f34a] bg-[#1b281d] text-[#eef6f0]" : "border-[#34413b] text-[#9aa9a1] hover:border-[#667a6c]"}`}>
+          <input type="radio" name="image-quality" value="ultra" checked={imageQuality === "ultra"} onChange={() => setImageQuality("ultra")} />
+          <span>Melhor imagem Ultra</span>
+        </label>
+      </div>
+      <p className="mt-2 text-[10px] leading-4 text-[#718078]">Ultra aumenta a resolução e o acabamento visual. Pode consumir mais GPU em modelos grandes.</p>
+    </fieldset>
 
     <div className="relative">
       <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
