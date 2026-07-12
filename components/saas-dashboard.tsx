@@ -731,15 +731,6 @@ export function SaasDashboard() {
         />
       </div>
 
-      <div className="mb-6">
-        <OnboardingChecklist
-          emailConfirmed={Boolean(user.email_confirmed_at)}
-          hasProject={projects.length > 0}
-          hasFile={hasFirstFile}
-          hasAnalysis={hasFirstAnalysis}
-        />
-      </div>
-
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {sortedProjects.map((project) => <Fragment key={project.id}>
         <article className={`rounded-2xl border p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[#b7f34a] ${deletingProjectId === project.id ? "scale-[.98] opacity-50" : ""} ${activeProject?.id === project.id ? "border-[#b7f34a] bg-[#182318]" : "border-[#26312c] bg-[#101613]"}`}>
@@ -834,6 +825,12 @@ export function SaasDashboard() {
               usage={profile?.usage_count_today || 0}
               limit={planConfig.usageLimit}
               onUpgrade={() => router.push("/pricing")}
+            />
+            <OnboardingChecklist
+              emailConfirmed={Boolean(user.email_confirmed_at)}
+              hasProject={projects.length > 0}
+              hasFile={hasFirstFile}
+              hasAnalysis={hasFirstAnalysis}
             />
             <div className="rounded-2xl border border-[#26312c] bg-[#0b100e] p-4">
               <div className="text-xs uppercase tracking-[.14em] text-[#728178]">User ID</div>
