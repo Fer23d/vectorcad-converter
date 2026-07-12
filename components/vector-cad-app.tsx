@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, ChevronDown, Crosshair, Download, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
+import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
@@ -47,7 +48,7 @@ function download(name: string, body: string, type: string) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
-export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null }) {
+export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
@@ -66,6 +67,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
   const [upgradeModal, setUpgradeModal] = useState("");
   const hydrating = useRef(true);
+  const skipLocalSave = useRef(true);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -77,19 +79,47 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
+  const { restoredDraft, localDraftDirty, saveDraft } = useLocalProjectDraft({ userId, projectId, hasInitialData: Boolean(initialData), clearSignal: draftClearSignal });
 
   useEffect(() => {
-    const saved = initialData;
+    const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
     hydrating.current = true;
+    skipLocalSave.current = true;
+    const restore = () => {
 
     if (!saved?.sourceImageDataUrl) {
+      setSource(null);
+      setSourceImageDataUrl(saved?.sourceImageDataUrl || "");
+      setFileName(saved?.fileName || "");
+      setProcessing(saved?.processing || defaultProcessing);
+      setVector(saved?.vector || defaultVector);
+      setDoc(saved?.document || null);
+      setUnit(saved?.unit || "mm");
+      setRealWidth(saved?.realWidth || 100);
+      setRealHeight(saved?.realHeight || 100);
+      setLocked(saved?.locked ?? true);
+      setActiveView(saved?.activeView || "vector");
+      setShow3d(saved?.editorMode === "cad3d");
       hydrating.current = false;
       return;
     }
 
+    setSourceImageDataUrl(saved.sourceImageDataUrl);
+    setFileName(saved.fileName || "");
+    setProcessing(saved.processing || defaultProcessing);
+    setVector(saved.vector || defaultVector);
+    setDoc(saved.document || null);
+    setUnit(saved.unit || "mm");
+    setRealWidth(saved.realWidth || 100);
+    setRealHeight(saved.realHeight || 100);
+    setLocked(saved.locked ?? true);
+    setActiveView(saved.activeView || "vector");
+    setShow3d(saved.editorMode === "cad3d");
+
     const image = new Image();
     image.onload = () => {
       setSource(image);
+      skipLocalSave.current = true;
       hydrating.current = false;
       setMessage("Projeto carregado. Você pode continuar a edição.");
     };
@@ -98,11 +128,14 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       setMessage("O projeto foi carregado, mas a imagem original não pôde ser restaurada.");
     };
     image.src = saved.sourceImageDataUrl;
-  }, [initialData]);
+    };
+    const restoreTimer = window.setTimeout(restore, 0);
+    return () => window.clearTimeout(restoreTimer);
+  }, [draftClearSignal, initialData, restoredDraft]);
 
   useEffect(() => {
-    if (!onProjectChange || hydrating.current) return;
-    onProjectChange({
+    if (hydrating.current) return;
+    const data: CadProjectData = {
       notes: "",
       editorMode: show3d ? "cad3d" : "cad2d",
       schemaVersion: 1,
@@ -116,8 +149,25 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       realHeight,
       locked,
       activeView,
-    });
-  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, show3d, sourceImageDataUrl, unit, vector]);
+    };
+    if (skipLocalSave.current) {
+      skipLocalSave.current = false;
+      onProjectChange?.(data);
+      return;
+    }
+    saveDraft(data);
+    if (onProjectChange) onProjectChange(data);
+  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceImageDataUrl, unit, vector]);
+
+  useEffect(() => {
+    if (!localDraftDirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "Você tem alterações não salvas.";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [localDraftDirty]);
 
   const consumeUsage = useCallback(async (action: "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf") => {
     if (!isSupabaseConfigured || !supabase) return true;

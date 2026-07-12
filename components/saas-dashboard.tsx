@@ -11,6 +11,7 @@ import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
+import { cancelLocalProjectDraftTimer, clearLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
@@ -99,6 +100,7 @@ export function SaasDashboard() {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
+  const [draftClearSignal, setDraftClearSignal] = useState("");
   const latestProjectData = useRef<CadProjectData | null>(null);
   const editorProjectId = useRef<string | null>(null);
   const editorCallbackSeen = useRef<string | null>(null);
@@ -278,6 +280,7 @@ export function SaasDashboard() {
 
     const project = data as CadProject;
     setActiveProject(project);
+    setDraftClearSignal("");
     editorProjectId.current = project.id;
     editorCallbackSeen.current = null;
     latestProjectData.current = project.data;
@@ -309,6 +312,7 @@ export function SaasDashboard() {
 
     setProjects((current) => [data as CadProject, ...current]);
     setActiveProject(data as CadProject);
+    setDraftClearSignal("");
     editorProjectId.current = (data as CadProject).id;
     editorCallbackSeen.current = null;
     latestProjectData.current = (data as CadProject).data;
@@ -354,6 +358,8 @@ export function SaasDashboard() {
   const saveProject = useCallback(async () => {
     if (!supabase || !user || !activeProject || !latestProjectData.current || savingProject.current) return;
 
+    // Manual save takes precedence over the one-minute browser draft timer.
+    cancelLocalProjectDraftTimer(user.id);
     savingProject.current = true;
     setProjectSaveState("saving");
     const updatedAt = new Date().toISOString();
@@ -368,14 +374,19 @@ export function SaasDashboard() {
     if (error) {
       setProjectSaveState("error");
       setStatus(`Erro ao salvar projeto: ${error.message}`);
+      setToastMessage("Erro ao salvar projeto");
       return;
     }
 
     const savedProject = { ...activeProject, data, updated_at: updatedAt };
     setActiveProject(savedProject);
     setProjects((current) => current.map((project) => project.id === savedProject.id ? savedProject : project));
+    clearLocalProjectDraft(user.id);
+    setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
     setStatus("Projeto salvo");
+    setToastMessage("Projeto salvo com sucesso");
+    window.setTimeout(() => setToastMessage(""), 2600);
   }, [activeProject, user]);
 
   useEffect(() => {
@@ -775,7 +786,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} projectId={activeProject?.id} initialData={activeProject?.data} onProjectChange={handleProjectChange} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
