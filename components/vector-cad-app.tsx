@@ -290,8 +290,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange }: { 
       </aside>
     </section>}
     <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
-      <div className="text-sm font-black uppercase tracking-[.22em] text-[#b7f34a]">shiftcore</div>
-      <div className="mt-1 text-[11px] text-[#8b9a92]">by Fernando Fernandes</div>
+      <div className="text-sm font-black tracking-[.12em] text-[#b7f34a]">VectorCAD</div>
+      <div className="mt-2 text-[11px] text-[#8b9a92]">A inteligência aplicada aos seus projetos de engenharia.</div>
+      <div className="mt-3 text-xs font-black text-[#b7f34a]">Grupo ShiftCore</div>
+      <div className="mt-1 text-[11px] text-[#8b9a92]">Tecnologia, inovação e soluções inteligentes.</div>
     </footer>
     <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
     {upgradeModal && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
