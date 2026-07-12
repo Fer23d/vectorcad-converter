@@ -299,12 +299,12 @@ export function apply3DStyle(mesh: THREE.Mesh, style: ModelStyle) {
 }
 
 function applySceneStyle(scene: THREE.Scene, style: ModelStyle) {
-  const settings: Record<ModelStyle, { background: number; ambient: number; directional: number; fill: number; grid: number }> = {
-    industrial: { background: 0x1e2225, ambient: 0.45, directional: 1.55, fill: 0.25, grid: 0x3a4248 },
-    cad_clean: { background: 0xf1f3f1, ambient: 0.82, directional: 1.05, fill: 0.18, grid: 0xc8d0cc },
-    wood: { background: 0xf4eee6, ambient: 0.7, directional: 1.25, fill: 0.28, grid: 0xcab8a4 },
-    neon: { background: 0x080916, ambient: 0.34, directional: 1.45, fill: 1.1, grid: 0x262a58 },
-    plastic: { background: 0xe8e8e3, ambient: 0.76, directional: 1.18, fill: 0.22, grid: 0xc2c6bf },
+  const settings: Record<ModelStyle, { background: number; ambient: number; directional: number; fill: number; grid: number; ground: number }> = {
+    industrial: { background: 0x1e2225, ambient: 0.45, directional: 1.55, fill: 0.25, grid: 0x3a4248, ground: 0x202529 },
+    cad_clean: { background: 0xf1f3f1, ambient: 0.82, directional: 1.05, fill: 0.18, grid: 0xc8d0cc, ground: 0xe7ebe8 },
+    wood: { background: 0xf4eee6, ambient: 0.7, directional: 1.25, fill: 0.28, grid: 0xcab8a4, ground: 0xefe3d5 },
+    neon: { background: 0x080916, ambient: 0.34, directional: 1.45, fill: 1.1, grid: 0x262a58, ground: 0x0d1024 },
+    plastic: { background: 0xe8e8e3, ambient: 0.76, directional: 1.18, fill: 0.22, grid: 0xc2c6bf, ground: 0xdfe1dc },
   };
   const next = settings[style];
   scene.background = new THREE.Color(next.background);
@@ -313,6 +313,7 @@ function applySceneStyle(scene: THREE.Scene, style: ModelStyle) {
     if (object instanceof THREE.DirectionalLight && object.name === "key-light") object.intensity = next.directional;
     if (object instanceof THREE.DirectionalLight && object.name === "fill-light") object.intensity = next.fill;
     if (object instanceof THREE.GridHelper) object.material.color.setHex(next.grid);
+    if (object instanceof THREE.Mesh && object.name === "ground" && object.material instanceof THREE.MeshStandardMaterial) object.material.color.setHex(next.ground);
   });
 }
 
@@ -367,6 +368,8 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   });
   const mesh = new THREE.Mesh(finalGeometry, material);
   mesh.name = options.enhanced ? "VectorCAD_Enhanced_Extrusion" : "VectorCAD_Extrusion";
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   apply3DStyle(mesh, options.style);
   model.add(mesh);
 
@@ -384,6 +387,8 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
   const [selectedStyle, setSelectedStyle] = useState<ModelStyle>("cad_clean");
   const [appliedStyle, setAppliedStyle] = useState<ModelStyle>("cad_clean");
   const [qualityRun, setQualityRun] = useState(0);
+  const [loading, setLoading] = useState(() => Boolean(svg));
+  const [hasGeometry, setHasGeometry] = useState(false);
   const [message, setMessage] = useState("Clique e arraste para girar. Use o scroll para aproximar.");
 
   const getModelFocus = useCallback(() => {
@@ -444,11 +449,6 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     setMessage(`Vista ${viewType} aplicada com transicao suave.`);
   }, [animateCameraTo, getModelFocus]);
 
-  const setCad2DView = useCallback((view: Cad2DView) => {
-    setCameraView(view);
-    setMessage(`CAD 2D ${view.toUpperCase()} VIEW ativo: camera ortografica sem perspectiva.`);
-  }, [setCameraView]);
-
   const autoFitView = useCallback(() => {
     const current = state.current;
     const focus = getModelFocus();
@@ -466,15 +466,38 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
 
   useEffect(() => {
     const host = mount.current;
-    if (!host || !svg) return;
+    if (!host) return;
+    if (!svg) {
+      const emptyTimer = window.setTimeout(() => {
+        setLoading(false);
+        setHasGeometry(false);
+        setMessage("Nenhum SVG disponível para gerar a geometria 3D.");
+      }, 0);
+      return () => window.clearTimeout(emptyTimer);
+    }
+
+    let disposed = false;
+    const loadingTimer = window.setTimeout(() => {
+      if (!disposed) setLoading(true);
+    }, 0);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xe7ebe8);
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    scene.add(new THREE.HemisphereLight(0xf7fbf8, 0x26372f, 0.38));
 
     const directional = new THREE.DirectionalLight(0xffffff, 1.2);
     directional.name = "key-light";
     directional.position.set(80, -120, 180);
+    directional.castShadow = true;
+    directional.shadow.mapSize.set(1024, 1024);
+    directional.shadow.camera.left = -260;
+    directional.shadow.camera.right = 260;
+    directional.shadow.camera.top = 260;
+    directional.shadow.camera.bottom = -260;
+    directional.shadow.camera.near = 1;
+    directional.shadow.camera.far = 900;
+    directional.shadow.bias = -0.0002;
     scene.add(directional);
 
     const fill = new THREE.DirectionalLight(0xb7f34a, 0.25);
@@ -482,15 +505,28 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     fill.position.set(-90, 80, 90);
     scene.add(fill);
 
-    const grid = new THREE.GridHelper(180, 18, 0xb8c2bd, 0xd4dbd7);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(700, 700),
+      new THREE.MeshStandardMaterial({ color: 0xe7ebe8, roughness: 0.96, metalness: 0, transparent: true, opacity: 0.72 }),
+    );
+    ground.name = "ground";
+    ground.position.z = -height / 2 - 0.12;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const grid = new THREE.GridHelper(420, 42, 0xb8c2bd, 0xd4dbd7);
     grid.rotation.x = Math.PI / 2;
-    grid.position.z = -height / 2 - 0.05;
+    grid.position.z = -height / 2 - 0.1;
     scene.add(grid);
 
     const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 0.1, 100000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.replaceChildren(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -499,11 +535,13 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
     controls.enableZoom = true;
     controls.zoomSpeed = 0.75;
     controls.rotateSpeed = 0.72;
+    controls.panSpeed = 0.8;
     controls.screenSpacePanning = true;
+    controls.minZoom = 0.35;
+    controls.maxZoom = 8;
 
-    const model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: appliedStyle });
+    const model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
     scene.add(model);
-    applySceneStyle(scene, appliedStyle);
     state.current = { scene, camera, renderer, controls, model };
 
     const resize = () => {
@@ -540,23 +578,39 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
 
     const mesh = model.children[0] as THREE.Mesh | undefined;
     const count = mesh?.geometry.getAttribute("position")?.count || 0;
-    setMessage(
-      mesh
-        ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
-        : "Nenhuma forma fechada foi encontrada no SVG para extrusao.",
-    );
+    const statusMessage = mesh
+      ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
+      : "Nenhuma forma fechada foi encontrada no SVG para extrusao.";
+    const statusTimer = window.setTimeout(() => {
+      if (!disposed) setMessage(statusMessage);
+    }, 0);
+    const completeTimer = window.setTimeout(() => {
+      if (!disposed) {
+        setHasGeometry(Boolean(mesh));
+        setLoading(false);
+      }
+    }, 0);
 
     return () => {
+      disposed = true;
+      window.clearTimeout(loadingTimer);
+      window.clearTimeout(completeTimer);
+      window.clearTimeout(statusTimer);
       if (frame.current) cancelAnimationFrame(frame.current);
       cameraAnimation.current = null;
       observer.disconnect();
       controls.dispose();
       disposeObject(model);
+      ground.geometry.dispose();
+      ground.material.dispose();
+      grid.geometry.dispose();
+      const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+      gridMaterials.forEach((material) => material.dispose());
       renderer.dispose();
       host.replaceChildren();
       state.current = null;
     };
-  }, [aiClean, appliedStyle, enhanced, getModelFocus, height, qualityRun, resetCamera, svg]);
+  }, [aiClean, enhanced, getModelFocus, height, qualityRun, resetCamera, svg]);
 
   useEffect(() => {
     const current = state.current;
@@ -641,14 +695,16 @@ export function SvgTo3DCadViewer({ svg, fileName }: SvgTo3DCadViewerProps) {
 
     <div className="relative">
       <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
-      <div className="absolute left-2 top-2 z-10 grid max-w-[calc(100%-1rem)] grid-cols-3 gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/80 p-1 backdrop-blur">
-        <button type="button" onClick={() => setCad2DView("front")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Front 2D</button>
-        <button type="button" onClick={() => setCad2DView("side")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Side 2D</button>
-        <button type="button" onClick={() => setCad2DView("top")} className="rounded bg-[#203b57] px-2 py-1 text-[9px] font-black text-white">Top 2D</button>
-        <button type="button" onClick={() => setCameraView("iso")} className="rounded bg-[#4b2c73] px-2 py-1 text-[9px] font-black text-white">Iso</button>
-        <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-white px-2 py-1 text-[9px] font-black text-[#111713]">Reset</button>
-        <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1 text-[9px] font-black text-[#b7f34a]">Auto Fit</button>
+      <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/80 p-1 backdrop-blur">
+        <button type="button" onClick={() => setCameraView("front")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Frontal</button>
+        <button type="button" onClick={() => setCameraView("top")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Superior</button>
+        <button type="button" onClick={() => setCameraView("side")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Lateral</button>
+        <button type="button" onClick={() => setCameraView("iso")} className="rounded bg-[#243522] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Iso</button>
+        <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-[#eef5f1] px-2 py-1.5 text-[9px] font-black text-[#111713] transition hover:bg-white">Resetar</button>
+        <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Auto Fit</button>
       </div>
+      {loading && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/70 backdrop-blur-[2px]"><div className="rounded-xl border border-[#b7f34a]/40 bg-[#101613]/95 px-4 py-3 text-center text-xs font-bold text-[#dce8e1]"><div className="mx-auto mb-2 h-5 w-5 animate-spin rounded-full border-2 border-[#34443b] border-t-[#b7f34a]" />Carregando modelo 3D...</div></div>}
+      {!loading && !hasGeometry && <div className="absolute inset-0 grid place-items-center rounded-lg bg-[#08100d]/55 px-5 text-center"><div className="rounded-xl border border-[#56665d] bg-[#101613]/95 px-4 py-3 text-xs text-[#b9c8c0]">Nenhuma geometria encontrada.<br /><span className="text-[10px] text-[#829087]">Ajuste o SVG e tente gerar o modelo novamente.</span></div></div>}
     </div>
 
     <div className="mt-3 grid gap-2">
