@@ -77,7 +77,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     if (!client) return;
 
     const normalizedEmail = normalizeEmail(email);
-    if (isTemporaryEmail(normalizedEmail)) {
+    if (mode === "signup" && isTemporaryEmail(normalizedEmail)) {
       setMessage(temporaryEmailMessage());
       return;
     }

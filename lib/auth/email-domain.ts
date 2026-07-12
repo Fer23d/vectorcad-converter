@@ -23,5 +23,5 @@ export function isTemporaryEmail(email: string) {
 }
 
 export function temporaryEmailMessage() {
-  return "Utilize um e-mail permanente para criar sua conta VectorCAD.";
+  return "Por favor, utilize um e-mail válido e permanente.";
 }
