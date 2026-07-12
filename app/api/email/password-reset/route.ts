@@ -26,12 +26,29 @@ function recoveryLinkSummary(actionLink: string) {
     const redirectUrl = redirectTo ? new URL(redirectTo) : null;
     return {
       generatedLinkHostname: parsedUrl.hostname,
+      generatedLinkPathname: parsedUrl.pathname,
       redirectPathname: redirectUrl?.pathname || null,
       redirectTo,
       linkType: parsedUrl.searchParams.get("type") || "recovery",
+      hasToken: parsedUrl.searchParams.has("token"),
+      hasTokenHash: parsedUrl.searchParams.has("token_hash"),
+      hasCode: parsedUrl.searchParams.has("code"),
+      hasAccessToken: parsedUrl.searchParams.has("access_token"),
+      hasRefreshToken: parsedUrl.searchParams.has("refresh_token"),
     };
   } catch {
-    return { generatedLinkHostname: "invalid_url", redirectPathname: null, redirectTo: null, linkType: "recovery" };
+    return {
+      generatedLinkHostname: "invalid_url",
+      generatedLinkPathname: null,
+      redirectPathname: null,
+      redirectTo: null,
+      linkType: "recovery",
+      hasToken: false,
+      hasTokenHash: false,
+      hasCode: false,
+      hasAccessToken: false,
+      hasRefreshToken: false,
+    };
   }
 }
 

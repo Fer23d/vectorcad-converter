@@ -7,6 +7,16 @@ import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 
 const RECOVERY_TIMEOUT_MS = 9000;
+const RECOVERY_LOG_PREFIX = "[password-recovery]";
+
+function recoveryLog(message: string, details?: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info(RECOVERY_LOG_PREFIX, message, details || {});
+    return;
+  }
+
+  console.info(RECOVERY_LOG_PREFIX, message, details || {});
+}
 
 function friendlyRecoveryError(value?: string | null) {
   const message = String(value || "").replace(/\+/g, " ");
@@ -52,6 +62,41 @@ function recoveryParams() {
   return params;
 }
 
+function recoveryLocationSummary(params: URLSearchParams) {
+  if (typeof window === "undefined") {
+    return {
+      pathname: null,
+      hasSearch: false,
+      hasHash: false,
+      searchKeys: [],
+      hashKeys: [],
+      recoveryType: null,
+      hasAccessToken: false,
+      hasRefreshToken: false,
+      hasCode: false,
+      hasTokenHash: false,
+      hasToken: false,
+    };
+  }
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+
+  return {
+    pathname: window.location.pathname,
+    hasSearch: Boolean(window.location.search),
+    hasHash: Boolean(window.location.hash),
+    searchKeys: Array.from(searchParams.keys()),
+    hashKeys: Array.from(hashParams.keys()),
+    recoveryType: params.get("type"),
+    hasAccessToken: params.has("access_token"),
+    hasRefreshToken: params.has("refresh_token"),
+    hasCode: params.has("code"),
+    hasTokenHash: params.has("token_hash"),
+    hasToken: params.has("token"),
+  };
+}
+
 function cleanRecoveryUrl() {
   if (typeof window !== "undefined") {
     window.history.replaceState({}, document.title, "/reset-password");
@@ -85,6 +130,7 @@ export function ResetPasswordForm() {
 
     function finish(session: Session | null, successMessage = "Digite sua nova senha.") {
       if (cancelled) return;
+      recoveryLog("finish", { hasSession: Boolean(session), loadingWillStop: true });
       setHasRecoverySession(Boolean(session));
       setLoading(false);
       setMessage(session ? successMessage : "Este link de recuperação expirou ou é inválido.");
@@ -92,6 +138,7 @@ export function ResetPasswordForm() {
 
     function fail(value?: string | null) {
       if (cancelled) return;
+      recoveryLog("fail", { message: friendlyRecoveryError(value), hasRawError: Boolean(value) });
       setHasRecoverySession(false);
       setLoading(false);
       setMessage(friendlyRecoveryError(value));
@@ -104,6 +151,7 @@ export function ResetPasswordForm() {
         client.auth.getSession(),
         "Tempo esgotado ao validar a sessão de recuperação.",
       );
+      recoveryLog("getSession result", { hasSession: Boolean(data.session) });
       return data.session;
     }
 
@@ -115,6 +163,7 @@ export function ResetPasswordForm() {
       }
 
       const subscription = client.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
+        recoveryLog("auth state change", { event, hasSession: Boolean(session) });
         if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
           authEventResolved = true;
           cleanRecoveryUrl();
@@ -123,6 +172,7 @@ export function ResetPasswordForm() {
       }).data.subscription;
 
       const params = recoveryParams();
+      recoveryLog("location parsed", recoveryLocationSummary(params));
       const errorDescription = params.get("error_description") || params.get("error");
       if (errorDescription) {
         subscription.unsubscribe();
@@ -133,7 +183,7 @@ export function ResetPasswordForm() {
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
       const code = params.get("code");
-      const tokenHash = params.get("token_hash");
+      const tokenHash = params.get("token_hash") || params.get("token");
       const linkType = params.get("type");
 
       if (linkType && linkType !== "recovery") {
@@ -144,10 +194,12 @@ export function ResetPasswordForm() {
 
       try {
         if (accessToken && refreshToken) {
+          recoveryLog("attempt setSession", { recoveryType: linkType || "implicit", hasAccessToken: true, hasRefreshToken: true });
           const { error } = await withTimeout(
             client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }),
             "Tempo esgotado ao validar o link de recuperação.",
           );
+          recoveryLog("setSession result", { ok: !error, error: error?.message || null });
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
@@ -156,10 +208,12 @@ export function ResetPasswordForm() {
         }
 
         if (code) {
+          recoveryLog("attempt exchangeCodeForSession", { recoveryType: linkType || "code", hasCode: true });
           const { error } = await withTimeout(
             client.auth.exchangeCodeForSession(code),
             "Tempo esgotado ao trocar o código de recuperação.",
           );
+          recoveryLog("exchangeCodeForSession result", { ok: !error, error: error?.message || null });
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
@@ -168,10 +222,12 @@ export function ResetPasswordForm() {
         }
 
         if (tokenHash) {
+          recoveryLog("attempt verifyOtp", { recoveryType: linkType || "recovery", hasTokenHash: params.has("token_hash"), hasToken: params.has("token") });
           const { error } = await withTimeout(
             client.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" }),
             "Tempo esgotado ao validar o token de recuperação.",
           );
+          recoveryLog("verifyOtp result", { ok: !error, error: error?.message || null });
           if (error) throw error;
           cleanRecoveryUrl();
           finish(await confirmCurrentSession());
@@ -180,8 +236,10 @@ export function ResetPasswordForm() {
         }
 
         const session = await confirmCurrentSession();
+        recoveryLog("fallback session check", { hasSession: Boolean(session), authEventResolved });
         if (!authEventResolved) finish(session);
       } catch (error) {
+        recoveryLog("recovery validation exception", { message: error instanceof Error ? error.message : "unknown_error" });
         fail(error instanceof Error ? error.message : null);
       } finally {
         window.setTimeout(() => subscription.unsubscribe(), 250);
