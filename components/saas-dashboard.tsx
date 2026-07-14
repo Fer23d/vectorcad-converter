@@ -356,8 +356,8 @@ export function SaasDashboard() {
     setProjectSaveState("dirty");
   }, []);
 
-  const saveProject = useCallback(async () => {
-    if (!supabase || !user || !activeProject || !latestProjectData.current || savingProject.current) return;
+  const saveProject = useCallback(async (): Promise<boolean> => {
+    if (!supabase || !user || !activeProject || !latestProjectData.current || savingProject.current) return false;
 
     // Manual save takes precedence over the one-minute browser draft timer.
     cancelLocalProjectDraftTimer(user.id);
@@ -376,7 +376,7 @@ export function SaasDashboard() {
       setProjectSaveState("error");
       setStatus(`Erro ao salvar projeto: ${error.message}`);
       setToastMessage("Erro ao salvar projeto");
-      return;
+      return false;
     }
 
     const savedProject = { ...activeProject, data, updated_at: updatedAt };
@@ -388,7 +388,45 @@ export function SaasDashboard() {
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
     window.setTimeout(() => setToastMessage(""), 2600);
+    return true;
   }, [activeProject, user]);
+
+  const prepare3dProject = useCallback(async (data: CadProjectData): Promise<string | null> => {
+    if (!supabase || !user) return null;
+
+    // Existing projects are persisted first so the independent 3D route reads the latest editor state.
+    if (activeProject) {
+      latestProjectData.current = data;
+      return (await saveProject()) ? activeProject.id : null;
+    }
+
+    // If the user started from the standalone editor, create a project automatically instead of blocking the new tab.
+    const name = data.fileName?.replace(/\.[^.]+$/, "").trim() || `Projeto ${projects.length + 1}`;
+    const { data: created, error } = await supabase
+      .from("projects")
+      .insert([{ user_id: user.id, name, type: "2d", data }])
+      .select("*")
+      .single();
+
+    if (error || !created) {
+      setStatus(`Erro ao salvar projeto: ${error?.message || "não foi possível criar o projeto"}`);
+      setToastMessage("Erro ao salvar projeto");
+      return null;
+    }
+
+    const savedProject = created as CadProject;
+    setProjects((current) => [savedProject, ...current]);
+    setActiveProject(savedProject);
+    setDraftClearSignal(new Date().toISOString());
+    editorProjectId.current = savedProject.id;
+    editorCallbackSeen.current = savedProject.id;
+    latestProjectData.current = data;
+    setProjectSaveState("saved");
+    setStatus("Projeto salvo");
+    setToastMessage("Projeto salvo com sucesso");
+    window.setTimeout(() => setToastMessage(""), 2600);
+    return savedProject.id;
+  }, [activeProject, projects.length, saveProject, user]);
 
   useEffect(() => {
     if (projectSaveState !== "dirty" || !activeProject) return;
@@ -788,7 +826,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onPrepare3dProject={prepare3dProject} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
