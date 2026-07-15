@@ -360,13 +360,6 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       return;
     }
 
-    // Open synchronously so browsers do not treat the awaited save as a popup.
-    const newTab = window.open("about:blank", "_blank", "noopener,noreferrer");
-    if (!newTab) {
-      setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o VectorCAD.");
-      return;
-    }
-
     const data: CadProjectData = {
       notes: "",
       editorMode: "cad3d",
@@ -383,16 +376,28 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       locked,
       activeView,
     };
+    if (!projectId) setMessage("Salvando projeto para abrir visualização 3D...");
     const savedProjectId = projectId || await onPrepare3dProject?.(data);
     if (!savedProjectId) {
-      newTab.close();
+      console.info("[VectorCAD][3D] project id unavailable", { hasProjectId: false });
       setMessage("Salve o projeto antes de abrir o visualizador em nova guia.");
       return;
     }
 
     const viewerUrl = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
     console.info("[VectorCAD][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
-    newTab.location.replace(viewerUrl);
+    try {
+      const newTab = window.open(viewerUrl, "_blank", "noopener,noreferrer");
+      console.info("[VectorCAD][3D] window.open result", { opened: Boolean(newTab) });
+      if (!newTab) {
+        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o VectorCAD.");
+        return;
+      }
+    } catch (error) {
+      console.error("[VectorCAD][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+      setMessage("Não foi possível abrir o visualizador 3D em uma nova guia.");
+      return;
+    }
     setShow3dOptions(false);
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
