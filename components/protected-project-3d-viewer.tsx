@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Box, LoaderCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, Box, LoaderCircle } from "lucide-react";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -15,54 +15,77 @@ export function ProtectedProject3DViewer() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [state, setState] = useState<ViewerState | null>(null);
-  const [message, setMessage] = useState("Carregando projeto 3D...");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("Carregando visualizador 3D...");
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!isSupabaseConfigured || !supabase) {
-        router.replace("/login");
-        return;
+      const projectId = typeof params.id === "string" ? params.id : "";
+      console.info("[VectorCAD][3D] route opened", {
+        pathname: window.location.pathname,
+        hasProjectId: Boolean(projectId),
+      });
+
+      try {
+        if (!projectId) throw new Error("PROJECT_ID_MISSING");
+        if (!isSupabaseConfigured || !supabase) {
+          router.replace("/login");
+          return;
+        }
+
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.info("[VectorCAD][3D] session check", {
+          hasSession: Boolean(sessionData.session),
+          errorCode: sessionError?.status || null,
+        });
+        if (!sessionData.session) {
+          router.replace("/login");
+          return;
+        }
+
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData.user) {
+          console.info("[VectorCAD][3D] user check failed", { errorCode: userError?.status || null });
+          router.replace("/login");
+          return;
+        }
+        if (!userData.user.email_confirmed_at) {
+          router.replace(`/verify-email?email=${encodeURIComponent(userData.user.email || "")}`);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("projects")
+          .select("id,user_id,name,type,data,created_at,updated_at")
+          .eq("id", projectId)
+          .eq("user_id", userData.user.id)
+          .single();
+        console.info("[VectorCAD][3D] project query", { found: Boolean(data), errorCode: error?.code || null });
+
+        if (cancelled) return;
+        if (error || !data) throw new Error("PROJECT_NOT_FOUND");
+
+        const project = data as CadProject;
+        const projectData = project.data as CadProjectData | null;
+        const document = projectData?.document;
+        if (!projectData || !document || !document.paths?.length) throw new Error("VECTOR_NOT_AVAILABLE");
+
+        const width = projectData.realWidth || document.width;
+        const height = projectData.realHeight || document.height;
+        const unit = projectData.unit || document.unit;
+        const svg = generateSvg(scaleDocument(document, width, height, unit));
+        if (!svg) throw new Error("SVG_NOT_GENERATED");
+        setState({ project, svg, unit, fileName: projectData.fileName });
+      } catch (error) {
+        if (cancelled) return;
+        console.error("[VectorCAD][3D] load failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+        setMessage(error instanceof Error && error.message === "VECTOR_NOT_AVAILABLE"
+          ? "Este projeto ainda nao possui um vetor para visualizar em 3D."
+          : "Nao foi possivel carregar o visualizador 3D deste projeto.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
-        router.replace("/login");
-        return;
-      }
-
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user?.email_confirmed_at) {
-        router.replace(`/verify-email?email=${encodeURIComponent(userData.user?.email || "")}`);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id,user_id,name,type,data,created_at,updated_at")
-        .eq("id", params.id)
-        .eq("user_id", userData.user.id)
-        .single();
-
-      if (cancelled) return;
-      if (error || !data) {
-        setMessage("Projeto não encontrado ou sem permissão de acesso.");
-        return;
-      }
-
-      const project = data as CadProject;
-      const projectData = project.data as CadProjectData | null;
-      const document = projectData?.document;
-      if (!projectData || !document) {
-        setMessage("Este projeto ainda não possui um vetor para visualizar em 3D.");
-        return;
-      }
-
-      const width = projectData.realWidth || document.width;
-      const height = projectData.realHeight || document.height;
-      const unit = projectData.unit || document.unit;
-      const scaledDocument = scaleDocument(document, width, height, unit);
-      setState({ project, svg: generateSvg(scaledDocument), unit, fileName: projectData.fileName });
     };
 
     void load();
@@ -76,7 +99,7 @@ export function ProtectedProject3DViewer() {
       <button type="button" onClick={() => router.push("/dashboard")} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao projeto</button>
     </header>
     <section className="mx-auto max-w-[1600px] p-4 md:p-7">
-      {state ? <SvgTo3DCadViewer svg={state.svg} fileName={state.fileName} unit={state.unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] px-6 text-center"><div><LoaderCircle className="mx-auto animate-spin text-[#b7f34a]" size={28} /><p className="mt-4 text-sm font-bold text-[#dce8e1]">{message}</p><button type="button" onClick={() => router.push("/dashboard")} className="mt-5 rounded-lg border border-[#34413b] px-4 py-2 text-xs font-bold text-[#b7f34a]">Voltar ao dashboard</button></div></div>}
+      {state ? <SvgTo3DCadViewer svg={state.svg} fileName={state.fileName} unit={state.unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] px-6 text-center"><div>{loading ? <LoaderCircle className="mx-auto animate-spin text-[#b7f34a]" size={28} /> : <AlertCircle className="mx-auto text-[#f0b45b]" size={28} />}<p className="mt-4 text-sm font-bold text-[#dce8e1]">{message}</p><button type="button" onClick={() => router.push("/dashboard")} className="mt-5 rounded-lg border border-[#34413b] px-4 py-2 text-xs font-bold text-[#b7f34a]">Voltar ao dashboard</button></div></div>}
     </section>
   </main>;
 }

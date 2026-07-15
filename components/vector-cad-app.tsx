@@ -390,7 +390,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       return;
     }
 
-    newTab.location.href = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
+    const viewerUrl = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
+    console.info("[VectorCAD][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
+    newTab.location.replace(viewerUrl);
     setShow3dOptions(false);
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
