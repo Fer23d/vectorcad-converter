@@ -8,9 +8,14 @@ export function isTiffFile(file: File) {
   return TIFF_MIME_TYPES.includes(file.type as (typeof TIFF_MIME_TYPES)[number]) || extension === "tif" || extension === "tiff";
 }
 
-/** Decodes the first TIFF page to a PNG data URL understood by Canvas/Image. */
-export async function convertTiffToPng(file: File) {
-  const buffer = await file.arrayBuffer();
+export type TiffRaster = {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+};
+
+/** Decodes the first TIFF page directly to RGBA pixels for the existing raster pipeline. */
+export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
   const frames = UTIF.decode(buffer);
   const frame = frames[0];
 
@@ -20,12 +25,15 @@ export async function convertTiffToPng(file: File) {
 
   UTIF.decodeImage(buffer, frame);
   const rgba = UTIF.toRGBA8(frame);
-  const canvas = document.createElement("canvas");
-  canvas.width = frame.width;
-  canvas.height = frame.height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("TIFF_CANVAS_UNAVAILABLE");
+  return { width: frame.width, height: frame.height, data: new Uint8ClampedArray(rgba) };
+}
 
-  context.putImageData(new ImageData(new Uint8ClampedArray(rgba), frame.width, frame.height), 0, 0);
-  return { dataUrl: canvas.toDataURL("image/png"), width: frame.width, height: frame.height };
+export async function decodeTiffFile(file: File) {
+  return decodeTiff(await file.arrayBuffer());
+}
+
+export async function decodeTiffDataUrl(dataUrl: string) {
+  const response = await fetch(dataUrl);
+  if (!response.ok) throw new Error("TIFF_DATA_UNAVAILABLE");
+  return decodeTiff(await response.arrayBuffer());
 }

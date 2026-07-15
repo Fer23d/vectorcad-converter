@@ -6,6 +6,7 @@ export type CadProjectData = {
   lastOpenedAt?: string;
   schemaVersion?: 1;
   sourceImageDataUrl?: string;
+  sourceFormat?: "raster" | "tiff";
   fileName?: string;
   processing?: import("@/types/vector").ProcessingSettings;
   vector?: import("@/types/vector").VectorSettings;

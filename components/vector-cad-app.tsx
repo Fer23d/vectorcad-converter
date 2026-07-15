@@ -8,7 +8,7 @@ import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
-import { convertTiffToPng, isTiffFile } from "@/lib/image-processing/tiff";
+import { decodeTiffDataUrl, decodeTiffFile, isTiffFile, type TiffRaster } from "@/lib/image-processing/tiff";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -51,6 +51,8 @@ function download(name: string, body: string, type: string) {
 
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
+  const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
+  const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
@@ -90,6 +92,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
 
     if (!saved?.sourceImageDataUrl) {
       setSource(null);
+      setSourceRaster(null);
+      setSourceFormat("raster");
       setSourceImageDataUrl(saved?.sourceImageDataUrl || "");
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
@@ -106,6 +110,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
 
     setSourceImageDataUrl(saved.sourceImageDataUrl);
+    setSourceFormat(saved.sourceFormat || "raster");
+    setSourceRaster(null);
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
     setVector(saved.vector || defaultVector);
@@ -117,8 +123,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setActiveView(saved.activeView || "vector");
     setShow3d(saved.editorMode === "cad3d");
 
+    if (saved.sourceFormat === "tiff") return;
+
     const image = new Image();
     image.onload = () => {
+      setSourceRaster(null);
+      setSourceFormat("raster");
       setSource(image);
       skipLocalSave.current = true;
       hydrating.current = false;
@@ -135,12 +145,33 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [draftClearSignal, initialData, restoredDraft]);
 
   useEffect(() => {
+    const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
+    if (!saved?.sourceImageDataUrl || saved.sourceFormat !== "tiff") return;
+    let cancelled = false;
+    void decodeTiffDataUrl(saved.sourceImageDataUrl).then((raster) => {
+      if (cancelled) return;
+      setSource(null);
+      setSourceRaster(raster);
+      setSourceFormat("tiff");
+      hydrating.current = false;
+      setMessage("TIFF carregado nativamente. VocÃª pode continuar a ediÃ§Ã£o.");
+    }).catch(() => {
+      if (!cancelled) {
+        hydrating.current = false;
+        setMessage("O arquivo TIFF foi salvo, mas nÃ£o pÃ´de ser restaurado.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [draftClearSignal, initialData, restoredDraft]);
+
+  useEffect(() => {
     if (hydrating.current) return;
     const data: CadProjectData = {
       notes: "",
       editorMode: show3d ? "cad3d" : "cad2d",
       schemaVersion: 1,
       sourceImageDataUrl,
+      sourceFormat,
       fileName,
       processing,
       vector,
@@ -158,7 +189,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceImageDataUrl, unit, vector]);
+  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -206,17 +237,21 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       if (!allowed) return;
       try {
         setMessage("Convertendo TIFF para um formato processável...");
-        const converted = await convertTiffToPng(file);
-        const image = new Image();
-        image.onload = () => {
-          setSourceImageDataUrl(converted.dataUrl);
-          setSource(image);
-          setFileName(file.name);
-          setRealHeight(Number((100 * converted.height / converted.width).toFixed(2)));
-          setMessage("TIFF convertido. Ajuste o limiar para refinar os contornos.");
-        };
-        image.onerror = () => setMessage("Não foi possível processar este arquivo TIFF.");
-        image.src = converted.dataUrl;
+        const raster = await decodeTiffFile(file);
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("TIFF_FILE_READ_FAILED"));
+          reader.readAsDataURL(file);
+        });
+        setSourceImageDataUrl(dataUrl);
+        setSourceFormat("tiff");
+        setSourceRaster(raster);
+        setSource(null);
+        setFileName(file.name);
+        setRealHeight(Number((100 * raster.height / raster.width).toFixed(2)));
+        setMessage("TIFF carregado nativamente. Ajuste o limiar para refinar os contornos.");
+        return;
       } catch {
         setMessage("Não foi possível processar este arquivo TIFF.");
       }
@@ -231,7 +266,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     image.onload = () => {
       const reader = new FileReader();
       reader.onload = () => setSourceImageDataUrl(String(reader.result || ""));
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(file!);
       setSource(image); setFileName(file.name); setRealHeight(Number((100 * image.height / image.width).toFixed(2))); setMessage("Imagem carregada. Ajuste o limiar para refinar os contornos."); URL.revokeObjectURL(url);
     };
     image.onerror = () => setMessage("Não foi possível processar essa imagem. Tente outro arquivo.");
@@ -239,24 +274,41 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [consumeUsage]);
 
   useEffect(() => {
-    if (!source) return;
-    const max = 720, scale = Math.min(1, max / Math.max(source.width, source.height));
-    const w = Math.max(1, Math.round(source.width * scale)), h = Math.max(1, Math.round(source.height * scale));
+    if (!source && !sourceRaster) return;
+    const sourceWidth = sourceRaster?.width || source?.width || 0;
+    const sourceHeight = sourceRaster?.height || source?.height || 0;
+    const max = 720, scale = Math.min(1, max / Math.max(sourceWidth, sourceHeight));
+    const w = Math.max(1, Math.round(sourceWidth * scale)), h = Math.max(1, Math.round(sourceHeight * scale));
     const oc = originalCanvas.current!, pc = processedCanvas.current!;
     oc.width = pc.width = w; oc.height = pc.height = h;
     const ctx = oc.getContext("2d", { willReadFrequently: true })!;
-    ctx.clearRect(0, 0, w, h); ctx.drawImage(source, 0, 0, w, h);
+    ctx.clearRect(0, 0, w, h);
+    if (sourceRaster) {
+      const rasterCanvas = document.createElement("canvas");
+      rasterCanvas.width = sourceRaster.width;
+      rasterCanvas.height = sourceRaster.height;
+      const rasterContext = rasterCanvas.getContext("2d")!;
+      const rasterImage = rasterContext.createImageData(sourceRaster.width, sourceRaster.height);
+      rasterImage.data.set(sourceRaster.data);
+      rasterContext.putImageData(rasterImage, 0, 0);
+      ctx.drawImage(rasterCanvas, 0, 0, w, h);
+    } else if (source) {
+      ctx.drawImage(source, 0, 0, w, h);
+    }
     const result = processPixels(ctx.getImageData(0, 0, w, h), processing);
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
     setDoc(vectorizeBitmap(result.bitmap, w, h, vector));
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [source, processing, vector]);
+  }, [source, sourceRaster, processing, vector]);
 
   const finalDoc = doc ? scaleDocument(doc, realWidth, realHeight, unit) : null;
   const svg = finalDoc ? generateSvg(finalDoc) : "";
-  const updateWidth = (v: number) => { setRealWidth(v); if (locked && source) setRealHeight(Number((v * source.height / source.width).toFixed(2))); };
-  const updateHeight = (v: number) => { setRealHeight(v); if (locked && source) setRealWidth(Number((v * source.width / source.height).toFixed(2))); };
+  const sourceWidth = sourceRaster?.width || source?.width || 0;
+  const sourceHeight = sourceRaster?.height || source?.height || 0;
+  const hasSource = Boolean(source || sourceRaster);
+  const updateWidth = (v: number) => { setRealWidth(v); if (locked && sourceWidth && sourceHeight) setRealHeight(Number((v * sourceHeight / sourceWidth).toFixed(2))); };
+  const updateHeight = (v: number) => { setRealHeight(v); if (locked && sourceWidth && sourceHeight) setRealWidth(Number((v * sourceWidth / sourceHeight).toFixed(2))); };
   const exportFile = async (kind: "svg" | "dxf") => {
     if (!finalDoc) return setMessage("Envie e vetorize uma imagem antes de exportar.");
     if (kind === "dxf") {
@@ -330,7 +382,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
 
-    {!source && <section className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center md:pt-24">
+    {!hasSource && <section className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center md:pt-24">
       <div className="mx-auto mb-5 flex w-fit items-center gap-2 rounded-full border border-[#3d513e] bg-[#162219] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-[#b7f34a]"><Sparkles size={12} /> Raster para CAD editável</div>
       <h1 className="mx-auto max-w-3xl text-4xl font-black tracking-[-.045em] text-white md:text-6xl">Transforme imagens em <span className="text-[#b7f34a]">vetores para CAD</span></h1>
       <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#9faca6] md:text-base">Converta PNG e JPG em SVG e DXF editável para AutoCAD, corte laser, CNC e projetos técnicos.</p>
@@ -340,7 +392,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
 
-    {source && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px`, "--cad-width": `${cadPanel.size}px` } as React.CSSProperties}>
+    {hasSource && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px`, "--cad-width": `${cadPanel.size}px` } as React.CSSProperties}>
       <aside className="controls-panel border-r border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Pré-processamento" icon={<WandSparkles size={14} />}>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
