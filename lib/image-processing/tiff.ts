@@ -14,8 +14,21 @@ export type TiffRaster = {
   data: Uint8ClampedArray;
 };
 
+export type ProcessedTiff = {
+  width: number;
+  height: number;
+  rgbaData: Uint8ClampedArray;
+  previewPng: string;
+};
+
+function isBigTiff(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 4));
+  return bytes.length === 4 && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2b && bytes[3] === 0x00) || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2b));
+}
+
 /** Creates the lossless PNG used by Canvas while keeping the TIFF bytes separate in the project. */
 export function rasterToPngDataUrl(raster: TiffRaster) {
+  if (typeof document === "undefined") throw new Error("TIFF_CANVAS_UNAVAILABLE");
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = raster.width;
   sourceCanvas.height = raster.height;
@@ -41,8 +54,9 @@ function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?:
   if (rgba.length !== expectedBytes) throw new Error("TIFF_RGBA_SIZE_INVALID");
 
   const normalized = new Uint8ClampedArray(rgba);
-  const samplesPerPixel = frame.t277?.[0] || frame.t258?.length || 1;
-  const explicitAlpha = Boolean(frame.t338?.length) || samplesPerPixel >= 4;
+  // Four channels do not necessarily mean RGBA (CMYK and some RGB encoders also use four).
+  // Only ExtraSamples explicitly declares an alpha channel.
+  const explicitAlpha = Boolean(frame.t338?.length);
   let hasVisibleAlpha = false;
   for (let i = 3; i < normalized.length; i += 4) {
     if (normalized[i] > 0) {
@@ -58,11 +72,11 @@ function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?:
   return normalized;
 }
 
-function decodeOneBitPalette(frame: { data?: Uint8Array; t320?: number[]; t266?: number[] }, width: number, height: number) {
+function decodeOneBit(frame: { data?: Uint8Array; t320?: number[]; t266?: number[] }, width: number, height: number, photometric: number) {
   if (!frame.data) throw new Error("TIFF_PIXEL_DATA_MISSING");
   const palette = frame.t320 || [];
   const paletteSize = Math.floor(palette.length / 3);
-  if (paletteSize < 2) throw new Error("TIFF_PALETTE_MISSING");
+  if (photometric === 3 && paletteSize < 2) throw new Error("TIFF_PALETTE_MISSING");
 
   const rgba = new Uint8ClampedArray(width * height * 4);
   const rowBytes = Math.ceil(width / 8);
@@ -77,10 +91,9 @@ function decodeOneBitPalette(frame: { data?: Uint8Array; t320?: number[]; t266?:
       const packed = frame.data[y * rowBytes + (x >> 3)] || 0;
       const shift = fillOrder === 2 ? x & 7 : 7 - (x & 7);
       const paletteIndex = (packed >> shift) & 1;
-      const red = paletteValue(0, paletteIndex);
-      const green = paletteValue(1, paletteIndex);
-      const blue = paletteValue(2, paletteIndex);
-      const color = (red * 0.299 + green * 0.587 + blue * 0.114) < 128 ? 0 : 255;
+      const color = photometric === 3
+        ? ((paletteValue(0, paletteIndex) * 0.299 + paletteValue(1, paletteIndex) * 0.587 + paletteValue(2, paletteIndex) * 0.114) < 128 ? 0 : 255)
+        : (photometric === 0 ? (paletteIndex ? 0 : 255) : (paletteIndex ? 255 : 0));
       const offset = (y * width + x) * 4;
       rgba[offset] = color;
       rgba[offset + 1] = color;
@@ -93,6 +106,7 @@ function decodeOneBitPalette(frame: { data?: Uint8Array; t320?: number[]; t266?:
 
 /** Decodes the first TIFF page directly to RGBA pixels for the existing raster pipeline. */
 export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
+  if (isBigTiff(buffer)) throw new Error("TIFF_BIGTIFF_UNSUPPORTED");
   const frames = UTIF.decode(buffer);
   const frame = frames.find((candidate) => {
     const width = candidate.t256?.[0] || 0;
@@ -127,8 +141,8 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
     const bitsPerSample = frame.t258?.[0] || 0;
     const samplesPerPixel = frame.t277?.[0] || frame.t258?.length || 1;
     const photometric = frame.t262?.[0] ?? 0;
-    const rgba = bitsPerSample === 1 && samplesPerPixel === 1 && photometric === 3
-      ? decodeOneBitPalette(frame, frame.width || width, frame.height || height)
+    const rgba = bitsPerSample === 1 && samplesPerPixel === 1 && photometric >= 0 && photometric <= 3
+      ? decodeOneBit(frame, frame.width || width, frame.height || height, photometric)
       : UTIF.toRGBA8(frame);
     const normalized = normalizeRgba(rgba, frame, frame.width || width, frame.height || height);
     console.info("[VectorCAD][TIFF] RGBA output", { rgbaBytes: normalized.length });
@@ -137,6 +151,17 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
     console.error("[VectorCAD][TIFF] decode failed", { error: error instanceof Error ? error.message : "unknown_error" });
     throw new Error("TIFF_DECODE_FAILED");
   }
+}
+
+/** Processes any supported TIFF into the stable RGBA + PNG contract used by the editor. */
+export async function processTiff(buffer: ArrayBuffer): Promise<ProcessedTiff> {
+  const raster = decodeTiff(buffer);
+  return {
+    width: raster.width,
+    height: raster.height,
+    rgbaData: raster.data,
+    previewPng: rasterToPngDataUrl(raster),
+  };
 }
 
 export async function decodeTiffFile(file: File) {

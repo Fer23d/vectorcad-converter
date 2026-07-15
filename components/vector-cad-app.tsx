@@ -8,7 +8,7 @@ import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
-import { decodeTiffDataUrl, decodeTiffFile, isTiffFile, rasterToPngDataUrl, type TiffRaster } from "@/lib/image-processing/tiff";
+import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -240,14 +240,14 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       if (!allowed) return;
       try {
         setMessage("Convertendo TIFF para um formato processável...");
-        const raster = await decodeTiffFile(file);
+        const processedTiff = await processTiff(await file.arrayBuffer());
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ""));
           reader.onerror = () => reject(new Error("TIFF_FILE_READ_FAILED"));
           reader.readAsDataURL(file);
         });
-        const pngDataUrl = rasterToPngDataUrl(raster);
+        const pngDataUrl = processedTiff.previewPng;
         const image = await new Promise<HTMLImageElement>((resolve, reject) => {
           const preview = new Image();
           preview.onload = () => resolve(preview);
@@ -260,11 +260,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         setSourceRaster(null);
         setSource(image);
         setFileName(file.name);
-        setRealHeight(Number((100 * raster.height / raster.width).toFixed(2)));
+        setRealHeight(Number((100 * processedTiff.height / processedTiff.width).toFixed(2)));
         setMessage("TIFF convertido para PNG de alta qualidade. Ajuste o limiar para refinar os contornos.");
         return;
-      } catch {
-        setMessage("Não foi possível processar este arquivo TIFF.");
+      } catch (error) {
+        setMessage(error instanceof Error && error.message === "TIFF_BIGTIFF_UNSUPPORTED"
+          ? "Este arquivo BigTIFF ainda não é suportado. Envie um TIFF padrão ou converta-o para PNG."
+          : "Não foi possível processar este arquivo TIFF.");
       }
       return;
     }
