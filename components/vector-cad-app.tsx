@@ -353,7 +353,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!context) return;
     let cancelled = false;
     setTextDetectionStatus("Analisando textos...");
-    const enhanced = enhanceForCad(context.getImageData(0, 0, canvas.width, canvas.height), imageQuality);
+    const enhanced = enhanceForCad(context.getImageData(0, 0, canvas.width, canvas.height), "ultra-pro");
     void detectText(enhanced).then((texts) => {
       if (cancelled) return;
       setDetectedTexts(texts);
