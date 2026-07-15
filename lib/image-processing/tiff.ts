@@ -40,6 +40,16 @@ export function rasterToPngDataUrl(raster: TiffRaster) {
   context.fillRect(0, 0, raster.width, raster.height);
   const image = context.createImageData(raster.width, raster.height);
   image.data.set(raster.data);
+  // Composite declared transparency over white before encoding. This keeps
+  // technical drawings readable and prevents transparent pixels from becoming black in Canvas.
+  for (let offset = 0; offset < image.data.length; offset += 4) {
+    const alpha = image.data[offset + 3];
+    if (alpha === 255) continue;
+    image.data[offset] = Math.round((image.data[offset] * alpha + 255 * (255 - alpha)) / 255);
+    image.data[offset + 1] = Math.round((image.data[offset + 1] * alpha + 255 * (255 - alpha)) / 255);
+    image.data[offset + 2] = Math.round((image.data[offset + 2] * alpha + 255 * (255 - alpha)) / 255);
+    image.data[offset + 3] = 255;
+  }
   context.putImageData(image, 0, 0);
   return canvas.toDataURL("image/png");
 }
