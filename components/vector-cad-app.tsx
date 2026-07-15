@@ -354,10 +354,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     let cancelled = false;
     setTextDetectionStatus("Analisando textos...");
     const enhanced = enhanceForCad(context.getImageData(0, 0, canvas.width, canvas.height), "ultra-pro");
-    void detectText(enhanced).then((texts) => {
+    void detectText(enhanced).then((result) => {
       if (cancelled) return;
-      setDetectedTexts(texts);
-      setTextDetectionStatus(`${texts.length} texto${texts.length === 1 ? "" : "s"} encontrado${texts.length === 1 ? "" : "s"}`);
+      setDetectedTexts(result.texts);
+      setTextDetectionStatus(`Regiões analisadas: ${result.regionsAnalyzed} · Textos encontrados: ${result.texts.length}`);
     }).catch(() => {
       if (cancelled) return;
       setDetectedTexts([]);
