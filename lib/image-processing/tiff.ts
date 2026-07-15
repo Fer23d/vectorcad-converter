@@ -17,15 +17,27 @@ export type TiffRaster = {
 /** Decodes the first TIFF page directly to RGBA pixels for the existing raster pipeline. */
 export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
   const frames = UTIF.decode(buffer);
-  const frame = frames[0];
+  const frame = frames.find((candidate) => {
+    const width = candidate.t256?.[0] || 0;
+    const height = candidate.t257?.[0] || 0;
+    return width > 0 && height > 0;
+  });
 
-  if (!frame?.width || !frame.height || frame.width * frame.height > TIFF_MAX_PIXELS) {
+  if (!frame) {
     throw new Error("TIFF_DIMENSIONS_UNSUPPORTED");
   }
 
-  UTIF.decodeImage(buffer, frame);
-  const rgba = UTIF.toRGBA8(frame);
-  return { width: frame.width, height: frame.height, data: new Uint8ClampedArray(rgba) };
+  const width = frame.t256?.[0] || 0;
+  const height = frame.t257?.[0] || 0;
+  if (width * height > TIFF_MAX_PIXELS) throw new Error("TIFF_DIMENSIONS_UNSUPPORTED");
+
+  try {
+    UTIF.decodeImage(buffer, frame);
+    const rgba = UTIF.toRGBA8(frame);
+    return { width: frame.width || width, height: frame.height || height, data: new Uint8ClampedArray(rgba) };
+  } catch {
+    throw new Error("TIFF_DECODE_FAILED");
+  }
 }
 
 export async function decodeTiffFile(file: File) {
