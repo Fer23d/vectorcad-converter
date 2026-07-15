@@ -14,7 +14,7 @@ export type TiffRaster = {
   data: Uint8ClampedArray;
 };
 
-function normalizeRgba(rgba: Uint8Array, frame: { t258?: number[]; t277?: number[]; t338?: number[] }, width: number, height: number) {
+function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?: number[]; t338?: number[] }, width: number, height: number) {
   const expectedBytes = width * height * 4;
   if (rgba.length !== expectedBytes) throw new Error("TIFF_RGBA_SIZE_INVALID");
 
@@ -34,6 +34,39 @@ function normalizeRgba(rgba: Uint8Array, frame: { t258?: number[]; t277?: number
     for (let i = 3; i < normalized.length; i += 4) normalized[i] = 255;
   }
   return normalized;
+}
+
+function decodeOneBitPalette(frame: { data?: Uint8Array; t320?: number[]; t266?: number[] }, width: number, height: number) {
+  if (!frame.data) throw new Error("TIFF_PIXEL_DATA_MISSING");
+  const palette = frame.t320 || [];
+  const paletteSize = Math.floor(palette.length / 3);
+  if (paletteSize < 2) throw new Error("TIFF_PALETTE_MISSING");
+
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  const rowBytes = Math.ceil(width / 8);
+  const fillOrder = frame.t266?.[0] || 1;
+  const paletteValue = (channel: number, index: number) => {
+    const value = palette[channel * paletteSize + index] || 0;
+    return value > 255 ? value >> 8 : value;
+  };
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const packed = frame.data[y * rowBytes + (x >> 3)] || 0;
+      const shift = fillOrder === 2 ? x & 7 : 7 - (x & 7);
+      const paletteIndex = (packed >> shift) & 1;
+      const red = paletteValue(0, paletteIndex);
+      const green = paletteValue(1, paletteIndex);
+      const blue = paletteValue(2, paletteIndex);
+      const color = (red * 0.299 + green * 0.587 + blue * 0.114) < 128 ? 0 : 255;
+      const offset = (y * width + x) * 4;
+      rgba[offset] = color;
+      rgba[offset + 1] = color;
+      rgba[offset + 2] = color;
+      rgba[offset + 3] = 255;
+    }
+  }
+  return rgba;
 }
 
 /** Decodes the first TIFF page directly to RGBA pixels for the existing raster pipeline. */
@@ -58,13 +91,23 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
     bitsPerSample: frame.t258 || [],
     samplesPerPixel: frame.t277?.[0] || frame.t258?.length || 1,
     photometric: frame.t262?.[0] ?? null,
+    compression: frame.t259?.[0] ?? 1,
+    planarConfiguration: frame.t284?.[0] ?? 1,
+    sampleFormat: frame.t339 || [],
     orientation: frame.t274?.[0] ?? 1,
     ifdCount: frames.length,
+    strips: frame.t273?.length || frame.t324?.length || 0,
+    tiles: frame.t322?.length || 0,
   });
 
   try {
     UTIF.decodeImage(buffer, frame);
-    const rgba = UTIF.toRGBA8(frame);
+    const bitsPerSample = frame.t258?.[0] || 0;
+    const samplesPerPixel = frame.t277?.[0] || frame.t258?.length || 1;
+    const photometric = frame.t262?.[0] ?? 0;
+    const rgba = bitsPerSample === 1 && samplesPerPixel === 1 && photometric === 3
+      ? decodeOneBitPalette(frame, frame.width || width, frame.height || height)
+      : UTIF.toRGBA8(frame);
     const normalized = normalizeRgba(rgba, frame, frame.width || width, frame.height || height);
     console.info("[VectorCAD][TIFF] RGBA output", { rgbaBytes: normalized.length });
     return { width: frame.width || width, height: frame.height || height, data: normalized };
