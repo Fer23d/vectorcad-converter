@@ -7,6 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
+import { protectTextRegions } from "@/lib/text-detection/ocr";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
@@ -17,6 +18,14 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("protects detected text regions from vectorization", () => {
+    const bitmap = new Uint8Array(25).fill(1);
+    const protectedBitmap = protectTextRegions(bitmap, 5, 5, [{ text: "SALA", x: 1, y: 1, width: 2, height: 2, rotation: 0, confidence: .98 }]);
+    expect(protectedBitmap[6]).toBe(0);
+    expect(protectedBitmap[12]).toBe(0);
+    expect(protectedBitmap[24]).toBe(1);
+  });
+
   it("converts a bitmap into a closed editable contour", () => {
     const bitmap = new Uint8Array([0,0,0,0, 0,1,1,0, 0,1,1,0, 0,0,0,0]);
     const result = vectorizeBitmap(bitmap, 4, 4, { ...settings, outputMode: "pixel", simplification: 0, smoothIterations: 0, joinDistance: 1 });

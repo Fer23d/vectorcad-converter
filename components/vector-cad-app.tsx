@@ -9,10 +9,11 @@ import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
+import { detectText, protectTextRegions } from "@/lib/text-detection/ocr";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
-import type { ImageQuality, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
+import type { DetectedText, ImageQuality, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
 const MAX_FILE = 12 * 1024 * 1024;
@@ -58,6 +59,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(initialData?.imageQuality || "enhanced");
+  const [textDetectionEnabled, setTextDetectionEnabled] = useState(initialData?.textDetectionEnabled || false);
+  const [detectedTexts, setDetectedTexts] = useState<DetectedText[]>(initialData?.textDetectionEnabled ? (initialData.detectedTexts || []) : []);
+  const [textDetectionStatus, setTextDetectionStatus] = useState("");
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
@@ -101,6 +105,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setImageQuality(saved?.imageQuality || "enhanced");
+      setTextDetectionEnabled(saved?.textDetectionEnabled || false);
+      setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
       setVector(saved?.vector || defaultVector);
       setDoc(saved?.document || null);
       setUnit(saved?.unit || "mm");
@@ -120,6 +126,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
     setImageQuality(saved.imageQuality || "enhanced");
+    setTextDetectionEnabled(saved.textDetectionEnabled || false);
+    setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
     setVector(saved.vector || defaultVector);
     setDoc(saved.document || null);
     setUnit(saved.unit || "mm");
@@ -181,6 +189,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       fileName,
       processing,
       imageQuality,
+      textDetectionEnabled,
+      detectedTexts,
       vector,
       document: doc,
       unit,
@@ -196,7 +206,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, unit, vector]);
+  }, [activeView, detectedTexts, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -315,11 +325,46 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     const enhanced = enhanceForCad(ctx.getImageData(0, 0, w, h), imageQuality);
     const result = processPixels(enhanced, processing);
+    const bitmap = detectedTexts.length ? protectTextRegions(result.bitmap, w, h, detectedTexts) : result.bitmap;
+    if (detectedTexts.length) {
+      for (let i = 0; i < bitmap.length; i += 1) {
+        if (!bitmap[i]) {
+          const offset = i * 4;
+          result.image.data[offset] = 255;
+          result.image.data[offset + 1] = 255;
+          result.image.data[offset + 2] = 255;
+          result.image.data[offset + 3] = 255;
+        }
+      }
+    }
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
-    setDoc(vectorizeBitmap(result.bitmap, w, h, vector));
+    setDoc(vectorizeBitmap(bitmap, w, h, vector));
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [imageQuality, processing, source, sourceRaster, vector]);
+  }, [detectedTexts, imageQuality, processing, source, sourceRaster, vector]);
+
+  useEffect(() => {
+    if (!textDetectionEnabled) {
+      return;
+    }
+    const canvas = originalCanvas.current;
+    if (!canvas || !canvas.width || !canvas.height) return;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
+    let cancelled = false;
+    setTextDetectionStatus("Analisando textos...");
+    const enhanced = enhanceForCad(context.getImageData(0, 0, canvas.width, canvas.height), imageQuality);
+    void detectText(enhanced).then((texts) => {
+      if (cancelled) return;
+      setDetectedTexts(texts);
+      setTextDetectionStatus(`${texts.length} texto${texts.length === 1 ? "" : "s"} encontrado${texts.length === 1 ? "" : "s"}`);
+    }).catch(() => {
+      if (cancelled) return;
+      setDetectedTexts([]);
+      setTextDetectionStatus("Não foi possível analisar os textos desta imagem.");
+    });
+    return () => { cancelled = true; };
+  }, [imageQuality, source, sourceRaster, textDetectionEnabled]);
 
   const finalDoc = doc ? scaleDocument(doc, realWidth, realHeight, unit) : null;
   const svg = finalDoc ? generateSvg(finalDoc) : "";
@@ -368,6 +413,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       fileName,
       processing,
       imageQuality,
+      textDetectionEnabled,
+      detectedTexts,
       vector,
       document: doc,
       unit,
@@ -429,6 +476,11 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="ultra">Ultra CAD</option>
             <option value="ultra-pro">Ultra CAD Pro</option>
           </select>
+          <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 text-xs text-[#bdc9c3]" title="Detecta letras e números para proteger essas regiões da vetorização.">
+            <span>Reconhecimento inteligente</span>
+            <input type="checkbox" checked={textDetectionEnabled} onChange={e => { setTextDetectionEnabled(e.target.checked); if (!e.target.checked) setDetectedTexts([]); }} className="h-4 w-4 accent-[#b7f34a]" />
+          </label>
+          {textDetectionEnabled && <p className="mt-2 text-[10px] leading-4 text-[#829087]">{textDetectionStatus || "Detectar textos antes da vetorização."}</p>}
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
           <Slider label="Threshold" value={processing.threshold} min={1} max={254} onChange={v => setProcessing({ ...processing, threshold: v })} />

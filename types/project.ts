@@ -11,6 +11,8 @@ export type CadProjectData = {
   fileName?: string;
   processing?: import("@/types/vector").ProcessingSettings;
   imageQuality?: import("@/types/vector").ImageQuality;
+  textDetectionEnabled?: boolean;
+  detectedTexts?: import("@/types/vector").DetectedText[];
   vector?: import("@/types/vector").VectorSettings;
   document?: import("@/types/vector").VectorDocument | null;
   unit?: import("@/types/vector").Unit;
