@@ -17,7 +17,7 @@ const benefits = [
 ];
 
 const steps = [
-  { title: "1. Envie a imagem", text: "Use PNG, JPG, JPEG ou WEBP com boa resolução e contraste." },
+  { title: "1. Envie a imagem", text: "Use PNG, JPG, JPEG, WEBP, TIF ou TIFF com boa resolução e contraste." },
   { title: "2. Limpe o desenho", text: "Ajuste brilho, contraste, limiar, ruído e bordas antes da vetorização." },
   { title: "3. Gere o vetor", text: "Transforme áreas da imagem em paths, contornos e polilinhas editáveis." },
   { title: "4. Exporte para CAD", text: "Baixe SVG ou DXF com escala correta para abrir em softwares técnicos." },
@@ -39,7 +39,7 @@ export default function Home() {
           <div>
             <div className="mb-5 inline-flex rounded-full border border-[#b7f34a]/30 bg-[#111915] px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Imagem para CAD em minutos</div>
             <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-[-.04em] md:text-6xl">Transforme imagens em vetores para CAD, CNC e corte laser</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#b8c8c0]">O VectorCAD Converter converte PNG, JPG e WEBP em SVG e DXF editáveis, com pré-processamento de imagem, vetorização por contorno, escala em milímetros e exportação pronta para softwares como AutoCAD, Fusion 360, CorelDRAW e Illustrator.</p>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#b8c8c0]">O VectorCAD Converter converte PNG, JPG, WEBP, TIF e TIFF em SVG e DXF editáveis, com pré-processamento de imagem, vetorização por contorno, escala em milímetros e exportação pronta para softwares como AutoCAD, Fusion 360, CorelDRAW e Illustrator.</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Começar agora</Link>
               <Link href="/blog" className="rounded-2xl border border-[#304238] px-6 py-4 text-sm font-black text-[#edf5f0] transition hover:bg-[#111915]">Ler guias CAD</Link>
