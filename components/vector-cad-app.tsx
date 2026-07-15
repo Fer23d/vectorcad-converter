@@ -8,7 +8,7 @@ import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
-import { decodeTiffDataUrl, decodeTiffFile, isTiffFile, type TiffRaster } from "@/lib/image-processing/tiff";
+import { decodeTiffDataUrl, decodeTiffFile, isTiffFile, rasterToPngDataUrl, type TiffRaster } from "@/lib/image-processing/tiff";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -54,6 +54,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
+  const [sourceOriginalDataUrl, setSourceOriginalDataUrl] = useState(initialData?.sourceOriginalDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
@@ -95,6 +96,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setSourceRaster(null);
       setSourceFormat("raster");
       setSourceImageDataUrl(saved?.sourceImageDataUrl || "");
+      setSourceOriginalDataUrl(saved?.sourceOriginalDataUrl || "");
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setVector(saved?.vector || defaultVector);
@@ -110,6 +112,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
 
     setSourceImageDataUrl(saved.sourceImageDataUrl);
+    setSourceOriginalDataUrl(saved.sourceOriginalDataUrl || "");
     setSourceFormat(saved.sourceFormat || "raster");
     setSourceRaster(null);
     setFileName(saved.fileName || "");
@@ -123,12 +126,11 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setActiveView(saved.activeView || "vector");
     setShow3d(saved.editorMode === "cad3d");
 
-    if (saved.sourceFormat === "tiff") return;
+    if (saved.sourceFormat === "tiff" && !saved.sourceOriginalDataUrl) return;
 
     const image = new Image();
     image.onload = () => {
       setSourceRaster(null);
-      setSourceFormat("raster");
       setSource(image);
       skipLocalSave.current = true;
       hydrating.current = false;
@@ -146,7 +148,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
 
   useEffect(() => {
     const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
-    if (!saved?.sourceImageDataUrl || saved.sourceFormat !== "tiff") return;
+    if (!saved?.sourceImageDataUrl || saved.sourceFormat !== "tiff" || saved.sourceOriginalDataUrl) return;
     let cancelled = false;
     void decodeTiffDataUrl(saved.sourceImageDataUrl).then((raster) => {
       if (cancelled) return;
@@ -171,6 +173,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       editorMode: show3d ? "cad3d" : "cad2d",
       schemaVersion: 1,
       sourceImageDataUrl,
+      sourceOriginalDataUrl: sourceFormat === "tiff" ? sourceOriginalDataUrl : undefined,
       sourceFormat,
       fileName,
       processing,
@@ -189,7 +192,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, unit, vector]);
+  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -244,13 +247,21 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           reader.onerror = () => reject(new Error("TIFF_FILE_READ_FAILED"));
           reader.readAsDataURL(file);
         });
-        setSourceImageDataUrl(dataUrl);
+        const pngDataUrl = rasterToPngDataUrl(raster);
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const preview = new Image();
+          preview.onload = () => resolve(preview);
+          preview.onerror = () => reject(new Error("TIFF_PNG_PREVIEW_FAILED"));
+          preview.src = pngDataUrl;
+        });
+        setSourceImageDataUrl(pngDataUrl);
+        setSourceOriginalDataUrl(dataUrl);
         setSourceFormat("tiff");
-        setSourceRaster(raster);
-        setSource(null);
+        setSourceRaster(null);
+        setSource(image);
         setFileName(file.name);
         setRealHeight(Number((100 * raster.height / raster.width).toFixed(2)));
-        setMessage("TIFF carregado nativamente. Ajuste o limiar para refinar os contornos.");
+        setMessage("TIFF convertido para PNG de alta qualidade. Ajuste o limiar para refinar os contornos.");
         return;
       } catch {
         setMessage("Não foi possível processar este arquivo TIFF.");
@@ -267,6 +278,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       const reader = new FileReader();
       reader.onload = () => setSourceImageDataUrl(String(reader.result || ""));
       reader.readAsDataURL(file!);
+      setSourceFormat("raster"); setSourceOriginalDataUrl(""); setSourceRaster(null);
       setSource(image); setFileName(file.name); setRealHeight(Number((100 * image.height / image.width).toFixed(2))); setMessage("Imagem carregada. Ajuste o limiar para refinar os contornos."); URL.revokeObjectURL(url);
     };
     image.onerror = () => setMessage("Não foi possível processar essa imagem. Tente outro arquivo.");

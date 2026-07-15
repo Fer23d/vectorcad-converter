@@ -14,6 +14,28 @@ export type TiffRaster = {
   data: Uint8ClampedArray;
 };
 
+/** Creates the lossless PNG used by Canvas while keeping the TIFF bytes separate in the project. */
+export function rasterToPngDataUrl(raster: TiffRaster) {
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = raster.width;
+  sourceCanvas.height = raster.height;
+  const sourceContext = sourceCanvas.getContext("2d");
+  if (!sourceContext) throw new Error("TIFF_CANVAS_UNAVAILABLE");
+  const image = sourceContext.createImageData(raster.width, raster.height);
+  image.data.set(raster.data);
+  sourceContext.putImageData(image, 0, 0);
+
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = raster.width;
+  outputCanvas.height = raster.height;
+  const outputContext = outputCanvas.getContext("2d");
+  if (!outputContext) throw new Error("TIFF_CANVAS_UNAVAILABLE");
+  outputContext.fillStyle = "#ffffff";
+  outputContext.fillRect(0, 0, raster.width, raster.height);
+  outputContext.drawImage(sourceCanvas, 0, 0);
+  return outputCanvas.toDataURL("image/png");
+}
+
 function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?: number[]; t338?: number[] }, width: number, height: number) {
   const expectedBytes = width * height * 4;
   if (rgba.length !== expectedBytes) throw new Error("TIFF_RGBA_SIZE_INVALID");
