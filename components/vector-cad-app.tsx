@@ -420,6 +420,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="original">Original</option>
             <option value="enhanced">Melhorada</option>
             <option value="ultra">Ultra CAD</option>
+            <option value="ultra-pro">Ultra CAD Pro</option>
           </select>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />

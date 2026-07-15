@@ -29,22 +29,53 @@ export function enhanceForCad(image: ImageData, quality: ImageQuality): ImageDat
   if (quality === "original") return new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
   const out = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
   const technical = isTechnicalDrawing(image);
-  const contrast = quality === "ultra" ? 1.7 : 1.28;
+  const ultraPro = quality === "ultra-pro" && technical;
+  const contrast = quality === "ultra" ? 1.7 : ultraPro ? 1.35 : 1.28;
+  const gray = ultraPro ? new Uint8Array(image.width * image.height) : null;
+  const background = ultraPro ? boxBlur(grayFromImage(image), image.width, image.height, 2) : null;
 
   for (let p = 0; p < out.data.length; p += 4) {
     const alpha = out.data[p + 3];
     if (technical) {
-      const gray = out.data[p] * .299 + out.data[p + 1] * .587 + out.data[p + 2] * .114;
-      const value = quality === "ultra"
-        ? gray >= 224 ? 255 : gray <= 82 ? 0 : clamp((gray - 128) * contrast + 128)
-        : clamp((gray - 128) * contrast + 128);
+      const sourceGray = out.data[p] * .299 + out.data[p + 1] * .587 + out.data[p + 2] * .114;
+      const shadowCorrected = ultraPro ? clamp(255 + (sourceGray - (background?.[p / 4] || 255)) * 2.1) : sourceGray;
+      const value = quality === "ultra" || ultraPro
+        ? shadowCorrected >= (ultraPro ? 232 : 224) ? 255 : shadowCorrected <= (ultraPro ? 92 : 82) ? 0 : clamp((shadowCorrected - 128) * contrast + 128)
+        : clamp((shadowCorrected - 128) * contrast + 128);
+      if (gray) gray[p / 4] = value;
       out.data[p] = out.data[p + 1] = out.data[p + 2] = value;
     } else {
       for (let channel = 0; channel < 3; channel++) out.data[p + channel] = clamp((out.data[p + channel] - 128) * (quality === "ultra" ? 1.15 : 1.05) + 128);
     }
     out.data[p + 3] = alpha;
   }
+  if (gray && background) {
+    // Remove only isolated dark pixels; connected one-pixel lines remain intact.
+    for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+      const index = y * image.width + x;
+      if (gray[index] >= 110) continue;
+      let darkNeighbors = 0;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const nx = x + ox, ny = y + oy;
+        if (nx >= 0 && ny >= 0 && nx < image.width && ny < image.height && gray[ny * image.width + nx] < 150) darkNeighbors++;
+      }
+      if (darkNeighbors === 0) {
+        const p = index * 4;
+        out.data[p] = out.data[p + 1] = out.data[p + 2] = 255;
+      }
+    }
+  }
   return out;
+}
+
+function grayFromImage(image: ImageData) {
+  const gray = new Uint8Array(image.width * image.height);
+  for (let i = 0; i < gray.length; i++) {
+    const p = i * 4;
+    gray[i] = Math.round(image.data[p] * .299 + image.data[p + 1] * .587 + image.data[p + 2] * .114);
+  }
+  return gray;
 }
 
 function localMean(gray: Uint8Array, width: number, height: number, x: number, y: number, radius: number) {
