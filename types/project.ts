@@ -10,6 +10,7 @@ export type CadProjectData = {
   sourceFormat?: "raster" | "tiff";
   fileName?: string;
   processing?: import("@/types/vector").ProcessingSettings;
+  imageQuality?: import("@/types/vector").ImageQuality;
   vector?: import("@/types/vector").VectorSettings;
   document?: import("@/types/vector").VectorDocument | null;
   unit?: import("@/types/vector").Unit;

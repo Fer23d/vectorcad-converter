@@ -1,6 +1,7 @@
 export type Unit = "mm" | "cm" | "px";
 export type VectorMode = "logo" | "technical" | "silhouette" | "outline" | "precision" | "cnc";
 export type OutputMode = "pixel" | "smooth" | "cad";
+export type ImageQuality = "original" | "enhanced" | "ultra";
 
 export interface Point { x: number; y: number }
 export interface VectorPath { points: Point[]; closed: boolean; curved?: boolean; layer: "CONTOURS" | "DETAILS" | "GUIDES" }

@@ -1,5 +1,51 @@
 import { boxBlur, closeBinary, openBinary, removeSmallComponents } from "@/lib/image-processing/binary";
 import type { ProcessingSettings } from "@/types/vector";
+import type { ImageQuality } from "@/types/vector";
+
+function clamp(value: number) {
+  return Math.max(0, Math.min(255, value));
+}
+
+function isTechnicalDrawing(image: ImageData) {
+  const step = Math.max(1, Math.floor(Math.sqrt((image.width * image.height) / 10_000)));
+  let samples = 0;
+  let bright = 0;
+  let dark = 0;
+  let chromatic = 0;
+  for (let y = 0; y < image.height; y += step) for (let x = 0; x < image.width; x += step) {
+    const p = (y * image.width + x) * 4;
+    const red = image.data[p], green = image.data[p + 1], blue = image.data[p + 2];
+    const gray = red * .299 + green * .587 + blue * .114;
+    samples++;
+    if (gray >= 225) bright++;
+    if (gray <= 90) dark++;
+    if (Math.max(red, green, blue) - Math.min(red, green, blue) > 24) chromatic++;
+  }
+  return samples > 0 && bright / samples >= .35 && chromatic / samples < .18 && dark / samples > .001;
+}
+
+/** Enhances the image before thresholding without changing its dimensions. */
+export function enhanceForCad(image: ImageData, quality: ImageQuality): ImageData {
+  if (quality === "original") return new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
+  const out = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
+  const technical = isTechnicalDrawing(image);
+  const contrast = quality === "ultra" ? 1.7 : 1.28;
+
+  for (let p = 0; p < out.data.length; p += 4) {
+    const alpha = out.data[p + 3];
+    if (technical) {
+      const gray = out.data[p] * .299 + out.data[p + 1] * .587 + out.data[p + 2] * .114;
+      const value = quality === "ultra"
+        ? gray >= 224 ? 255 : gray <= 82 ? 0 : clamp((gray - 128) * contrast + 128)
+        : clamp((gray - 128) * contrast + 128);
+      out.data[p] = out.data[p + 1] = out.data[p + 2] = value;
+    } else {
+      for (let channel = 0; channel < 3; channel++) out.data[p + channel] = clamp((out.data[p + channel] - 128) * (quality === "ultra" ? 1.15 : 1.05) + 128);
+    }
+    out.data[p + 3] = alpha;
+  }
+  return out;
+}
 
 function localMean(gray: Uint8Array, width: number, height: number, x: number, y: number, radius: number) {
   let sum = 0, count = 0;

@@ -7,12 +7,12 @@ import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
-import { processPixels } from "@/lib/image-processing/process";
+import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
-import type { OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
+import type { ImageQuality, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
 const MAX_FILE = 12 * 1024 * 1024;
@@ -57,6 +57,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [sourceOriginalDataUrl, setSourceOriginalDataUrl] = useState(initialData?.sourceOriginalDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
+  const [imageQuality, setImageQuality] = useState<ImageQuality>(initialData?.imageQuality || "enhanced");
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
@@ -99,6 +100,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setSourceOriginalDataUrl(saved?.sourceOriginalDataUrl || "");
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
+      setImageQuality(saved?.imageQuality || "enhanced");
       setVector(saved?.vector || defaultVector);
       setDoc(saved?.document || null);
       setUnit(saved?.unit || "mm");
@@ -117,6 +119,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setSourceRaster(null);
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
+    setImageQuality(saved.imageQuality || "enhanced");
     setVector(saved.vector || defaultVector);
     setDoc(saved.document || null);
     setUnit(saved.unit || "mm");
@@ -177,6 +180,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       sourceFormat,
       fileName,
       processing,
+      imageQuality,
       vector,
       document: doc,
       unit,
@@ -192,7 +196,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, doc, fileName, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, unit, vector]);
+  }, [activeView, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -309,12 +313,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     } else if (source) {
       ctx.drawImage(source, 0, 0, w, h);
     }
-    const result = processPixels(ctx.getImageData(0, 0, w, h), processing);
+    const enhanced = enhanceForCad(ctx.getImageData(0, 0, w, h), imageQuality);
+    const result = processPixels(enhanced, processing);
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
     setDoc(vectorizeBitmap(result.bitmap, w, h, vector));
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [source, sourceRaster, processing, vector]);
+  }, [imageQuality, processing, source, sourceRaster, vector]);
 
   const finalDoc = doc ? scaleDocument(doc, realWidth, realHeight, unit) : null;
   const svg = finalDoc ? generateSvg(finalDoc) : "";
@@ -369,6 +374,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       sourceImageDataUrl,
       fileName,
       processing,
+      imageQuality,
       vector,
       document: doc,
       unit,
@@ -409,6 +415,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     {hasSource && <section className="workspace-layout min-h-[calc(100vh-64px)]" style={{ "--controls-width": `${panel.size}px`, "--cad-width": `${cadPanel.size}px` } as React.CSSProperties}>
       <aside className="controls-panel border-r border-[#26312c] bg-[#0d1210] p-4">
         <Section title="Pré-processamento" icon={<WandSparkles size={14} />}>
+          <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Qualidade da imagem</label>
+          <select value={imageQuality} onChange={e => setImageQuality(e.target.value as ImageQuality)} className="w-full text-xs" title="Escolha entre preservar a imagem ou reforçar linhas técnicas para vetorização.">
+            <option value="original">Original</option>
+            <option value="enhanced">Melhorada</option>
+            <option value="ultra">Ultra CAD</option>
+          </select>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
           <Slider label="Threshold" value={processing.threshold} min={1} max={254} onChange={v => setProcessing({ ...processing, threshold: v })} />
