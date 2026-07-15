@@ -8,6 +8,7 @@ import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { processPixels } from "@/lib/image-processing/process";
+import { convertTiffToPng, isTiffFile } from "@/lib/image-processing/tiff";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -15,7 +16,7 @@ import type { OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, 
 import type { CadProjectData } from "@/types/project";
 
 const MAX_FILE = 12 * 1024 * 1024;
-const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
+const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/x-tiff"];
 const CONTROLS_MIN_WIDTH = 260;
 const CAD_MIN_WIDTH = 260;
 const PREVIEW_MIN_WIDTH = 300;
@@ -199,6 +200,28 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [onUsageChange]);
 
   const loadFile = useCallback(async (file?: File) => {
+    if (file && isTiffFile(file)) {
+      if (!file || file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
+      const allowed = await consumeUsage("vectorize");
+      if (!allowed) return;
+      try {
+        setMessage("Convertendo TIFF para um formato processável...");
+        const converted = await convertTiffToPng(file);
+        const image = new Image();
+        image.onload = () => {
+          setSourceImageDataUrl(converted.dataUrl);
+          setSource(image);
+          setFileName(file.name);
+          setRealHeight(Number((100 * converted.height / converted.width).toFixed(2)));
+          setMessage("TIFF convertido. Ajuste o limiar para refinar os contornos.");
+        };
+        image.onerror = () => setMessage("Não foi possível processar este arquivo TIFF.");
+        image.src = converted.dataUrl;
+      } catch {
+        setMessage("Não foi possível processar este arquivo TIFF.");
+      }
+      return;
+    }
     if (!file) return;
     if (!ACCEPTED.includes(file.type)) return setMessage("Formato inválido. Envie PNG, JPG, JPEG ou WEBP.");
     if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
@@ -392,7 +415,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         </div>
       </div>
     </footer>
-    <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
+    <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,image/png,image/jpeg,image/webp,image/tiff" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
     {upgradeModal && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-3xl border border-[#b7f34a]/40 bg-[#101613] p-6 text-center shadow-2xl shadow-black/50">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><Sparkles size={22} /></div>
