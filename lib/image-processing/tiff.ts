@@ -1,7 +1,9 @@
 import UTIF from "utif";
 
 export const TIFF_MIME_TYPES = ["image/tiff", "image/x-tiff"] as const;
-export const TIFF_MAX_PIXELS = 40_000_000;
+// Allows large scanned drawings such as 12,384 x 7,283 (about 90 MP) while
+// keeping a guard against allocations that would exhaust the browser.
+export const TIFF_MAX_PIXELS = 100_000_000;
 
 export function isTiffFile(file: File) {
   const extension = file.name.toLowerCase().split(".").pop();
@@ -29,24 +31,17 @@ function isBigTiff(buffer: ArrayBuffer) {
 /** Creates the lossless PNG used by Canvas while keeping the TIFF bytes separate in the project. */
 export function rasterToPngDataUrl(raster: TiffRaster) {
   if (typeof document === "undefined") throw new Error("TIFF_CANVAS_UNAVAILABLE");
-  const sourceCanvas = document.createElement("canvas");
-  sourceCanvas.width = raster.width;
-  sourceCanvas.height = raster.height;
-  const sourceContext = sourceCanvas.getContext("2d");
-  if (!sourceContext) throw new Error("TIFF_CANVAS_UNAVAILABLE");
-  const image = sourceContext.createImageData(raster.width, raster.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = raster.width;
+  canvas.height = raster.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("TIFF_CANVAS_UNAVAILABLE");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, raster.width, raster.height);
+  const image = context.createImageData(raster.width, raster.height);
   image.data.set(raster.data);
-  sourceContext.putImageData(image, 0, 0);
-
-  const outputCanvas = document.createElement("canvas");
-  outputCanvas.width = raster.width;
-  outputCanvas.height = raster.height;
-  const outputContext = outputCanvas.getContext("2d");
-  if (!outputContext) throw new Error("TIFF_CANVAS_UNAVAILABLE");
-  outputContext.fillStyle = "#ffffff";
-  outputContext.fillRect(0, 0, raster.width, raster.height);
-  outputContext.drawImage(sourceCanvas, 0, 0);
-  return outputCanvas.toDataURL("image/png");
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL("image/png");
 }
 
 function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?: number[]; t338?: number[] }, width: number, height: number) {
@@ -141,7 +136,10 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
     const bitsPerSample = frame.t258?.[0] || 0;
     const samplesPerPixel = frame.t277?.[0] || frame.t258?.length || 1;
     const photometric = frame.t262?.[0] ?? 0;
-    const rgba = bitsPerSample === 1 && samplesPerPixel === 1 && photometric >= 0 && photometric <= 3
+    const compression = frame.t259?.[0] ?? 1;
+    const isOneBitWhiteIsZeroCcitt = compression === 4 && bitsPerSample === 1 && samplesPerPixel === 1 && photometric === 0;
+    const isOneBitRaster = bitsPerSample === 1 && samplesPerPixel === 1 && photometric >= 0 && photometric <= 3;
+    const rgba = isOneBitWhiteIsZeroCcitt || isOneBitRaster
       ? decodeOneBit(frame, frame.width || width, frame.height || height, photometric)
       : UTIF.toRGBA8(frame);
     const normalized = normalizeRgba(rgba, frame, frame.width || width, frame.height || height);
