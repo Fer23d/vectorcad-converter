@@ -7,6 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
+import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
@@ -129,6 +130,30 @@ describe("VectorCAD pipeline", () => {
     const entities = new DxfParser().parseSync(generateDxf(scaleDocument(result, 100, 100, "mm")))?.entities || [];
     expect(entities).toHaveLength(1);
     expect(entities[0].type).toBe("LWPOLYLINE");
+  });
+
+  it("turns a nearly straight CAD path into a clean line", () => {
+    const result = cleanupVectorDocument({ ...doc, paths: [{ closed: false, curved: false, layer: "DETAILS", points: [{ x: 0, y: 0 }, { x: 10, y: .2 }, { x: 20, y: -.1 }, { x: 30, y: .1 }, { x: 40, y: 0 }] }] }, "cad-clean");
+    expect(result.document.paths).toHaveLength(1);
+    expect(result.document.paths[0].points).toEqual([{ x: 0, y: 0 }, { x: 40, y: 0 }]);
+    expect(result.reductionPercent).toBeGreaterThan(50);
+  });
+
+  it("removes tiny open noise while preserving curved paths", () => {
+    const result = cleanupVectorDocument({ ...doc, paths: [
+      { closed: false, curved: false, layer: "DETAILS", points: [{ x: 1, y: 1 }, { x: 1.5, y: 1.2 }] },
+      { closed: false, curved: true, layer: "DETAILS", points: [{ x: 0, y: 0 }, { x: 4, y: 3 }, { x: 8, y: 0 }, { x: 12, y: -3 }, { x: 16, y: 0 }] },
+    ] }, "cad-clean");
+    expect(result.document.paths).toHaveLength(1);
+    expect(result.document.paths[0].curved).toBe(true);
+    expect(result.document.paths[0].points.length).toBeGreaterThan(2);
+  });
+
+  it("keeps cleaned vectors valid for DXF export", () => {
+    const result = cleanupVectorDocument(doc, "smooth");
+    const dxf = generateDxf(result.document);
+    expect(countDxfEntities(result.document)).toBe(1);
+    expect(dxf).toContain("LWPOLYLINE");
   });
 
   it("generates a clean SVG path", () => {

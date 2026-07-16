@@ -13,6 +13,7 @@ import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-d
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
+import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import type { DetectedText, ImageQuality, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
@@ -113,6 +114,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [aiRunning, setAiRunning] = useState(false);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
+  const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -399,7 +401,11 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       }
     }
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
-    setDoc(vectorizeBitmap(bitmap, w, h, vector));
+    const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
+    const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
+    const cleanup = cleanupVectorDocument(rawDocument, cleanupMode);
+    setCleanupStats({ beforePaths: cleanup.beforePaths, afterPaths: cleanup.afterPaths, beforePoints: cleanup.beforePoints, afterPoints: cleanup.afterPoints, reductionPercent: cleanup.reductionPercent });
+    setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
   }, [detectedTexts, imageQuality, processing, source, sourceRaster, vector]);
@@ -689,7 +695,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         </Section>
         <Section title="Vetorização" icon={<ScanLine size={14} />}>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de saída</label>
-          <div className="grid grid-cols-3 gap-1">{([["pixel", "Fiel"], ["smooth", "Suave"], ["cad", "CAD limpo"]] as [OutputMode, string][]).map(([value, label]) => <button key={value} onClick={() => setVector({ ...vector, outputMode: value })} className={`rounded-md px-1 py-2 text-[9px] font-bold ${vector.outputMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}</div>
+          <div className="grid grid-cols-3 gap-1">{([["pixel", "Original"], ["smooth", "Smooth"], ["cad", "CAD Clean"]] as [OutputMode, string][]).map(([value, label]) => <button key={value} onClick={() => setVector({ ...vector, outputMode: value })} className={`rounded-md px-1 py-2 text-[9px] font-bold ${vector.outputMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}</div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo</label>
           <select value={vector.mode} onChange={e => setVector({ ...vector, mode: e.target.value as VectorMode })} className="w-full text-xs"><option value="logo">Logo</option><option value="technical">Desenho técnico</option><option value="silhouette">Silhueta</option><option value="outline">Contorno externo</option><option value="precision">Alta precisão</option><option value="cnc">CNC / corte laser</option></select>
           <Slider label="Simplificação" value={vector.simplification} min={0} max={8} step={.1} onChange={v => setVector({ ...vector, simplification: v })} />
@@ -728,7 +734,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#8d9a93]">Largura<input className="mt-1 w-full" type="number" min="0.1" value={realWidth} onChange={e => updateWidth(+e.target.value)} /></label><label className="text-[10px] text-[#8d9a93]">Altura<input className="mt-1 w-full" type="number" min="0.1" value={realHeight} onChange={e => updateHeight(+e.target.value)} /></label></div>
           <Toggle label="Manter proporção" checked={locked} onChange={setLocked} />
         </Section>
-        <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /></Section>
+        <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
         <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
         {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button><button type="button" onClick={() => void open3dInNewTab()} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button></div>}</div>}
