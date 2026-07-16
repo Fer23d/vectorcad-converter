@@ -1,6 +1,7 @@
 import type { CadProjectData } from "@/types/project";
 import type { DetectedText, Unit, VectorDocument } from "@/types/vector";
 import { TextFusionEngine } from "@/lib/ai/text-fusion";
+import { elementRecognitionEngine, type RecognizedElement } from "@/lib/ai/element-recognition";
 
 export type AiDimension = {
   width: number;
@@ -15,6 +16,8 @@ export type AiObject = {
   layer?: string;
   confidence: number;
 };
+
+export type AiDetectedElement = RecognizedElement;
 
 export type AiTextType = "TEXT" | "ANNOTATION" | "TITLE" | "LABEL" | "POSSIBLE_DIMENSION" | "UNKNOWN" | "ROOM_NAME" | "EQUIPMENT_TAG" | "SCALE" | "NOTE";
 
@@ -37,6 +40,7 @@ export type AiFeedback = {
 
 export type VectorCadAiAnalysis = {
   texts: AiTextElement[];
+  elements: AiDetectedElement[];
   dimensions: AiDimension[];
   objects: AiObject[];
   confidence: number;
@@ -210,8 +214,10 @@ export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionPr
   const result = await provider.analyze(input);
   const ocrTexts = input.ocrTexts || input.project?.detectedTexts || [];
   const texts = consolidateAiTexts(ocrTexts, result.texts || []);
+  const elements = elementRecognitionEngine.recognize({ image: input.image, texts, visionAnalysis: result });
   return {
     texts,
+    elements,
     dimensions: result.dimensions || [],
     objects: result.objects || [],
     confidence: Math.max(0, Math.min(1, result.confidence ?? averageConfidence(texts))),

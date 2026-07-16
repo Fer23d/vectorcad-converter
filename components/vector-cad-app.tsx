@@ -10,7 +10,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
-import { type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
+import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -61,22 +61,20 @@ function aiTextKey(text: AiTextElement, index: number) {
   return `${index}:${text.value}:${Math.round(text.position.x)}:${Math.round(text.position.y)}`;
 }
 
-function aiTextColor(text: AiTextElement, threshold: number) {
-  if (text.confidence < threshold || text.confidence < .5) return { border: "#ff5c57", text: "#ff8b87" };
-  if (text.source === "VISION_AI") return { border: "#b7f34a", text: "#d7ff9b" };
-  if (text.source === "OCR") return { border: "#54a9ff", text: "#8cc7ff" };
-  if (text.type === "ANNOTATION") return { border: "#54a9ff", text: "#8cc7ff" };
-  if (text.type === "POSSIBLE_DIMENSION") return { border: "#ffd34d", text: "#ffe38a" };
-  return { border: "#b7f34a", text: "#d7ff9b" };
+function aiElementColor(element: AiDetectedElement, threshold: number) {
+  if (element.confidence < threshold || element.confidence < .5) return { border: "#ff5c57", text: "#ff8b87" };
+  if (["EQUIPMENT", "INSTRUMENT", "VALVE", "PUMP", "MOTOR", "PANEL"].includes(element.type)) return { border: "#b7f34a", text: "#d7ff9b" };
+  if (["SYMBOL", "CONNECTION", "POSSIBLE_DIMENSION"].includes(element.type)) return { border: "#ffd34d", text: "#ffe38a" };
+  return { border: "#54a9ff", text: "#8cc7ff" };
 }
 
-function AiAnalysisOverlay({ texts, threshold, selectedIndex, onSelect }: { texts: AiTextElement[]; threshold: number; selectedIndex: number | null; onSelect: (index: number) => void }) {
+function AiAnalysisOverlay({ elements, threshold, selectedIndex, onSelect }: { elements: AiDetectedElement[]; threshold: number; selectedIndex: number | null; onSelect: (index: number) => void }) {
   return <div className="pointer-events-none absolute inset-0 z-10">
-    {texts.map((text, index) => {
-      if (text.confidence < threshold) return null;
-      const color = aiTextColor(text, threshold);
-      return <button key={`${aiTextKey(text, index)}-${index}`} type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onSelect(index); }} className="pointer-events-auto absolute border-2 bg-transparent text-left transition hover:bg-white/10" style={{ left: `${text.boundingBox.x}px`, top: `${text.boundingBox.y}px`, width: `${Math.max(text.boundingBox.width, 8)}px`, height: `${Math.max(text.boundingBox.height, 8)}px`, borderColor: color.border, boxShadow: selectedIndex === index ? `0 0 0 2px ${color.border}` : undefined }} title={`${text.value} · ${text.type} · ${Math.round(text.confidence * 100)}%`}>
-        <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap rounded bg-[#07100a]/90 px-1 py-0.5 text-[8px] font-bold" style={{ color: color.text }}>{text.type} · {Math.round(text.confidence * 100)}% · {text.source}</span>
+    {elements.map((element, index) => {
+      if (element.confidence < threshold) return null;
+      const color = aiElementColor(element, threshold);
+      return <button key={`${element.id}-${index}`} type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onSelect(index); }} className="pointer-events-auto absolute border-2 bg-transparent text-left transition hover:bg-white/10" style={{ left: `${element.boundingBox.x}px`, top: `${element.boundingBox.y}px`, width: `${Math.max(element.boundingBox.width, 8)}px`, height: `${Math.max(element.boundingBox.height, 8)}px`, borderColor: color.border, boxShadow: selectedIndex === index ? `0 0 0 2px ${color.border}` : undefined }} title={`${element.name} · ${element.type} · ${Math.round(element.confidence * 100)}%`}>
+        <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap rounded bg-[#07100a]/90 px-1 py-0.5 text-[8px] font-bold" style={{ color: color.text }}>{element.type} · {Math.round(element.confidence * 100)}% · {element.source}</span>
       </button>;
     })}
   </div>;
@@ -101,6 +99,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [showAiOverlay, setShowAiOverlay] = useState(false);
   const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState(0);
   const [selectedAiText, setSelectedAiText] = useState<number | null>(null);
+  const [selectedAiElement, setSelectedAiElement] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState("");
   const [visionStatus, setVisionStatus] = useState<"idle" | "executed" | "fallback" | "skipped">("idle");
   const [aiRunning, setAiRunning] = useState(false);
@@ -489,9 +488,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       const analysis = payload.analysis;
       setAiAnalysis(analysis);
       setSelectedAiText(null);
+      setSelectedAiElement(null);
       setVisionStatus(payload.vision?.status === "executed" ? "executed" : payload.vision?.status === "fallback" ? "fallback" : "skipped");
       const visionStatus = payload.vision?.status === "executed" ? "OCR + Vision AI" : payload.vision?.status === "fallback" ? "OCR local (Vision AI indisponível)" : "OCR local (confiança suficiente)";
-      setAiStatus(`${visionStatus} · ${analysis.objects.length} elementos encontrados`);
+      setAiStatus(`${visionStatus} · ${analysis.elements.length} elementos encontrados`);
     } catch (error) {
       console.warn("[VectorCAD][AI] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
       setVisionStatus("idle");
@@ -643,11 +643,18 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
                 <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "TITLE").length}</b>títulos</span>
                 <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "ANNOTATION").length}</b>anotações</span>
                 <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "POSSIBLE_DIMENSION").length}</b>cotas possíveis</span>
-                <span><b className="block text-[#e8efeb]">{aiAnalysis.objects.length}</b>elementos</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.elements?.length || 0}</b>elementos detectados</span>
                 <span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança</span>
               </div>
+              <div className="mt-2 grid grid-cols-2 gap-1 border-t border-[#29372f] pt-2 text-center text-[9px] text-[#aab8b0]">
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.elements?.filter(element => ["TEXT", "TITLE", "LABEL", "ANNOTATION"].includes(element.type)).length || 0}</b>textos</span>
+                <span><b className="block text-[#b7f34a]">{aiAnalysis.elements?.filter(element => ["EQUIPMENT", "INSTRUMENT", "VALVE", "PUMP", "MOTOR", "PANEL"].includes(element.type)).length || 0}</b>equipamentos</span>
+                <span><b className="block text-[#ffd34d]">{aiAnalysis.elements?.filter(element => ["SYMBOL", "CONNECTION"].includes(element.type)).length || 0}</b>símbolos</span>
+                <span><b className="block text-[#ffd34d]">{aiAnalysis.elements?.filter(element => element.type === "POSSIBLE_DIMENSION").length || 0}</b>possíveis cotas</span>
+              </div>
               {aiAnalysis.texts.length > 0 && <div className="mt-3 space-y-1 border-t border-[#29372f] pt-2">{aiAnalysis.texts.slice(0, 8).map((text, index) => <div key={`${text.value}-${index}`} className="rounded bg-[#18221b] px-2 py-1.5 text-[10px]"><div className="flex items-center justify-between gap-2"><span className="truncate text-[#e8efeb]">{text.value}</span><span className="shrink-0 text-[#b7f34a]">{Math.round(text.confidence * 100)}%</span></div><div className="mt-0.5 text-[9px] uppercase tracking-wide text-[#829087]">{text.type.replaceAll("_", " ")} · {text.source}</div></div>)}</div>}
-              {selectedAiText !== null && aiAnalysis.texts[selectedAiText] && <div className="mt-3 rounded border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Elemento selecionado</b><br />Valor: {aiAnalysis.texts[selectedAiText].value}<br />Tipo: {aiAnalysis.texts[selectedAiText].type}<br />Confiança: {Math.round(aiAnalysis.texts[selectedAiText].confidence * 100)}%<br />Origem: {aiAnalysis.texts[selectedAiText].source}<br />Posição: {Math.round(aiAnalysis.texts[selectedAiText].position.x)}, {Math.round(aiAnalysis.texts[selectedAiText].position.y)}<div className="mt-2 flex gap-1"><button type="button" onClick={() => setAiTextFeedback("confirmed")} className="flex-1 rounded bg-[#2a4a2d] py-1 text-[9px] font-bold text-[#caffab]">Confirmar</button><button type="button" onClick={() => setAiTextFeedback("rejected")} className="flex-1 rounded bg-[#4a2929] py-1 text-[9px] font-bold text-[#ffb2ac]">Rejeitar</button></div></div>}
+              {selectedAiText !== null && aiAnalysis.texts[selectedAiText] && <div className="mt-3 rounded border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Texto selecionado</b><br />Valor: {aiAnalysis.texts[selectedAiText].value}<br />Tipo: {aiAnalysis.texts[selectedAiText].type}<br />Confiança: {Math.round(aiAnalysis.texts[selectedAiText].confidence * 100)}%<br />Origem: {aiAnalysis.texts[selectedAiText].source}<br />Posição: {Math.round(aiAnalysis.texts[selectedAiText].position.x)}, {Math.round(aiAnalysis.texts[selectedAiText].position.y)}<div className="mt-2 flex gap-1"><button type="button" onClick={() => setAiTextFeedback("confirmed")} className="flex-1 rounded bg-[#2a4a2d] py-1 text-[9px] font-bold text-[#caffab]">Confirmar</button><button type="button" onClick={() => setAiTextFeedback("rejected")} className="flex-1 rounded bg-[#4a2929] py-1 text-[9px] font-bold text-[#ffb2ac]">Rejeitar</button></div></div>}
+              {selectedAiElement !== null && aiAnalysis.elements?.[selectedAiElement] && <div className="mt-3 rounded border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Elemento detectado</b><br />Nome: {aiAnalysis.elements[selectedAiElement].name}<br />Tipo: {aiAnalysis.elements[selectedAiElement].type}<br />Confiança: {Math.round(aiAnalysis.elements[selectedAiElement].confidence * 100)}%<br />Origem: {aiAnalysis.elements[selectedAiElement].source}<br />Posição: {Math.round(aiAnalysis.elements[selectedAiElement].position.x)}, {Math.round(aiAnalysis.elements[selectedAiElement].position.y)}</div>}
             </>}
           </div>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
@@ -690,7 +697,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full`} />
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
-            {showAiOverlay && aiAnalysis && <AiAnalysisOverlay texts={aiAnalysis.texts} threshold={aiConfidenceThreshold} selectedIndex={selectedAiText} onSelect={setSelectedAiText} />}
+            {showAiOverlay && aiAnalysis && <AiAnalysisOverlay elements={aiAnalysis.elements || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiElement} onSelect={index => { setSelectedAiElement(index); const selected = aiAnalysis.elements?.[index]; const textIndex = selected ? aiAnalysis.texts.findIndex(text => text.value === selected.name && text.position.x === selected.position.x && text.position.y === selected.position.y) : -1; setSelectedAiText(textIndex >= 0 ? textIndex : null); }} />}
           </div>
         </div>
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>

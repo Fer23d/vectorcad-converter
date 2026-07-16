@@ -10,6 +10,7 @@ import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
+import type { CadProjectData } from "@/types/project";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
 const doc: VectorDocument = {
@@ -24,8 +25,19 @@ describe("VectorCAD pipeline", () => {
     expect(result.texts[0].value).toBe("SALA");
     expect(result.texts[0].type).toBe("LABEL");
     expect(result.objects).toHaveLength(2);
+    expect(result.elements).toHaveLength(1);
+    expect(result.elements[0]).toMatchObject({ type: "LABEL", name: "SALA", source: "OCR", confidence: .9 });
+    expect(result.elements[0].boundingBox).toEqual({ x: 1, y: 1, width: 10, height: 4 });
     expect(result.dimensions[0].unit).toBe("mm");
     expect(result.provider).toBe("mock-local");
+  });
+
+  it("persists recognized elements with the project analysis", async () => {
+    const analysis = await runVectorCadAi({ ocrTexts: [{ text: "PLANTA BAIXA", x: 4, y: 8, width: 120, height: 20, rotation: 0, confidence: .95 }] });
+    const project: CadProjectData = { notes: "", editorMode: "cad2d", aiAnalysis: analysis };
+    const restored = JSON.parse(JSON.stringify(project)) as CadProjectData;
+    expect(restored.aiAnalysis?.elements[0]).toMatchObject({ name: "PLANTA BAIXA", type: "TITLE" });
+    expect(restored.aiAnalysis?.elements[0].position).toEqual({ x: 4, y: 8 });
   });
 
   it("keeps direct OCR text when Tesseract has no word blocks", () => {
