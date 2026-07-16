@@ -31,6 +31,15 @@ export type OcrDiagnostic = {
   variantsTested: number;
   bestVariant: string;
   bestConfidence: number;
+  originalImage: string;
+  grayscaleImage: string;
+  thresholdImage: string;
+  variantPreviews: Array<{ name: string; image: string }>;
+  directOcr: { rawText: string; confidence: number; psm: number };
+  worker: { created: boolean; languages: string[]; version: string };
+  inputStats: { width: number; height: number; format: string; nonTransparentPixels: number; darkPixels: number };
+  syntheticOcr: Array<{ language: string; rawText: string; confidence: number }>;
+  rawAttempts: Array<{ variant: string; psm: number; originalWidth: number; originalHeight: number; resizedWidth: number; resizedHeight: number; rawText: string; confidence: number }>;
   binaryImage: string;
   regionMask: string;
   cropPreviews: string[];
@@ -85,6 +94,7 @@ function prepareOcrImage(image: ImageData) {
     gray[i] = Math.round(prepared.data[p] * .299 + prepared.data[p + 1] * .587 + prepared.data[p + 2] * .114);
   }
   const threshold = otsuThreshold(gray);
+  const grayscale = new ImageData(new Uint8ClampedArray(prepared.data), width, height);
   let darkPixels = 0;
   for (let i = 0; i < gray.length; i++) {
     const isDark = gray[i] < threshold;
@@ -96,7 +106,7 @@ function prepareOcrImage(image: ImageData) {
     prepared.data[p + 2] = value;
     prepared.data[p + 3] = 255;
   }
-  return { image: prepared, scale, darkRatio: darkPixels / Math.max(1, gray.length) };
+  return { image: prepared, grayscale, threshold: prepared, scale, darkRatio: darkPixels / Math.max(1, gray.length) };
 }
 
 function detectCandidateRegions(image: ImageData): { regions: OcrRegion[]; componentsFound: number; mask: Uint8Array } {
@@ -321,24 +331,84 @@ function extractWords(data: { blocks: Array<{ paragraphs: Array<{ lines: Array<{
     .flatMap((line) => line.words);
 }
 
+function getImageStats(image: ImageData) {
+  let nonTransparentPixels = 0;
+  let darkPixels = 0;
+  for (let index = 0; index < image.data.length; index += 4) {
+    const alpha = image.data[index + 3];
+    if (alpha > 0) nonTransparentPixels += 1;
+    if (alpha > 0 && (image.data[index] * 299 + image.data[index + 1] * 587 + image.data[index + 2] * 114) / 1000 < 128) darkPixels += 1;
+  }
+  return { width: image.width, height: image.height, format: "ImageData RGBA8 via canvas", nonTransparentPixels, darkPixels };
+}
+
+function createSyntheticOcrImage() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 180;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("OCR_CANVAS_UNAVAILABLE");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#000000";
+  context.font = "bold 72px Arial, sans-serif";
+  context.textBaseline = "middle";
+  context.fillText("TESTE 123", 24, canvas.height / 2);
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
 /** Runs OCR only when requested, keeping the heavy language model out of initial page load. */
-export async function detectText(image: ImageData): Promise<TextDetectionResult> {
+export async function detectText(image: ImageData, originalImage: ImageData = image): Promise<TextDetectionResult> {
   if (typeof document === "undefined") throw new Error("OCR_BROWSER_REQUIRED");
+  const inputStats = getImageStats(originalImage);
+  console.info("[VectorCAD][OCR] entrada", inputStats);
   const prepared = prepareOcrImage(image);
   const candidates = detectCandidateRegions(prepared.image);
   const regions = candidates.regions.slice(0, 24);
   const binaryCanvas = imageDataToCanvas(prepared.image);
   const cropCanvases = regions.slice(0, 24).map((region) => cropRegion(prepared.image, region));
+  const variantPreviews = regions.length ? createOcrVariants(cropCanvases[0]).map((variant) => ({ name: variant.name, image: canvasDataUrl(variant.canvas) })) : [];
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("por+eng", 1);
+  const workerLanguages = ["eng", "por", "por+eng"];
+  const workerEvents = new Set<string>();
+  const worker = await createWorker("por+eng", 1, {
+    logger: (message) => {
+      if (message.status && (message.status.includes("load") || message.status.includes("init") || message.status.includes("recogniz"))) workerEvents.add(message.status);
+    },
+  });
+  console.info("[VectorCAD][OCR][worker] criado", { languages: ["por+eng"], loaded: true, events: [...workerEvents] });
   try {
-    const detected: DetectedText[] = [];
+    const syntheticImage = createSyntheticOcrImage();
+    const syntheticOcr: OcrDiagnostic["syntheticOcr"] = [];
+    for (const language of workerLanguages) {
+      await worker.reinitialize(language, 1);
+      await worker.setParameters({ tessedit_pageseg_mode: "7" as never });
+      const syntheticResult = await worker.recognize(imageDataToCanvas(syntheticImage));
+      const syntheticWords = extractWords(syntheticResult.data);
+      const syntheticText = syntheticResult.data.text?.trim() || syntheticWords.map((word) => word.text).join(" ").trim();
+      const syntheticConfidence = syntheticWords.length ? syntheticWords.reduce((total, word) => total + word.confidence / 100, 0) / syntheticWords.length : 0;
+      syntheticOcr.push({ language, rawText: syntheticText, confidence: syntheticConfidence });
+      console.info("[VectorCAD][OCR][synthetic] resultado bruto", { language, rawText: syntheticText, confidence: Number(syntheticConfidence.toFixed(3)), width: syntheticImage.width, height: syntheticImage.height, version: syntheticResult.data.version || "indisponível" });
+    }
+    await worker.reinitialize("por+eng", 1);
+    console.info("[VectorCAD][OCR][worker] modelos carregados", { languages: workerLanguages, version: "será reportada pelo resultado OCR", syntheticResults: syntheticOcr.length });
+    const directPsm = 6;
+    await worker.setParameters({ tessedit_pageseg_mode: String(directPsm) as never });
     let tesseractCalls = 0;
+    tesseractCalls += 1;
+    const directResult = await worker.recognize(imageDataToCanvas(originalImage));
+    const directWords = extractWords(directResult.data);
+    const directConfidence = directWords.length ? directWords.reduce((total, word) => total + word.confidence / 100, 0) / directWords.length : 0;
+    const directOcr = { rawText: directResult.data.text?.trim() || directWords.map((word) => word.text).join(" ").trim(), confidence: directConfidence, psm: directPsm };
+    const workerVersion = directResult.data.version || "indisponível";
+    console.info("[VectorCAD][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
+    const detected: DetectedText[] = [];
     let rawResults = 0;
     let variantsTested = 0;
     let bestVariant = "nenhuma";
     let bestScore = -1;
     let bestConfidence = 0;
+    const rawAttempts: OcrDiagnostic["rawAttempts"] = [];
     const modes: OcrPageMode[] = [6, 7, 8, 11, 12];
     for (const region of regions) {
       const regionBest: { texts: DetectedText[]; score: number; variant: string } = { texts: [], score: -1, variant: "nenhuma" };
@@ -349,6 +419,9 @@ export async function detectText(image: ImageData): Promise<TextDetectionResult>
           await worker.setParameters({ tessedit_pageseg_mode: String(pageMode) as never });
           tesseractCalls += 1;
           const { data } = await worker.recognize(variant.canvas);
+          const attemptWords = extractWords(data);
+          const attemptConfidence = attemptWords.length ? attemptWords.reduce((total, word) => total + word.confidence / 100, 0) / attemptWords.length : 0;
+          rawAttempts.push({ variant: variant.name, psm: pageMode, originalWidth: Math.round(region.width / prepared.scale), originalHeight: Math.round(region.height / prepared.scale), resizedWidth: region.width, resizedHeight: region.height, rawText: data.text?.trim() || attemptWords.map((word) => word.text).join(" ").trim(), confidence: attemptConfidence });
           for (const word of extractWords(data)) {
             const text = word.text.trim();
             const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: (word.bbox.x1 - word.bbox.x0) / prepared.scale, height: (word.bbox.y1 - word.bbox.y0) / prepared.scale, rotation: 0, confidence: word.confidence / 100 };
@@ -385,6 +458,11 @@ export async function detectText(image: ImageData): Promise<TextDetectionResult>
       variantsTested,
       bestVariant,
       bestConfidence: Number(bestConfidence.toFixed(3)),
+      directOcr,
+      worker: { created: true, languages: workerLanguages, version: workerVersion },
+      inputStats,
+      syntheticOcr,
+      rawAttempts,
       averageCropWidth: regions.length ? Math.round(regions.reduce((total, region) => total + region.width, 0) / regions.length) : 0,
       averageCropHeight: regions.length ? Math.round(regions.reduce((total, region) => total + region.height, 0) / regions.length) : 0,
       averageConfidence: Number(confidence.toFixed(3)),
@@ -407,6 +485,15 @@ export async function detectText(image: ImageData): Promise<TextDetectionResult>
         variantsTested,
         bestVariant,
         bestConfidence: Number(bestConfidence.toFixed(3)),
+        originalImage: canvasDataUrl(imageDataToCanvas(originalImage)),
+        grayscaleImage: canvasDataUrl(imageDataToCanvas(prepared.grayscale)),
+        thresholdImage: canvasDataUrl(imageDataToCanvas(prepared.threshold)),
+        variantPreviews,
+        directOcr,
+        worker: { created: true, languages: workerLanguages, version: workerVersion },
+        inputStats,
+        syntheticOcr,
+        rawAttempts,
         binaryImage: canvasDataUrl(binaryCanvas),
         regionMask: maskDataUrl(candidates.mask, prepared.image.width, prepared.image.height, regions),
         cropPreviews: cropCanvases.map(canvasDataUrl),

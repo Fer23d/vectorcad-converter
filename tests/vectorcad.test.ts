@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import DxfParser from "dxf-parser";
 import { Helper } from "dxf";
 import { closeBinary, removeSmallComponents } from "@/lib/image-processing/binary";
@@ -8,7 +8,7 @@ import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { protectTextRegions } from "@/lib/text-detection/ocr";
-import { runVectorCadAi } from "@/lib/ai/vectorcad-ai";
+import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
@@ -26,6 +26,22 @@ describe("VectorCAD pipeline", () => {
     expect(result.objects).toHaveLength(2);
     expect(result.dimensions[0].unit).toBe("mm");
     expect(result.provider).toBe("mock-local");
+  });
+
+  it("prefers a higher-confidence Vision AI result over a duplicate OCR result", () => {
+    const merged = consolidateAiTexts(
+      [{ text: "Instrumenlacao", x: 10, y: 20, width: 80, height: 12, rotation: 0, confidence: .7 }],
+      [{ value: "Instrumentação", type: "LABEL", confidence: .97, position: { x: 11, y: 21 }, boundingBox: { x: 11, y: 21, width: 80, height: 12 }, rotation: 0, source: "VISION_AI" }],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].value).toBe("Instrumentação");
+    expect(merged[0].source).toBe("VISION_AI");
+  });
+
+  it("reports a Vision API error without exposing a secret", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("upstream failure", { status: 503 })));
+    await expect(new RealVisionProvider({ apiKey: "test-key" }).analyze({ imageDataUrl: "data:image/png;base64,AA==" })).rejects.toThrow("VISION_API_503");
+    vi.unstubAllGlobals();
   });
 
   it("protects detected text regions from vectorization", () => {

@@ -10,7 +10,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
-import { runVectorCadAi, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
+import { type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -100,6 +100,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState(0);
   const [selectedAiText, setSelectedAiText] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState("");
+  const [visionStatus, setVisionStatus] = useState<"idle" | "executed" | "fallback" | "skipped">("idle");
   const [aiRunning, setAiRunning] = useState(false);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
@@ -404,8 +405,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!context) return;
     let cancelled = false;
     setTextDetectionStatus("Analisando textos...");
-    const enhanced = enhanceForCad(context.getImageData(0, 0, canvas.width, canvas.height), "ultra-pro");
-    void detectText(enhanced).then((result) => {
+    const original = context.getImageData(0, 0, canvas.width, canvas.height);
+    const enhanced = enhanceForCad(original, "ultra-pro");
+    void detectText(enhanced, original).then((result) => {
       if (cancelled) return;
       setDetectedTexts(result.texts);
       setOcrDiagnostic(result.diagnostic);
@@ -466,17 +468,31 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setAiRunning(true);
     setAiStatus("Analisando com o VectorCAD AI...");
     try {
-      const analysis = await runVectorCadAi({
-        image: context.getImageData(0, 0, image.width, image.height),
-        project: { notes: "", editorMode: show3d ? "cad3d" : "cad2d", sourceImageDataUrl, sourceFormat, fileName, processing, imageQuality, textDetectionEnabled, detectedTexts, vector, document: doc, unit, realWidth, realHeight, locked, activeView },
-        vectors: doc,
-        dimensions: { width: realWidth, height: realHeight, unit },
-        ocrTexts: detectedTexts,
+      if (!supabase) throw new Error("SUPABASE_NOT_CONFIGURED");
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) throw new Error("SESSION_MISSING");
+      const response = await fetch("/api/ai/vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({
+          imageDataUrl: image.toDataURL("image/png"),
+          ocrTexts: detectedTexts,
+          vectors: doc,
+          dimensions: { width: realWidth, height: realHeight, unit },
+          context: { editorMode: show3d ? "cad3d" : "cad2d", fileName, sourceFormat, imageQuality },
+        }),
       });
+      const payload = await response.json().catch(() => null) as { analysis?: VectorCadAiAnalysis; vision?: { status?: string; reason?: string }; error?: string } | null;
+      if (!response.ok || !payload?.analysis) throw new Error(payload?.error || "AI_ANALYSIS_FAILED");
+      const analysis = payload.analysis;
       setAiAnalysis(analysis);
       setSelectedAiText(null);
-      setAiStatus(`Análise concluída · ${analysis.objects.length} elementos encontrados`);
-    } catch {
+      setVisionStatus(payload.vision?.status === "executed" ? "executed" : payload.vision?.status === "fallback" ? "fallback" : "skipped");
+      const visionStatus = payload.vision?.status === "executed" ? "OCR + Vision AI" : payload.vision?.status === "fallback" ? "OCR local (Vision AI indisponível)" : "OCR local (confiança suficiente)";
+      setAiStatus(`${visionStatus} · ${analysis.objects.length} elementos encontrados`);
+    } catch (error) {
+      console.warn("[VectorCAD][AI] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
+      setVisionStatus("idle");
       setAiStatus("Não foi possível concluir a análise de IA.");
     } finally {
       setAiRunning(false);
@@ -584,14 +600,21 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
               <span>Recorte médio: {ocrDiagnostic.averageCropWidth} × {ocrDiagnostic.averageCropHeight}</span>
             </div>
             <div className="mt-2 grid gap-2">
+              <div className="rounded border border-[#33433a] bg-[#0b110d] p-2"><b className="text-[#b7f34a]">OCR direto · PSM {ocrDiagnostic.directOcr.psm}</b><div className="mt-1 whitespace-pre-wrap break-words text-[#e8efeb]">{ocrDiagnostic.directOcr.rawText || "(sem texto bruto)"}</div><div className="mt-1 text-[#829087]">Confiança: {Math.round(ocrDiagnostic.directOcr.confidence * 100)}%</div></div>
+              <div className="rounded border border-[#33433a] bg-[#0b110d] p-2"><b className="text-[#b7f34a]">Worker Tesseract</b><div className="mt-1 text-[#aab8b0]">Criado: {ocrDiagnostic.worker.created ? "sim" : "não"} · Modelos: {ocrDiagnostic.worker.languages.join(", ")} · Versão: {ocrDiagnostic.worker.version}</div><div className="mt-1 text-[#829087]">Entrada: {ocrDiagnostic.inputStats.width} × {ocrDiagnostic.inputStats.height} · {ocrDiagnostic.inputStats.format} · não transparentes: {ocrDiagnostic.inputStats.nonTransparentPixels} · escuros: {ocrDiagnostic.inputStats.darkPixels}</div></div>
+              <div className="rounded border border-[#33433a] bg-[#0b110d] p-2"><b className="text-[#b7f34a]">Teste interno: TESTE 123</b><div className="mt-1 space-y-1 text-[#e8efeb]">{ocrDiagnostic.syntheticOcr.map(result => <div key={result.language}><span className="text-[#829087]">{result.language}:</span> {result.rawText || "(sem texto bruto)"} <span className="text-[#829087]">· {Math.round(result.confidence * 100)}%</span></div>)}</div></div>
+              <div className="grid grid-cols-3 gap-1"><figure><figcaption className="mb-1 text-[#829087]">Original</figcaption><DiagnosticImage src={ocrDiagnostic.originalImage} alt="Imagem original enviada ao OCR" className="h-24 w-full object-contain bg-white" /></figure><figure><figcaption className="mb-1 text-[#829087]">Grayscale</figcaption><DiagnosticImage src={ocrDiagnostic.grayscaleImage} alt="Imagem grayscale do OCR" className="h-24 w-full object-contain bg-white" /></figure><figure><figcaption className="mb-1 text-[#829087]">Threshold</figcaption><DiagnosticImage src={ocrDiagnostic.thresholdImage} alt="Imagem após threshold do OCR" className="h-24 w-full object-contain bg-white" /></figure></div>
               <figure><figcaption className="mb-1 text-[#829087]">Imagem binarizada</figcaption><DiagnosticImage src={ocrDiagnostic.binaryImage} alt="Imagem binarizada enviada ao OCR" className="max-h-32 w-full object-contain bg-white" /></figure>
               <figure><figcaption className="mb-1 text-[#829087]">Máscara e regiões candidatas</figcaption><DiagnosticImage src={ocrDiagnostic.regionMask} alt="Máscara de regiões candidatas do OCR" className="max-h-32 w-full object-contain bg-white" /></figure>
+              {ocrDiagnostic.variantPreviews.length > 0 && <figure><figcaption className="mb-1 text-[#829087]">Variantes do primeiro recorte</figcaption><div className="grid grid-cols-5 gap-1">{ocrDiagnostic.variantPreviews.map(variant => <div key={variant.name}><DiagnosticImage src={variant.image} alt={`Variante ${variant.name}`} className="h-16 w-full object-contain bg-white" /><span className="block truncate text-center text-[8px]">{variant.name}</span></div>)}</div></figure>}
               {ocrDiagnostic.cropPreviews.length > 0 && <figure><figcaption className="mb-1 text-[#829087]">Recortes enviados ao Tesseract</figcaption><div className="grid grid-cols-4 gap-1">{ocrDiagnostic.cropPreviews.map((preview, index) => <DiagnosticImage key={`${preview.slice(-24)}-${index}`} src={preview} alt={`Recorte OCR ${index + 1}`} className="h-12 w-full object-contain bg-white" />)}</div></figure>}
+              {ocrDiagnostic.rawAttempts.length > 0 && <div><figcaption className="mb-1 text-[#829087]">Retorno bruto de cada tentativa</figcaption><div className="max-h-52 space-y-1 overflow-auto">{ocrDiagnostic.rawAttempts.map((attempt, index) => <div key={`${attempt.variant}-${attempt.psm}-${index}`} className="rounded bg-[#0b110d] p-1.5"><div className="text-[#b7f34a]">{attempt.variant} · PSM {attempt.psm} · {attempt.originalWidth}×{attempt.originalHeight} → {attempt.resizedWidth}×{attempt.resizedHeight} · {Math.round(attempt.confidence * 100)}%</div><div className="whitespace-pre-wrap break-words text-[#e8efeb]">{attempt.rawText || "(vazio)"}</div></div>)}</div></div>}
             </div>
           </details>}
           <div className="mt-4 rounded-lg border border-[#33433a] bg-[#111914] p-3">
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
+            {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Vision AI: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executado" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
             <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Visualizar análise IA</span><input type="checkbox" checked={showAiOverlay} onChange={e => setShowAiOverlay(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
             {showAiOverlay && <Slider label="Confiança mínima (%)" value={Math.round(aiConfidenceThreshold * 100)} min={0} max={100} onChange={value => setAiConfidenceThreshold(value / 100)} />}
