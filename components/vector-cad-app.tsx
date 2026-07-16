@@ -551,7 +551,17 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
-            {aiAnalysis && <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[9px] text-[#aab8b0]"><span><b className="block text-[#e8efeb]">{aiAnalysis.texts.length}</b>textos</span><span><b className="block text-[#e8efeb]">{aiAnalysis.objects.length}</b>elementos</span><span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança</span></div>}
+            {aiAnalysis && <>
+              <div className="mt-2 grid grid-cols-2 gap-1 text-center text-[9px] text-[#aab8b0]">
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.length}</b>textos</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "TITLE").length}</b>títulos</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "ANNOTATION").length}</b>anotações</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "POSSIBLE_DIMENSION").length}</b>cotas possíveis</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.objects.length}</b>elementos</span>
+                <span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança</span>
+              </div>
+              {aiAnalysis.texts.length > 0 && <div className="mt-3 space-y-1 border-t border-[#29372f] pt-2">{aiAnalysis.texts.slice(0, 8).map((text, index) => <div key={`${text.value}-${index}`} className="rounded bg-[#18221b] px-2 py-1.5 text-[10px]"><div className="flex items-center justify-between gap-2"><span className="truncate text-[#e8efeb]">{text.value}</span><span className="shrink-0 text-[#b7f34a]">{Math.round(text.confidence * 100)}%</span></div><div className="mt-0.5 text-[9px] uppercase tracking-wide text-[#829087]">{text.type.replaceAll("_", " ")} · {text.source}</div></div>)}</div>}
+            </>}
           </div>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />

@@ -21,7 +21,8 @@ const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplific
 describe("VectorCAD pipeline", () => {
   it("normalizes local OCR into the VectorCAD AI analysis structure", async () => {
     const result = await runVectorCadAi({ vectors: doc, dimensions: { width: 10, height: 10, unit: "mm" }, ocrTexts: [{ text: "SALA", x: 1, y: 1, width: 10, height: 4, rotation: 0, confidence: .9 }] });
-    expect(result.texts[0].text).toBe("SALA");
+    expect(result.texts[0].value).toBe("SALA");
+    expect(result.texts[0].type).toBe("LABEL");
     expect(result.objects).toHaveLength(2);
     expect(result.dimensions[0].unit).toBe("mm");
     expect(result.provider).toBe("mock-local");
