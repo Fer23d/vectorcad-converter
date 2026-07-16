@@ -3,6 +3,7 @@ import type { DetectedText, Unit, VectorDocument } from "@/types/vector";
 import { TextFusionEngine } from "@/lib/ai/text-fusion";
 import { elementRecognitionEngine, type RecognizedElement } from "@/lib/ai/element-recognition";
 import type { VisionDetectedObject, VisionObjectDetectorLike } from "@/lib/ai/vision-object-detector";
+import { dimensionRecognitionEngine, type RecognizedDimension } from "@/lib/ai/dimension-recognition";
 
 export type AiDimension = {
   width: number;
@@ -44,6 +45,7 @@ export type VectorCadAiAnalysis = {
   elements: AiDetectedElement[];
   visionObjects: VisionDetectedObject[];
   objectDetectionStatus: "executed" | "fallback" | "skipped";
+  detectedDimensions: RecognizedDimension[];
   dimensions: AiDimension[];
   objects: AiObject[];
   confidence: number;
@@ -228,11 +230,14 @@ export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionPr
     }
   }
   const elements = elementRecognitionEngine.recognize({ image: input.image, texts, visionAnalysis: result, visionObjects });
+  const dimensionUnit = input.dimensions?.unit === "cm" ? "cm" : input.dimensions?.unit === "mm" ? "mm" : undefined;
+  const detectedDimensions = dimensionRecognitionEngine.recognize({ image: input.image, texts, elements, visionObjects, unit: dimensionUnit });
   return {
     texts,
     elements,
     visionObjects,
     objectDetectionStatus,
+    detectedDimensions,
     dimensions: result.dimensions || [],
     objects: result.objects || [],
     confidence: Math.max(0, Math.min(1, result.confidence ?? averageConfidence(texts))),

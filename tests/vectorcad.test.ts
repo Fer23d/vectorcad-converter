@@ -10,6 +10,7 @@ import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
+import { DimensionRecognitionEngine } from "@/lib/ai/dimension-recognition";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { CadProjectData } from "@/types/project";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
@@ -82,6 +83,26 @@ describe("VectorCAD pipeline", () => {
     expect(result.objectDetectionStatus).toBe("fallback");
     expect(result.visionObjects).toHaveLength(0);
     expect(result.elements[0]).toMatchObject({ name: "SALA", type: "LABEL", source: "OCR" });
+  });
+
+  it("recognizes a dimension only when numeric text has nearby visual evidence", () => {
+    const dimensions = new DimensionRecognitionEngine().recognize({
+      texts: [{ value: "3500 mm", type: "POSSIBLE_DIMENSION", confidence: .9, position: { x: 100, y: 50 }, boundingBox: { x: 100, y: 50, width: 70, height: 12 }, rotation: 0, source: "OCR" }],
+      visionObjects: [{ id: "line-1", type: "CONNECTION", name: "dimension line", confidence: .8, boundingBox: { x: 90, y: 45, width: 100, height: 20 }, position: { x: 90, y: 45 }, rotation: 0, source: "VISION_AI" }],
+      unit: "mm",
+    });
+    expect(dimensions).toHaveLength(1);
+    expect(dimensions[0]).toMatchObject({ type: "DIMENSION", value: 3500, unit: "mm", source: "VISION_AI" });
+    expect(dimensions[0].boundingBox).toEqual({ x: 100, y: 50, width: 70, height: 12 });
+    expect(dimensions[0].confidence).toBeCloseTo(.865, 3);
+  });
+
+  it("ignores equipment tags even when they are near visual geometry", () => {
+    const dimensions = new DimensionRecognitionEngine().recognize({
+      texts: [{ value: "P-101", type: "EQUIPMENT_TAG", confidence: .99, position: { x: 100, y: 50 }, boundingBox: { x: 100, y: 50, width: 40, height: 12 }, rotation: 0, source: "OCR" }],
+      visionObjects: [{ id: "line-1", type: "CONNECTION", name: "line", confidence: 1, boundingBox: { x: 90, y: 45, width: 100, height: 20 }, position: { x: 90, y: 45 }, rotation: 0, source: "VISION_AI" }],
+    });
+    expect(dimensions).toHaveLength(0);
   });
 
   it("protects detected text regions from vectorization", () => {
