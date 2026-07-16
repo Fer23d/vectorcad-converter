@@ -36,6 +36,7 @@ export type OcrDiagnostic = {
   thresholdImage: string;
   variantPreviews: Array<{ name: string; image: string }>;
   directOcr: { rawText: string; confidence: number; psm: number };
+  acceptedResults: number;
   worker: { created: boolean; languages: string[]; version: string };
   inputStats: { width: number; height: number; format: string; nonTransparentPixels: number; darkPixels: number };
   syntheticOcr: Array<{ language: string; rawText: string; confidence: number }>;
@@ -331,6 +332,14 @@ function extractWords(data: { blocks: Array<{ paragraphs: Array<{ lines: Array<{
     .flatMap((line) => line.words);
 }
 
+function normalizeCandidateText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function hasMinimumTextContent(text: string) {
+  return Array.from(text).filter((character) => /[\p{L}\p{N}]/u.test(character)).length >= 3;
+}
+
 function getImageStats(image: ImageData) {
   let nonTransparentPixels = 0;
   let darkPixels = 0;
@@ -402,8 +411,14 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
     const directOcr = { rawText: directResult.data.text?.trim() || directWords.map((word) => word.text).join(" ").trim(), confidence: directConfidence, psm: directPsm };
     const workerVersion = directResult.data.version || "indisponível";
     console.info("[VectorCAD][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
-    const detected: DetectedText[] = [];
-    let rawResults = 0;
+    const directCandidates: DetectedText[] = directWords.flatMap((word) => {
+      const text = normalizeCandidateText(word.text);
+      if (!hasMinimumTextContent(text)) return [];
+      const rawConfidence = Math.max(0, Math.min(1, word.confidence / 100));
+      return [{ text, x: word.bbox.x0, y: word.bbox.y0, width: Math.max(1, word.bbox.x1 - word.bbox.x0), height: Math.max(1, word.bbox.y1 - word.bbox.y0), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence }];
+    });
+    const detected: DetectedText[] = [...directCandidates];
+    let rawResults = directWords.filter((word) => normalizeCandidateText(word.text).length > 0).length;
     let variantsTested = 0;
     let bestVariant = "nenhuma";
     let bestScore = -1;
@@ -420,15 +435,16 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
           tesseractCalls += 1;
           const { data } = await worker.recognize(variant.canvas);
           const attemptWords = extractWords(data);
+          rawResults += attemptWords.filter((word) => normalizeCandidateText(word.text).length > 0).length;
           const attemptConfidence = attemptWords.length ? attemptWords.reduce((total, word) => total + word.confidence / 100, 0) / attemptWords.length : 0;
           rawAttempts.push({ variant: variant.name, psm: pageMode, originalWidth: Math.round(region.width / prepared.scale), originalHeight: Math.round(region.height / prepared.scale), resizedWidth: region.width, resizedHeight: region.height, rawText: data.text?.trim() || attemptWords.map((word) => word.text).join(" ").trim(), confidence: attemptConfidence });
           for (const word of extractWords(data)) {
-            const text = word.text.trim();
-            const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: (word.bbox.x1 - word.bbox.x0) / prepared.scale, height: (word.bbox.y1 - word.bbox.y0) / prepared.scale, rotation: 0, confidence: word.confidence / 100 };
-            if (text.length > 0 && value.width > 1 && value.height > 1 && value.confidence >= .35) variantTexts.push(value);
+            const text = normalizeCandidateText(word.text);
+            const rawConfidence = Math.max(0, Math.min(1, word.confidence / 100));
+            const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: Math.max(1, (word.bbox.x1 - word.bbox.x0) / prepared.scale), height: Math.max(1, (word.bbox.y1 - word.bbox.y0) / prepared.scale), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence };
+            if (hasMinimumTextContent(text) && value.width > 1 && value.height > 1) variantTexts.push(value);
           }
         }
-        rawResults += variantTexts.length;
         const validCharacters = variantTexts.reduce((total, word) => total + validCharacterCount(word.text), 0);
         const confidence = variantTexts.length ? variantTexts.reduce((total, word) => total + word.confidence, 0) / variantTexts.length : 0;
         const score = confidence * .65 + Math.min(1, validCharacters / 24) * .35;
@@ -455,6 +471,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
       componentsFound: candidates.componentsFound,
       tesseractCalls,
       rawResults,
+      acceptedResults: unique.length,
       variantsTested,
       bestVariant,
       bestConfidence: Number(bestConfidence.toFixed(3)),
@@ -482,6 +499,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
         averageCropHeight: regions.length ? Math.round(regions.reduce((total, region) => total + region.height, 0) / regions.length) : 0,
         tesseractCalls,
         rawResults,
+        acceptedResults: unique.length,
         variantsTested,
         bestVariant,
         bestConfidence: Number(bestConfidence.toFixed(3)),

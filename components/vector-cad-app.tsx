@@ -594,6 +594,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
               <span>Regiões: {ocrDiagnostic.regionsCreated}</span>
               <span>Chamadas Tesseract: {ocrDiagnostic.tesseractCalls}</span>
               <span>Resultados brutos: {ocrDiagnostic.rawResults}</span>
+              <span>Resultados aceitos: {ocrDiagnostic.acceptedResults}</span>
               <span>Variantes testadas: {ocrDiagnostic.variantsTested}</span>
               <span>Melhor variante: {ocrDiagnostic.bestVariant}</span>
               <span>Melhor confiança: {Math.round(ocrDiagnostic.bestConfidence * 100)}%</span>

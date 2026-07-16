@@ -10,6 +10,8 @@ export type DetectedText = {
   height: number;
   rotation: number;
   confidence: number;
+  rawConfidence?: number;
+  confidenceFinal?: number;
 };
 
 export interface Point { x: number; y: number }
