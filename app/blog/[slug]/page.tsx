@@ -17,8 +17,9 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
   const article = getArticle(slug);
   if (!article) return {};
   return {
-    title: `${article.title} | VectorCAD`,
-    description: article.description,
+    title: article.metaTitle || article.title,
+    description: article.metaDescription || article.description,
+    keywords: article.keywords,
     alternates: { canonical: `https://vetorcad.com.br/blog/${article.slug}` },
   };
 }

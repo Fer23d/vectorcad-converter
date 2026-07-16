@@ -5,10 +5,67 @@ export type BlogArticle = {
   date: string;
   readTime: string;
   category: string;
+  metaTitle?: string;
+  metaDescription?: string;
+  keywords?: string[];
   sections: { heading: string; body: string[] }[];
 };
 
 export const blogArticles: BlogArticle[] = [
+  {
+    slug: "vectorcad-ai-conversao-desenhos-tecnicos",
+    title: "VectorCAD AI: como a Inteligência Artificial está transformando a conversão de desenhos técnicos em CAD",
+    description: "Conheça como a Inteligência Artificial está tornando a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e inteligente.",
+    date: "2026-07-16",
+    readTime: "8 min",
+    category: "VectorCAD AI",
+    metaTitle: "VectorCAD AI | Conversão de desenhos técnicos para CAD usando Inteligência Artificial",
+    metaDescription: "Conheça como a Inteligência Artificial está tornando a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e inteligente.",
+    keywords: ["conversão CAD", "imagem para DXF", "inteligência artificial CAD", "desenho técnico", "engenharia"],
+    sections: [
+      {
+        heading: "Introdução",
+        body: [
+          "Profissionais de engenharia e projetos ainda gastam muitas horas convertendo desenhos antigos, imagens e plantas para CAD. Esse trabalho manual consome tempo e pode dificultar a preservação de informações técnicas importantes.",
+          "O VectorCAD AI foi criado para apoiar esse processo, combinando processamento de imagem, reconhecimento de textos e interpretação inteligente em um fluxo voltado para arquivos CAD editáveis.",
+        ],
+      },
+      {
+        heading: "O desafio dos desenhos técnicos",
+        body: [
+          "Uma planta ou desenho técnico reúne linhas, textos, símbolos, cotas e outras informações no mesmo espaço. Para uma conversão útil, é necessário distinguir esses elementos sem tratar toda a imagem como um simples conjunto de pixels.",
+          "Qualidade da digitalização, contraste, ruído e escala também influenciam diretamente o resultado. Por isso, o pré-processamento e a revisão continuam sendo partes importantes do fluxo.",
+        ],
+      },
+      {
+        heading: "Como a Inteligência Artificial ajuda",
+        body: [
+          "O VectorCAD AI usa OCR local para reconhecer textos e pode recorrer à análise visual em regiões que exigem uma interpretação adicional. Assim, títulos, legendas, anotações e identificações técnicas podem ser organizados como informações estruturadas.",
+          "Essa separação ajuda a preservar o contexto do desenho, reduzir interferências na vetorização e preparar os dados para arquivos editáveis. A IA atua como apoio à produtividade, enquanto o usuário continua validando o resultado no editor.",
+        ],
+      },
+      {
+        heading: "Aplicações do VectorCAD AI",
+        body: [
+          "Na engenharia industrial, o fluxo pode apoiar a análise de fluxogramas, instrumentação e diagramas técnicos. Na arquitetura, pode auxiliar na organização de plantas, fachadas e desenhos técnicos digitalizados.",
+          "Em projetos de diferentes áreas, a ferramenta ajuda na documentação, revisão e conversão de materiais legados, reduzindo o redesenho manual e centralizando os resultados em um workspace.",
+        ],
+      },
+      {
+        heading: "O futuro do CAD inteligente",
+        body: [
+          "A próxima geração de ferramentas CAD tende a combinar geometria editável com interpretação de contexto. Isso significa reconhecer não apenas linhas, mas também a informação técnica que dá significado ao desenho.",
+          "Essa evolução deve tornar os fluxos de engenharia mais rápidos, rastreáveis e colaborativos, sem substituir a validação profissional necessária em cada projeto.",
+        ],
+      },
+      {
+        heading: "Conclusão",
+        body: [
+          "O VectorCAD AI posiciona a Inteligência Artificial como uma camada de produtividade para profissionais técnicos. Ao unir OCR, análise visual e exportação CAD, a plataforma ajuda a transformar desenhos existentes em uma base mais organizada para o trabalho de engenharia.",
+        ],
+      },
+    ],
+  },
   {
     slug: "como-converter-imagem-em-dxf-para-autocad",
     title: "Como converter imagem em DXF para AutoCAD sem redesenhar tudo",

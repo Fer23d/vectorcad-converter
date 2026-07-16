@@ -4,8 +4,8 @@ import { PublicSiteShell } from "@/components/public-site-shell";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "VectorCAD Converter | PNG e JPG para SVG e DXF editável",
-  description: "Converta imagens em vetores para CAD, corte laser, CNC, AutoCAD, CorelDRAW e Illustrator com exportação SVG, DXF e preview 3D.",
+  title: "VectorCAD AI | Conversão inteligente de desenhos técnicos para CAD",
+  description: "Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.",
   alternates: { canonical: "https://vetorcad.com.br/" },
 };
 
@@ -63,6 +63,45 @@ export default function Home() {
                 <span className="rounded-xl bg-[#121b16] p-3">Scale mm</span>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden border-b border-[#1c2822] bg-[#0a0f0d]">
+        <div className="absolute -right-24 top-10 h-64 w-64 rounded-full bg-[#b7f34a]/10 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4 py-16 lg:px-8 lg:py-20">
+          <div className="max-w-3xl">
+            <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">NOVO 🚀 IA integrada</span>
+            <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">VectorCAD AI: conversão CAD inteligente com Inteligência Artificial</h2>
+            <p className="mt-5 text-lg leading-8 text-[#b8c8c0]">Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.</p>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
+              <h3 className="font-black text-[#b7f34a]">Inteligência Artificial para desenhos técnicos</h3>
+              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">A IA analisa seu desenho para identificar informações técnicas e auxiliar na conversão para CAD.</p>
+            </article>
+            <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
+              <h3 className="font-black text-[#b7f34a]">Textos inteligentes</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-[#c3d0ca]"><li>✓ Títulos</li><li>✓ Legendas</li><li>✓ Anotações</li><li>✓ Identificações técnicas</li></ul>
+            </article>
+            <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
+              <h3 className="font-black text-[#b7f34a]">Projetado para engenharia</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-[#c3d0ca]"><li>✓ Plantas industriais</li><li>✓ Diagramas</li><li>✓ Instrumentação</li><li>✓ Arquitetura</li><li>✓ Projetos técnicos</li></ul>
+            </article>
+            <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
+              <h3 className="font-black text-[#b7f34a]">Exportação profissional</h3>
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-[#c3d0ca]"><li>✓ DXF editável</li><li>✓ SVG vetorial</li><li>✓ Camadas organizadas</li></ul>
+            </article>
+          </div>
+          <div className="mt-10 rounded-3xl border border-[#304238] bg-[#070b09] p-6">
+            <h3 className="text-xl font-black">Como funciona</h3>
+            <div className="mt-6 grid gap-3 text-center text-sm font-bold text-[#c3d0ca] md:grid-cols-5">
+              {["Imagem do projeto", "Processamento inteligente", "OCR + Inteligência Artificial", "Análise dos elementos", "Arquivo CAD editável"].map((step, index) => <div key={step} className="flex items-center justify-center gap-3"><span className="flex-1 rounded-2xl border border-[#304238] bg-[#111915] px-4 py-4">{step}</span>{index < 4 && <span className="hidden text-xl text-[#b7f34a] md:inline">→</span>}</div>)}
+            </div>
+          </div>
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Teste o VectorCAD AI</Link>
+            <span className="text-sm text-[#aebeb6]">Converta seu primeiro desenho técnico.</span>
           </div>
         </div>
       </section>
