@@ -346,6 +346,7 @@ export function createDirectTextCandidates(rawText: string, width: number, heigh
   const lineHeight = Math.max(12, height / Math.max(1, lines.length));
   return lines.map((text, index) => ({
     text,
+    value: text,
     x: 0,
     y: Math.round(index * lineHeight),
     width: Math.max(1, width),
@@ -354,6 +355,9 @@ export function createDirectTextCandidates(rawText: string, width: number, heigh
     confidence: safeConfidence,
     rawConfidence: safeConfidence,
     confidenceFinal: safeConfidence,
+    position: { x: 0, y: Math.round(index * lineHeight) },
+    boundingBox: { x: 0, y: Math.round(index * lineHeight), width: Math.max(1, width), height: Math.max(1, Math.min(lineHeight, height)) },
+    source: "OCR" as const,
   }));
 }
 
@@ -432,7 +436,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
       const text = normalizeCandidateText(word.text);
       if (!hasMinimumTextContent(text)) return [];
       const rawConfidence = Math.max(0, Math.min(1, word.confidence / 100));
-      return [{ text, x: word.bbox.x0, y: word.bbox.y0, width: Math.max(1, word.bbox.x1 - word.bbox.x0), height: Math.max(1, word.bbox.y1 - word.bbox.y0), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence }];
+      return [{ text, value: text, x: word.bbox.x0, y: word.bbox.y0, width: Math.max(1, word.bbox.x1 - word.bbox.x0), height: Math.max(1, word.bbox.y1 - word.bbox.y0), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence, position: { x: word.bbox.x0, y: word.bbox.y0 }, boundingBox: { x: word.bbox.x0, y: word.bbox.y0, width: Math.max(1, word.bbox.x1 - word.bbox.x0), height: Math.max(1, word.bbox.y1 - word.bbox.y0) }, source: "OCR" as const }];
     });
     const directCandidates = wordCandidates.length ? wordCandidates : createDirectTextCandidates(directOcr.rawText, originalImage.width, originalImage.height, directConfidence);
     const detected: DetectedText[] = [...directCandidates];
@@ -459,7 +463,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
           for (const word of extractWords(data)) {
             const text = normalizeCandidateText(word.text);
             const rawConfidence = Math.max(0, Math.min(1, word.confidence / 100));
-            const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: Math.max(1, (word.bbox.x1 - word.bbox.x0) / prepared.scale), height: Math.max(1, (word.bbox.y1 - word.bbox.y0) / prepared.scale), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence };
+            const value = { text, value: text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: Math.max(1, (word.bbox.x1 - word.bbox.x0) / prepared.scale), height: Math.max(1, (word.bbox.y1 - word.bbox.y0) / prepared.scale), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence, position: { x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale }, boundingBox: { x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: Math.max(1, (word.bbox.x1 - word.bbox.x0) / prepared.scale), height: Math.max(1, (word.bbox.y1 - word.bbox.y0) / prepared.scale) }, source: "OCR" as const };
             if (hasMinimumTextContent(text) && value.width > 1 && value.height > 1) variantTexts.push(value);
           }
         }

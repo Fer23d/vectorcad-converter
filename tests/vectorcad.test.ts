@@ -35,6 +35,8 @@ describe("VectorCAD pipeline", () => {
     expect(candidates[0].confidence).toBe(0);
     expect(candidates[0].rawConfidence).toBe(0);
     expect(candidates[0].confidenceFinal).toBe(0);
+    expect(candidates[0].value).toBe("Fluxograma de Engenharia");
+    expect(candidates[0].source).toBe("OCR");
   });
 
   it("prefers a higher-confidence Vision AI result over a duplicate OCR result", () => {

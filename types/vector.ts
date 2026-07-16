@@ -12,6 +12,10 @@ export type DetectedText = {
   confidence: number;
   rawConfidence?: number;
   confidenceFinal?: number;
+  value?: string;
+  position?: { x: number; y: number };
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  source?: "OCR";
 };
 
 export interface Point { x: number; y: number }

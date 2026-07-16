@@ -63,6 +63,8 @@ function aiTextKey(text: AiTextElement, index: number) {
 
 function aiTextColor(text: AiTextElement, threshold: number) {
   if (text.confidence < threshold || text.confidence < .5) return { border: "#ff5c57", text: "#ff8b87" };
+  if (text.source === "VISION_AI") return { border: "#b7f34a", text: "#d7ff9b" };
+  if (text.source === "OCR") return { border: "#54a9ff", text: "#8cc7ff" };
   if (text.type === "ANNOTATION") return { border: "#54a9ff", text: "#8cc7ff" };
   if (text.type === "POSSIBLE_DIMENSION") return { border: "#ffd34d", text: "#ffe38a" };
   return { border: "#b7f34a", text: "#d7ff9b" };
@@ -74,7 +76,7 @@ function AiAnalysisOverlay({ texts, threshold, selectedIndex, onSelect }: { text
       if (text.confidence < threshold) return null;
       const color = aiTextColor(text, threshold);
       return <button key={`${aiTextKey(text, index)}-${index}`} type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onSelect(index); }} className="pointer-events-auto absolute border-2 bg-transparent text-left transition hover:bg-white/10" style={{ left: `${text.boundingBox.x}px`, top: `${text.boundingBox.y}px`, width: `${Math.max(text.boundingBox.width, 8)}px`, height: `${Math.max(text.boundingBox.height, 8)}px`, borderColor: color.border, boxShadow: selectedIndex === index ? `0 0 0 2px ${color.border}` : undefined }} title={`${text.value} · ${text.type} · ${Math.round(text.confidence * 100)}%`}>
-        <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap rounded bg-[#07100a]/90 px-1 py-0.5 text-[8px] font-bold" style={{ color: color.text }}>{text.type} · {Math.round(text.confidence * 100)}%</span>
+        <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap rounded bg-[#07100a]/90 px-1 py-0.5 text-[8px] font-bold" style={{ color: color.text }}>{text.type} · {Math.round(text.confidence * 100)}% · {text.source}</span>
       </button>;
     })}
   </div>;
@@ -617,6 +619,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Vision AI: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executado" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
+            <div className="mt-3 rounded border border-[#29372f] bg-[#0b110d] p-2 text-[9px] text-[#aab8b0]">
+              <div className="grid grid-cols-3 gap-1 text-center">
+                <span><b className="block text-[#54a9ff]">{detectedTexts.length}</b>OCR encontrados</span>
+                <span><b className="block text-[#b7f34a]">{visionStatus === "executed" ? "Sim" : "Não"}</b>Vision AI</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis?.texts.length || 0}</b>resultado final</span>
+              </div>
+              {aiAnalysis && <div className="mt-2 grid grid-cols-3 gap-1 border-t border-[#29372f] pt-2 text-center">
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "TITLE").length}</b>TITLE</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => text.type === "LABEL" || text.type === "ROOM_NAME").length}</b>LABEL</span>
+                <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.filter(text => ["ANNOTATION", "NOTE", "SCALE"].includes(text.type)).length}</b>ANNOTATION</span>
+                <span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança média</span>
+              </div>}
+            </div>
             <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Visualizar análise IA</span><input type="checkbox" checked={showAiOverlay} onChange={e => setShowAiOverlay(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
             {showAiOverlay && <Slider label="Confiança mínima (%)" value={Math.round(aiConfidenceThreshold * 100)} min={0} max={100} onChange={value => setAiConfidenceThreshold(value / 100)} />}
             {showAiOverlay && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-[#aab8b0]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b7f34a]" />Texto exportável</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#54a9ff]" />Anotação</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ffd34d]" />Possível cota</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ff5c57]" />Baixa confiança</span></div>}

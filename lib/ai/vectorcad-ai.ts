@@ -1,5 +1,6 @@
 import type { CadProjectData } from "@/types/project";
 import type { DetectedText, Unit, VectorDocument } from "@/types/vector";
+import { TextFusionEngine } from "@/lib/ai/text-fusion";
 
 export type AiDimension = {
   width: number;
@@ -15,7 +16,7 @@ export type AiObject = {
   confidence: number;
 };
 
-export type AiTextType = "TEXT" | "ANNOTATION" | "TITLE" | "LABEL" | "POSSIBLE_DIMENSION" | "UNKNOWN";
+export type AiTextType = "TEXT" | "ANNOTATION" | "TITLE" | "LABEL" | "POSSIBLE_DIMENSION" | "UNKNOWN" | "ROOM_NAME" | "EQUIPMENT_TAG" | "SCALE" | "NOTE";
 
 export type AiTextElement = {
   value: string;
@@ -81,7 +82,7 @@ function parseVisionPayload(value: unknown): AiTextElement[] {
     if (typeof item.value !== "string" || !item.value.trim()) return [];
     const position = item.position as { x?: unknown; y?: unknown } | null;
     const box = item.boundingBox as { x?: unknown; y?: unknown; width?: unknown; height?: unknown } | null;
-    const type = ["TEXT", "ANNOTATION", "TITLE", "LABEL", "POSSIBLE_DIMENSION", "UNKNOWN"].includes(String(item.type)) ? item.type as AiTextType : "UNKNOWN";
+    const type = ["TEXT", "ANNOTATION", "TITLE", "LABEL", "POSSIBLE_DIMENSION", "UNKNOWN", "ROOM_NAME", "EQUIPMENT_TAG", "SCALE", "NOTE"].includes(String(item.type)) ? item.type as AiTextType : "UNKNOWN";
     return [{
       value: item.value.trim(),
       type,
@@ -157,10 +158,14 @@ export function classifyDetectedText(text: DetectedText): AiTextElement {
   const hasLetters = /[A-ZÀ-Ý]/.test(normalized);
   const hasNumbers = /\d/.test(normalized);
   const isDimension = /^\d+(?:[.,]\d+)?(?:\s*(?:MM|CM|M))?$/.test(normalized) || /^\d+\s*[X×]\s*\d+$/.test(normalized);
-  const isAnnotation = /(?:ESCALA|NORTE|NOTA|OBS(?:ERVAÇÃO|ERVACAO)?|DETALHE|COTA|NIVEL|REV(?:ISÃO|ISAO)?)/.test(normalized) || /\d+\s*:\s*\d+/.test(normalized);
+  const isScale = /ESCALA\s*\d+\s*[:/]\s*\d+/.test(normalized);
+  const isNote = /^(?:NOTA|OBS(?:ERVAÇÃO|ERVACAO)?)/.test(normalized);
+  const isEquipmentTag = /^(?:TAG|PT|FT|LT|PIT|VÁLVULA)[-_ ]?\d+[A-Z0-9-]*$/.test(normalized);
+  const isRoomName = /^(?:SALA|BANHEIRO|COZINHA|QUARTO|ESCRITÓRIO|CORREDOR|RECEPÇÃO|ALMOXARIFADO|LABORATÓRIO)(?:\s|$)/.test(normalized) && normalized.split(/\s+/).length > 1;
+  const isAnnotation = /(?:NORTE|DETALHE|COTA|NIVEL|REV(?:ISÃO|ISAO)?)/.test(normalized) || /\d+\s*:\s*\d+/.test(normalized);
   const isTitle = /(?:PLANTA|CORTE|FACHADA|LAYOUT|PROJETO|IMPLANTAÇÃO|IMPLANTACAO|DIAGRAMA|MEMORIAL)/.test(normalized) && normalized.split(/\s+/).length >= 2;
   const isLabel = hasLetters && !hasNumbers && normalized.length >= 3;
-  const type: AiTextType = isDimension ? "POSSIBLE_DIMENSION" : isTitle ? "TITLE" : isAnnotation ? "ANNOTATION" : isLabel ? "LABEL" : hasLetters || hasNumbers ? "TEXT" : "UNKNOWN";
+  const type: AiTextType = isDimension ? "POSSIBLE_DIMENSION" : isScale ? "SCALE" : isNote ? "NOTE" : isEquipmentTag ? "EQUIPMENT_TAG" : isRoomName ? "ROOM_NAME" : isTitle ? "TITLE" : isAnnotation ? "ANNOTATION" : isLabel ? "LABEL" : hasLetters || hasNumbers ? "TEXT" : "UNKNOWN";
   return {
     value: text.text,
     type,
@@ -197,33 +202,8 @@ export class MockProvider implements VisionProvider {
 
 export const mockProvider = new MockProvider();
 
-function sameText(left: AiTextElement, right: AiTextElement) {
-  const normalizedLeft = normalizedText(left.value).replace(/\s+/g, " ");
-  const normalizedRight = normalizedText(right.value).replace(/\s+/g, " ");
-  if (Math.hypot(left.position.x - right.position.x, left.position.y - right.position.y) >= 40) return false;
-  if (normalizedLeft === normalizedRight) return true;
-  const rows = Array.from({ length: normalizedLeft.length + 1 }, (_, row) => {
-    const values = new Array<number>(normalizedRight.length + 1).fill(0);
-    values[0] = row;
-    return values;
-  });
-  for (let column = 0; column <= normalizedRight.length; column++) rows[0][column] = column;
-  for (let row = 1; row <= normalizedLeft.length; row++) {
-    for (let column = 1; column <= normalizedRight.length; column++) {
-      rows[row][column] = Math.min(rows[row - 1][column] + 1, rows[row][column - 1] + 1, rows[row - 1][column - 1] + (normalizedLeft[row - 1] === normalizedRight[column - 1] ? 0 : 1));
-    }
-  }
-  return rows[normalizedLeft.length][normalizedRight.length] <= Math.max(2, Math.floor(Math.max(normalizedLeft.length, normalizedRight.length) * .2));
-}
-
 export function consolidateAiTexts(ocrTexts: DetectedText[], visionTexts: AiTextElement[]) {
-  const merged = ocrTexts.map(classifyDetectedText);
-  for (const visionText of visionTexts) {
-    const duplicateIndex = merged.findIndex((text) => sameText(text, visionText));
-    if (duplicateIndex < 0) merged.push(visionText);
-    else if (visionText.confidence > merged[duplicateIndex].confidence) merged[duplicateIndex] = visionText;
-  }
-  return merged;
+  return new TextFusionEngine(classifyDetectedText).fuseDetectedTexts(ocrTexts, visionTexts);
 }
 
 export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionProvider = mockProvider): Promise<VectorCadAiAnalysis> {
