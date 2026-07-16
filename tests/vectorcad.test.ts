@@ -7,7 +7,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
-import { protectTextRegions } from "@/lib/text-detection/ocr";
+import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
@@ -26,6 +26,15 @@ describe("VectorCAD pipeline", () => {
     expect(result.objects).toHaveLength(2);
     expect(result.dimensions[0].unit).toBe("mm");
     expect(result.provider).toBe("mock-local");
+  });
+
+  it("keeps direct OCR text when Tesseract has no word blocks", () => {
+    const candidates = createDirectTextCandidates("Fluxograma de Engenharia", 1200, 800, 0);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].text).toBe("Fluxograma de Engenharia");
+    expect(candidates[0].confidence).toBe(0);
+    expect(candidates[0].rawConfidence).toBe(0);
+    expect(candidates[0].confidenceFinal).toBe(0);
   });
 
   it("prefers a higher-confidence Vision AI result over a duplicate OCR result", () => {

@@ -340,6 +340,23 @@ function hasMinimumTextContent(text: string) {
   return Array.from(text).filter((character) => /[\p{L}\p{N}]/u.test(character)).length >= 3;
 }
 
+export function createDirectTextCandidates(rawText: string, width: number, height: number, confidence = 0): DetectedText[] {
+  const lines = rawText.split(/\r?\n/).map(normalizeCandidateText).filter(hasMinimumTextContent);
+  const safeConfidence = Math.max(0, Math.min(1, confidence));
+  const lineHeight = Math.max(12, height / Math.max(1, lines.length));
+  return lines.map((text, index) => ({
+    text,
+    x: 0,
+    y: Math.round(index * lineHeight),
+    width: Math.max(1, width),
+    height: Math.max(1, Math.min(lineHeight, height)),
+    rotation: 0,
+    confidence: safeConfidence,
+    rawConfidence: safeConfidence,
+    confidenceFinal: safeConfidence,
+  }));
+}
+
 function getImageStats(image: ImageData) {
   let nonTransparentPixels = 0;
   let darkPixels = 0;
@@ -411,14 +428,15 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
     const directOcr = { rawText: directResult.data.text?.trim() || directWords.map((word) => word.text).join(" ").trim(), confidence: directConfidence, psm: directPsm };
     const workerVersion = directResult.data.version || "indisponível";
     console.info("[VectorCAD][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
-    const directCandidates: DetectedText[] = directWords.flatMap((word) => {
+    const wordCandidates: DetectedText[] = directWords.flatMap((word) => {
       const text = normalizeCandidateText(word.text);
       if (!hasMinimumTextContent(text)) return [];
       const rawConfidence = Math.max(0, Math.min(1, word.confidence / 100));
       return [{ text, x: word.bbox.x0, y: word.bbox.y0, width: Math.max(1, word.bbox.x1 - word.bbox.x0), height: Math.max(1, word.bbox.y1 - word.bbox.y0), rotation: 0, confidence: rawConfidence, rawConfidence, confidenceFinal: rawConfidence }];
     });
+    const directCandidates = wordCandidates.length ? wordCandidates : createDirectTextCandidates(directOcr.rawText, originalImage.width, originalImage.height, directConfidence);
     const detected: DetectedText[] = [...directCandidates];
-    let rawResults = directWords.filter((word) => normalizeCandidateText(word.text).length > 0).length;
+    let rawResults = directWords.length ? directWords.filter((word) => normalizeCandidateText(word.text).length > 0).length : createDirectTextCandidates(directOcr.rawText, originalImage.width, originalImage.height, directConfidence).length;
     let variantsTested = 0;
     let bestVariant = "nenhuma";
     let bestScore = -1;
