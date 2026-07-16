@@ -10,7 +10,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
-import { runVectorCadAi, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
+import { runVectorCadAi, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -57,6 +57,29 @@ function DiagnosticImage({ src, alt, className }: { src: string; alt: string; cl
   return <img src={src} alt={alt} className={className} />;
 }
 
+function aiTextKey(text: AiTextElement, index: number) {
+  return `${index}:${text.value}:${Math.round(text.position.x)}:${Math.round(text.position.y)}`;
+}
+
+function aiTextColor(text: AiTextElement, threshold: number) {
+  if (text.confidence < threshold || text.confidence < .5) return { border: "#ff5c57", text: "#ff8b87" };
+  if (text.type === "ANNOTATION") return { border: "#54a9ff", text: "#8cc7ff" };
+  if (text.type === "POSSIBLE_DIMENSION") return { border: "#ffd34d", text: "#ffe38a" };
+  return { border: "#b7f34a", text: "#d7ff9b" };
+}
+
+function AiAnalysisOverlay({ texts, threshold, selectedIndex, onSelect }: { texts: AiTextElement[]; threshold: number; selectedIndex: number | null; onSelect: (index: number) => void }) {
+  return <div className="pointer-events-none absolute inset-0 z-10">
+    {texts.map((text, index) => {
+      if (text.confidence < threshold) return null;
+      const color = aiTextColor(text, threshold);
+      return <button key={`${aiTextKey(text, index)}-${index}`} type="button" onPointerDown={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); onSelect(index); }} className="pointer-events-auto absolute border-2 bg-transparent text-left transition hover:bg-white/10" style={{ left: `${text.boundingBox.x}px`, top: `${text.boundingBox.y}px`, width: `${Math.max(text.boundingBox.width, 8)}px`, height: `${Math.max(text.boundingBox.height, 8)}px`, borderColor: color.border, boxShadow: selectedIndex === index ? `0 0 0 2px ${color.border}` : undefined }} title={`${text.value} · ${text.type} · ${Math.round(text.confidence * 100)}%`}>
+        <span className="absolute left-0 top-full mt-0.5 whitespace-nowrap rounded bg-[#07100a]/90 px-1 py-0.5 text-[8px] font-bold" style={{ color: color.text }}>{text.type} · {Math.round(text.confidence * 100)}%</span>
+      </button>;
+    })}
+  </div>;
+}
+
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
@@ -72,6 +95,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [ocrDiagnostic, setOcrDiagnostic] = useState<OcrDiagnostic | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<VectorCadAiAnalysis | null>(initialData?.aiAnalysis || null);
   const [exportSmartTexts, setExportSmartTexts] = useState(initialData?.exportSmartTexts ?? true);
+  const [aiFeedback, setAiFeedback] = useState<AiFeedback[]>(initialData?.aiFeedback || []);
+  const [showAiOverlay, setShowAiOverlay] = useState(false);
+  const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState(0);
+  const [selectedAiText, setSelectedAiText] = useState<number | null>(null);
   const [aiStatus, setAiStatus] = useState("");
   const [aiRunning, setAiRunning] = useState(false);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
@@ -121,6 +148,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
       setAiAnalysis(saved?.aiAnalysis || null);
       setExportSmartTexts(saved?.exportSmartTexts ?? true);
+      setAiFeedback(saved?.aiFeedback || []);
       setVector(saved?.vector || defaultVector);
       setDoc(saved?.document || null);
       setUnit(saved?.unit || "mm");
@@ -144,6 +172,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
     setAiAnalysis(saved.aiAnalysis || null);
     setExportSmartTexts(saved.exportSmartTexts ?? true);
+    setAiFeedback(saved.aiFeedback || []);
     setVector(saved.vector || defaultVector);
     setDoc(saved.document || null);
     setUnit(saved.unit || "mm");
@@ -209,6 +238,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       detectedTexts,
       aiAnalysis: aiAnalysis || undefined,
       exportSmartTexts,
+      aiFeedback,
       vector,
       document: doc,
       unit,
@@ -224,7 +254,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -444,12 +474,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         ocrTexts: detectedTexts,
       });
       setAiAnalysis(analysis);
+      setSelectedAiText(null);
       setAiStatus(`Análise concluída · ${analysis.objects.length} elementos encontrados`);
     } catch {
       setAiStatus("Não foi possível concluir a análise de IA.");
     } finally {
       setAiRunning(false);
     }
+  };
+  const setAiTextFeedback = (status: AiFeedback["status"]) => {
+    if (selectedAiText === null || !aiAnalysis?.texts[selectedAiText]) return;
+    const text = aiAnalysis.texts[selectedAiText];
+    const feedback: AiFeedback = { elementKey: aiTextKey(text, selectedAiText), status, createdAt: new Date().toISOString() };
+    setAiFeedback(current => [...current.filter(item => item.elementKey !== feedback.elementKey), feedback]);
   };
   const open3dInNewTab = async () => {
     if (!finalDoc || !svg) {
@@ -556,6 +593,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Visualizar análise IA</span><input type="checkbox" checked={showAiOverlay} onChange={e => setShowAiOverlay(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
+            {showAiOverlay && <Slider label="Confiança mínima (%)" value={Math.round(aiConfidenceThreshold * 100)} min={0} max={100} onChange={value => setAiConfidenceThreshold(value / 100)} />}
+            {showAiOverlay && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-[#aab8b0]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b7f34a]" />Texto exportável</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#54a9ff]" />Anotação</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ffd34d]" />Possível cota</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ff5c57]" />Baixa confiança</span></div>}
             <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Exportar textos inteligentes</span><input type="checkbox" checked={exportSmartTexts} onChange={e => setExportSmartTexts(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
             <p className="mt-1 text-[9px] text-[#829087]">{aiAnalysis?.texts.filter(text => ["TEXT", "LABEL", "TITLE", "ANNOTATION"].includes(text.type)).length || 0} textos serão exportados como CAD TEXT.</p>
             {aiAnalysis && <>
@@ -568,6 +608,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
                 <span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança</span>
               </div>
               {aiAnalysis.texts.length > 0 && <div className="mt-3 space-y-1 border-t border-[#29372f] pt-2">{aiAnalysis.texts.slice(0, 8).map((text, index) => <div key={`${text.value}-${index}`} className="rounded bg-[#18221b] px-2 py-1.5 text-[10px]"><div className="flex items-center justify-between gap-2"><span className="truncate text-[#e8efeb]">{text.value}</span><span className="shrink-0 text-[#b7f34a]">{Math.round(text.confidence * 100)}%</span></div><div className="mt-0.5 text-[9px] uppercase tracking-wide text-[#829087]">{text.type.replaceAll("_", " ")} · {text.source}</div></div>)}</div>}
+              {selectedAiText !== null && aiAnalysis.texts[selectedAiText] && <div className="mt-3 rounded border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Elemento selecionado</b><br />Valor: {aiAnalysis.texts[selectedAiText].value}<br />Tipo: {aiAnalysis.texts[selectedAiText].type}<br />Confiança: {Math.round(aiAnalysis.texts[selectedAiText].confidence * 100)}%<br />Origem: {aiAnalysis.texts[selectedAiText].source}<br />Posição: {Math.round(aiAnalysis.texts[selectedAiText].position.x)}, {Math.round(aiAnalysis.texts[selectedAiText].position.y)}<div className="mt-2 flex gap-1"><button type="button" onClick={() => setAiTextFeedback("confirmed")} className="flex-1 rounded bg-[#2a4a2d] py-1 text-[9px] font-bold text-[#caffab]">Confirmar</button><button type="button" onClick={() => setAiTextFeedback("rejected")} className="flex-1 rounded bg-[#4a2929] py-1 text-[9px] font-bold text-[#ffb2ac]">Rejeitar</button></div></div>}
             </>}
           </div>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
@@ -610,6 +651,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full`} />
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {showAiOverlay && aiAnalysis && <AiAnalysisOverlay texts={aiAnalysis.texts} threshold={aiConfidenceThreshold} selectedIndex={selectedAiText} onSelect={setSelectedAiText} />}
           </div>
         </div>
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>

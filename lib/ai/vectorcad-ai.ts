@@ -27,6 +27,13 @@ export type AiTextElement = {
   source: "OCR" | "VisionProvider";
 };
 
+export type AiFeedback = {
+  elementKey: string;
+  status: "confirmed" | "rejected" | "corrected";
+  correction?: { value?: string; type?: AiTextType };
+  createdAt: string;
+};
+
 export type VectorCadAiAnalysis = {
   texts: AiTextElement[];
   dimensions: AiDimension[];
