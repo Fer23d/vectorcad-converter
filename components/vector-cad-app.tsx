@@ -9,7 +9,7 @@ import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
-import { detectText, protectTextRegions } from "@/lib/text-detection/ocr";
+import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -50,6 +50,12 @@ function download(name: string, body: string, type: string) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href);
 }
 
+function DiagnosticImage({ src, alt, className }: { src: string; alt: string; className: string }) {
+  // These previews are in-memory data URLs; Next Image is not useful for this temporary diagnostic panel.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} className={className} />;
+}
+
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
@@ -62,6 +68,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [textDetectionEnabled, setTextDetectionEnabled] = useState(initialData?.textDetectionEnabled || false);
   const [detectedTexts, setDetectedTexts] = useState<DetectedText[]>(initialData?.textDetectionEnabled ? (initialData.detectedTexts || []) : []);
   const [textDetectionStatus, setTextDetectionStatus] = useState("");
+  const [ocrDiagnostic, setOcrDiagnostic] = useState<OcrDiagnostic | null>(null);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
@@ -357,6 +364,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     void detectText(enhanced).then((result) => {
       if (cancelled) return;
       setDetectedTexts(result.texts);
+      setOcrDiagnostic(result.diagnostic);
       setTextDetectionStatus(`Regiões analisadas: ${result.regionsAnalyzed} · Textos encontrados: ${result.texts.length}`);
     }).catch(() => {
       if (cancelled) return;
@@ -478,9 +486,28 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           </select>
           <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 text-xs text-[#bdc9c3]" title="Detecta letras e números para proteger essas regiões da vetorização.">
             <span>Reconhecimento inteligente</span>
-            <input type="checkbox" checked={textDetectionEnabled} onChange={e => { setTextDetectionEnabled(e.target.checked); if (!e.target.checked) setDetectedTexts([]); }} className="h-4 w-4 accent-[#b7f34a]" />
+            <input type="checkbox" checked={textDetectionEnabled} onChange={e => { setTextDetectionEnabled(e.target.checked); if (!e.target.checked) { setDetectedTexts([]); setOcrDiagnostic(null); } }} className="h-4 w-4 accent-[#b7f34a]" />
           </label>
           {textDetectionEnabled && <p className="mt-2 text-[10px] leading-4 text-[#829087]">{textDetectionStatus || "Detectar textos antes da vetorização."}</p>}
+          {textDetectionEnabled && ocrDiagnostic && <details className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
+            <summary className="cursor-pointer font-bold text-[#b7f34a]">Diagnóstico visual do OCR</summary>
+            <div className="mt-2 grid grid-cols-2 gap-2 leading-4">
+              <span>Imagem OCR: {ocrDiagnostic.imageWidth} × {ocrDiagnostic.imageHeight}</span>
+              <span>Componentes: {ocrDiagnostic.componentsFound}</span>
+              <span>Regiões: {ocrDiagnostic.regionsCreated}</span>
+              <span>Chamadas Tesseract: {ocrDiagnostic.tesseractCalls}</span>
+              <span>Resultados brutos: {ocrDiagnostic.rawResults}</span>
+              <span>Variantes testadas: {ocrDiagnostic.variantsTested}</span>
+              <span>Melhor variante: {ocrDiagnostic.bestVariant}</span>
+              <span>Melhor confiança: {Math.round(ocrDiagnostic.bestConfidence * 100)}%</span>
+              <span>Recorte médio: {ocrDiagnostic.averageCropWidth} × {ocrDiagnostic.averageCropHeight}</span>
+            </div>
+            <div className="mt-2 grid gap-2">
+              <figure><figcaption className="mb-1 text-[#829087]">Imagem binarizada</figcaption><DiagnosticImage src={ocrDiagnostic.binaryImage} alt="Imagem binarizada enviada ao OCR" className="max-h-32 w-full object-contain bg-white" /></figure>
+              <figure><figcaption className="mb-1 text-[#829087]">Máscara e regiões candidatas</figcaption><DiagnosticImage src={ocrDiagnostic.regionMask} alt="Máscara de regiões candidatas do OCR" className="max-h-32 w-full object-contain bg-white" /></figure>
+              {ocrDiagnostic.cropPreviews.length > 0 && <figure><figcaption className="mb-1 text-[#829087]">Recortes enviados ao Tesseract</figcaption><div className="grid grid-cols-4 gap-1">{ocrDiagnostic.cropPreviews.map((preview, index) => <DiagnosticImage key={`${preview.slice(-24)}-${index}`} src={preview} alt={`Recorte OCR ${index + 1}`} className="h-12 w-full object-contain bg-white" />)}</div></figure>}
+            </div>
+          </details>}
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
           <Slider label="Threshold" value={processing.threshold} min={1} max={254} onChange={v => setProcessing({ ...processing, threshold: v })} />

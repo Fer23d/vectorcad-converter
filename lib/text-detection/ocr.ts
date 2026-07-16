@@ -10,12 +10,30 @@ function imageDataToCanvas(image: ImageData) {
   return canvas;
 }
 
-type OcrPageMode = 6 | 7 | 11 | 12;
+type OcrPageMode = 6 | 7 | 8 | 11 | 12;
 type OcrRegion = { x: number; y: number; width: number; height: number };
 
 export type TextDetectionResult = {
   texts: DetectedText[];
   regionsAnalyzed: number;
+  diagnostic: OcrDiagnostic;
+};
+
+export type OcrDiagnostic = {
+  imageWidth: number;
+  imageHeight: number;
+  componentsFound: number;
+  regionsCreated: number;
+  averageCropWidth: number;
+  averageCropHeight: number;
+  tesseractCalls: number;
+  rawResults: number;
+  variantsTested: number;
+  bestVariant: string;
+  bestConfidence: number;
+  binaryImage: string;
+  regionMask: string;
+  cropPreviews: string[];
 };
 
 function otsuThreshold(gray: Uint8Array) {
@@ -81,7 +99,7 @@ function prepareOcrImage(image: ImageData) {
   return { image: prepared, scale, darkRatio: darkPixels / Math.max(1, gray.length) };
 }
 
-function detectCandidateRegions(image: ImageData): OcrRegion[] {
+function detectCandidateRegions(image: ImageData): { regions: OcrRegion[]; componentsFound: number; mask: Uint8Array } {
   const { width, height, data } = image;
   const total = width * height;
   const dark = new Uint8Array(total);
@@ -160,10 +178,11 @@ function detectCandidateRegions(image: ImageData): OcrRegion[] {
       match.height = bottom - match.y;
     }
   }
-  return groups
+  const regions = groups
     .map((region) => ({ x: Math.max(0, region.x - 8), y: Math.max(0, region.y - 8), width: Math.min(width - Math.max(0, region.x - 8), region.width + 16), height: Math.min(height - Math.max(0, region.y - 8), region.height + 16) }))
     .filter((region) => region.width >= 12 && region.height >= 8 && region.width * region.height <= width * height * .2)
     .slice(0, 80);
+  return { regions, componentsFound: components.length, mask: dark };
 }
 
 function cropRegion(image: ImageData, region: OcrRegion) {
@@ -177,6 +196,124 @@ function cropRegion(image: ImageData, region: OcrRegion) {
   return crop;
 }
 
+function canvasToMask(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("OCR_CANVAS_UNAVAILABLE");
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const mask = new Uint8Array(canvas.width * canvas.height);
+  for (let i = 0; i < mask.length; i++) mask[i] = image.data[i * 4] < 128 ? 1 : 0;
+  return mask;
+}
+
+function maskToCanvas(mask: Uint8Array, width: number, height: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("OCR_CANVAS_UNAVAILABLE");
+  const image = context.createImageData(width, height);
+  for (let i = 0; i < mask.length; i++) {
+    const value = mask[i] ? 0 : 255;
+    const p = i * 4;
+    image.data[p] = value;
+    image.data[p + 1] = value;
+    image.data[p + 2] = value;
+    image.data[p + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+  return canvas;
+}
+
+function dilate(mask: Uint8Array, width: number, height: number, radius = 1) {
+  const output = new Uint8Array(mask);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (mask[y * width + x]) continue;
+    let found = false;
+    for (let oy = -radius; oy <= radius && !found; oy++) for (let ox = -radius; ox <= radius; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (nx >= 0 && ny >= 0 && nx < width && ny < height && mask[ny * width + nx]) { found = true; break; }
+    }
+    if (found) output[y * width + x] = 1;
+  }
+  return output;
+}
+
+function erode(mask: Uint8Array, width: number, height: number, radius = 1) {
+  const output = new Uint8Array(mask);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (!mask[y * width + x]) continue;
+    for (let oy = -radius; oy <= radius; oy++) for (let ox = -radius; ox <= radius; ox++) {
+      const nx = x + ox, ny = y + oy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height || !mask[ny * width + nx]) { output[y * width + x] = 0; break; }
+    }
+  }
+  return output;
+}
+
+function fillHoles(mask: Uint8Array, width: number, height: number) {
+  const background = new Uint8Array(mask.length);
+  const queue: number[] = [];
+  const enqueue = (index: number) => { if (!background[index] && !mask[index]) { background[index] = 1; queue.push(index); } };
+  for (let x = 0; x < width; x++) { enqueue(x); enqueue((height - 1) * width + x); }
+  for (let y = 0; y < height; y++) { enqueue(y * width); enqueue(y * width + width - 1); }
+  for (let cursor = 0; cursor < queue.length; cursor++) {
+    const index = queue[cursor], x = index % width, y = Math.floor(index / width);
+    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ox, ny = y + oy;
+      if (nx >= 0 && ny >= 0 && nx < width && ny < height) enqueue(ny * width + nx);
+    }
+  }
+  const output = new Uint8Array(mask);
+  for (let i = 0; i < output.length; i++) if (!mask[i] && !background[i]) output[i] = 1;
+  return output;
+}
+
+function createOcrVariants(canvas: HTMLCanvasElement) {
+  const mask = canvasToMask(canvas);
+  const width = canvas.width, height = canvas.height;
+  const filled = fillHoles(mask, width, height);
+  const closed = erode(dilate(mask, width, height, 1), width, height, 1);
+  const inverted = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i++) inverted[i] = mask[i] ? 0 : 1;
+  return [
+    { name: "normal", canvas },
+    { name: "invertida", canvas: maskToCanvas(inverted, width, height) },
+    { name: "preenchida", canvas: maskToCanvas(filled, width, height) },
+    { name: "dilatada", canvas: maskToCanvas(dilate(mask, width, height, 1), width, height) },
+    { name: "fechamento", canvas: maskToCanvas(closed, width, height) },
+  ];
+}
+
+function validCharacterCount(value: string) {
+  return (value.match(/[A-Za-zÀ-ÿ0-9]/g) || []).length;
+}
+
+function canvasDataUrl(canvas: HTMLCanvasElement) {
+  return canvas.toDataURL("image/png");
+}
+
+function maskDataUrl(mask: Uint8Array, width: number, height: number, regions: OcrRegion[]) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("OCR_CANVAS_UNAVAILABLE");
+  const image = context.createImageData(width, height);
+  for (let i = 0; i < mask.length; i++) {
+    const value = mask[i] ? 0 : 255;
+    const p = i * 4;
+    image.data[p] = value;
+    image.data[p + 1] = value;
+    image.data[p + 2] = value;
+    image.data[p + 3] = 255;
+  }
+  context.putImageData(image, 0, 0);
+  context.strokeStyle = "#ff3b30";
+  context.lineWidth = Math.max(1, Math.round(Math.min(width, height) / 900));
+  for (const region of regions) context.strokeRect(region.x, region.y, region.width, region.height);
+  return canvasDataUrl(canvas);
+}
+
 function extractWords(data: { blocks: Array<{ paragraphs: Array<{ lines: Array<{ words: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }> }> }> }> | null }) {
   return (data.blocks || [])
     .flatMap((block) => block.paragraphs)
@@ -188,19 +325,53 @@ function extractWords(data: { blocks: Array<{ paragraphs: Array<{ lines: Array<{
 export async function detectText(image: ImageData): Promise<TextDetectionResult> {
   if (typeof document === "undefined") throw new Error("OCR_BROWSER_REQUIRED");
   const prepared = prepareOcrImage(image);
-  const regions = detectCandidateRegions(prepared.image);
+  const candidates = detectCandidateRegions(prepared.image);
+  const regions = candidates.regions.slice(0, 24);
+  const binaryCanvas = imageDataToCanvas(prepared.image);
+  const cropCanvases = regions.slice(0, 24).map((region) => cropRegion(prepared.image, region));
   const { createWorker } = await import("tesseract.js");
   const worker = await createWorker("por+eng", 1);
   try {
     const detected: DetectedText[] = [];
-    for (const [index, region] of regions.entries()) {
-      const pageMode: OcrPageMode = region.width / region.height > 3 ? 7 : index % 3 === 1 ? 11 : index % 3 === 2 ? 12 : 6;
-      await worker.setParameters({ tessedit_pageseg_mode: String(pageMode) as never });
-      const { data } = await worker.recognize(cropRegion(prepared.image, region));
-      for (const word of extractWords(data)) {
-        const text = word.text.trim();
-        const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: (word.bbox.x1 - word.bbox.x0) / prepared.scale, height: (word.bbox.y1 - word.bbox.y0) / prepared.scale, rotation: 0, confidence: word.confidence / 100 };
-        if (text.length > 0 && value.width > 1 && value.height > 1 && value.confidence >= .35) detected.push(value);
+    let tesseractCalls = 0;
+    let rawResults = 0;
+    let variantsTested = 0;
+    let bestVariant = "nenhuma";
+    let bestScore = -1;
+    let bestConfidence = 0;
+    const modes: OcrPageMode[] = [6, 7, 8, 11, 12];
+    for (const region of regions) {
+      const regionBest: { texts: DetectedText[]; score: number; variant: string } = { texts: [], score: -1, variant: "nenhuma" };
+      for (const variant of createOcrVariants(cropRegion(prepared.image, region))) {
+        variantsTested += 1;
+        const variantTexts: DetectedText[] = [];
+        for (const pageMode of modes) {
+          await worker.setParameters({ tessedit_pageseg_mode: String(pageMode) as never });
+          tesseractCalls += 1;
+          const { data } = await worker.recognize(variant.canvas);
+          for (const word of extractWords(data)) {
+            const text = word.text.trim();
+            const value = { text, x: (region.x + word.bbox.x0) / prepared.scale, y: (region.y + word.bbox.y0) / prepared.scale, width: (word.bbox.x1 - word.bbox.x0) / prepared.scale, height: (word.bbox.y1 - word.bbox.y0) / prepared.scale, rotation: 0, confidence: word.confidence / 100 };
+            if (text.length > 0 && value.width > 1 && value.height > 1 && value.confidence >= .35) variantTexts.push(value);
+          }
+        }
+        rawResults += variantTexts.length;
+        const validCharacters = variantTexts.reduce((total, word) => total + validCharacterCount(word.text), 0);
+        const confidence = variantTexts.length ? variantTexts.reduce((total, word) => total + word.confidence, 0) / variantTexts.length : 0;
+        const score = confidence * .65 + Math.min(1, validCharacters / 24) * .35;
+        if (score > regionBest.score) {
+          regionBest.texts = variantTexts.filter((word, index, values) => values.findIndex((candidate) => candidate.text === word.text && Math.abs(candidate.x - word.x) < 2 && Math.abs(candidate.y - word.y) < 2) === index);
+          regionBest.score = score;
+          regionBest.variant = variant.name;
+        }
+      }
+      detected.push(...regionBest.texts);
+      if (regionBest.score > bestScore) {
+        bestScore = regionBest.score;
+        bestVariant = regionBest.variant;
+      }
+      if (regionBest.texts.length) {
+        bestConfidence = Math.max(bestConfidence, regionBest.texts.reduce((total, word) => total + word.confidence, 0) / regionBest.texts.length);
       }
     }
     const unique = detected.filter((word, index, values) => values.findIndex((candidate) => candidate.text === word.text && Math.abs(candidate.x - word.x) < 2 && Math.abs(candidate.y - word.y) < 2) === index);
@@ -208,12 +379,39 @@ export async function detectText(image: ImageData): Promise<TextDetectionResult>
     console.info("[VectorCAD][OCR]", {
       regionsAnalyzed: regions.length,
       textsFound: unique.length,
+      componentsFound: candidates.componentsFound,
+      tesseractCalls,
+      rawResults,
+      variantsTested,
+      bestVariant,
+      bestConfidence: Number(bestConfidence.toFixed(3)),
+      averageCropWidth: regions.length ? Math.round(regions.reduce((total, region) => total + region.width, 0) / regions.length) : 0,
+      averageCropHeight: regions.length ? Math.round(regions.reduce((total, region) => total + region.height, 0) / regions.length) : 0,
       averageConfidence: Number(confidence.toFixed(3)),
       imageWidth: prepared.image.width,
       imageHeight: prepared.image.height,
       cropSizes: regions.map(({ width, height }) => `${width}x${height}`),
     });
-    return { texts: unique, regionsAnalyzed: regions.length };
+    return {
+      texts: unique,
+      regionsAnalyzed: regions.length,
+      diagnostic: {
+        imageWidth: prepared.image.width,
+        imageHeight: prepared.image.height,
+        componentsFound: candidates.componentsFound,
+        regionsCreated: regions.length,
+        averageCropWidth: regions.length ? Math.round(regions.reduce((total, region) => total + region.width, 0) / regions.length) : 0,
+        averageCropHeight: regions.length ? Math.round(regions.reduce((total, region) => total + region.height, 0) / regions.length) : 0,
+        tesseractCalls,
+        rawResults,
+        variantsTested,
+        bestVariant,
+        bestConfidence: Number(bestConfidence.toFixed(3)),
+        binaryImage: canvasDataUrl(binaryCanvas),
+        regionMask: maskDataUrl(candidates.mask, prepared.image.width, prepared.image.height, regions),
+        cropPreviews: cropCanvases.map(canvasDataUrl),
+      },
+    };
   } finally {
     await worker.terminate();
   }
