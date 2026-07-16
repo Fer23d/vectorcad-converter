@@ -13,6 +13,7 @@ export type CadProjectData = {
   imageQuality?: import("@/types/vector").ImageQuality;
   textDetectionEnabled?: boolean;
   detectedTexts?: import("@/types/vector").DetectedText[];
+  aiAnalysis?: import("@/lib/ai/vectorcad-ai").VectorCadAiAnalysis;
   vector?: import("@/types/vector").VectorSettings;
   document?: import("@/types/vector").VectorDocument | null;
   unit?: import("@/types/vector").Unit;

@@ -8,6 +8,7 @@ import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { protectTextRegions } from "@/lib/text-detection/ocr";
+import { runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
@@ -18,6 +19,14 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("normalizes local OCR into the VectorCAD AI analysis structure", async () => {
+    const result = await runVectorCadAi({ vectors: doc, dimensions: { width: 10, height: 10, unit: "mm" }, ocrTexts: [{ text: "SALA", x: 1, y: 1, width: 10, height: 4, rotation: 0, confidence: .9 }] });
+    expect(result.texts[0].text).toBe("SALA");
+    expect(result.objects).toHaveLength(2);
+    expect(result.dimensions[0].unit).toBe("mm");
+    expect(result.provider).toBe("mock-local");
+  });
+
   it("protects detected text regions from vectorization", () => {
     const bitmap = new Uint8Array(25).fill(1);
     const protectedBitmap = protectTextRegions(bitmap, 5, 5, [{ text: "SALA", x: 1, y: 1, width: 2, height: 2, rotation: 0, confidence: .98 }]);

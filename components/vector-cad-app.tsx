@@ -10,6 +10,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
+import { runVectorCadAi, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
@@ -69,6 +70,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [detectedTexts, setDetectedTexts] = useState<DetectedText[]>(initialData?.textDetectionEnabled ? (initialData.detectedTexts || []) : []);
   const [textDetectionStatus, setTextDetectionStatus] = useState("");
   const [ocrDiagnostic, setOcrDiagnostic] = useState<OcrDiagnostic | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<VectorCadAiAnalysis | null>(initialData?.aiAnalysis || null);
+  const [aiStatus, setAiStatus] = useState("");
+  const [aiRunning, setAiRunning] = useState(false);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
@@ -114,6 +118,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setImageQuality(saved?.imageQuality || "enhanced");
       setTextDetectionEnabled(saved?.textDetectionEnabled || false);
       setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
+      setAiAnalysis(saved?.aiAnalysis || null);
       setVector(saved?.vector || defaultVector);
       setDoc(saved?.document || null);
       setUnit(saved?.unit || "mm");
@@ -135,6 +140,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setImageQuality(saved.imageQuality || "enhanced");
     setTextDetectionEnabled(saved.textDetectionEnabled || false);
     setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
+    setAiAnalysis(saved.aiAnalysis || null);
     setVector(saved.vector || defaultVector);
     setDoc(saved.document || null);
     setUnit(saved.unit || "mm");
@@ -198,6 +204,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       imageQuality,
       textDetectionEnabled,
       detectedTexts,
+      aiAnalysis: aiAnalysis || undefined,
       vector,
       document: doc,
       unit,
@@ -213,7 +220,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, detectedTexts, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, detectedTexts, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -255,6 +262,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [onUsageChange]);
 
   const loadFile = useCallback(async (file?: File) => {
+    if (!file) return;
+    setAiAnalysis(null);
+    setAiStatus("");
     if (file && isTiffFile(file)) {
       if (!file || file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
       const allowed = await consumeUsage("vectorize");
@@ -407,6 +417,35 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setShow3d(true);
     setMessage("Modelo 3D CAD pronto para preview. Ajuste a altura e exporte STL ou GLB.");
   };
+  const analyzeWithAi = async () => {
+    const image = processedCanvas.current;
+    if (!image || !doc) {
+      setAiStatus("Carregue e vetorize uma imagem antes da análise.");
+      return;
+    }
+    const context = image.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      setAiStatus("Não foi possível preparar a imagem para a análise.");
+      return;
+    }
+    setAiRunning(true);
+    setAiStatus("Analisando com o VectorCAD AI...");
+    try {
+      const analysis = await runVectorCadAi({
+        image: context.getImageData(0, 0, image.width, image.height),
+        project: { notes: "", editorMode: show3d ? "cad3d" : "cad2d", sourceImageDataUrl, sourceFormat, fileName, processing, imageQuality, textDetectionEnabled, detectedTexts, vector, document: doc, unit, realWidth, realHeight, locked, activeView },
+        vectors: doc,
+        dimensions: { width: realWidth, height: realHeight, unit },
+        ocrTexts: detectedTexts,
+      });
+      setAiAnalysis(analysis);
+      setAiStatus(`Análise concluída · ${analysis.objects.length} elementos encontrados`);
+    } catch {
+      setAiStatus("Não foi possível concluir a análise de IA.");
+    } finally {
+      setAiRunning(false);
+    }
+  };
   const open3dInNewTab = async () => {
     if (!finalDoc || !svg) {
       setMessage("Vetorize uma imagem antes de abrir o visualizador 3D.");
@@ -508,6 +547,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
               {ocrDiagnostic.cropPreviews.length > 0 && <figure><figcaption className="mb-1 text-[#829087]">Recortes enviados ao Tesseract</figcaption><div className="grid grid-cols-4 gap-1">{ocrDiagnostic.cropPreviews.map((preview, index) => <DiagnosticImage key={`${preview.slice(-24)}-${index}`} src={preview} alt={`Recorte OCR ${index + 1}`} className="h-12 w-full object-contain bg-white" />)}</div></figure>}
             </div>
           </details>}
+          <div className="mt-4 rounded-lg border border-[#33433a] bg-[#111914] p-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
+            <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
+            <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
+            {aiAnalysis && <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[9px] text-[#aab8b0]"><span><b className="block text-[#e8efeb]">{aiAnalysis.texts.length}</b>textos</span><span><b className="block text-[#e8efeb]">{aiAnalysis.objects.length}</b>elementos</span><span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança</span></div>}
+          </div>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />
           <Slider label="Threshold" value={processing.threshold} min={1} max={254} onChange={v => setProcessing({ ...processing, threshold: v })} />
