@@ -2,6 +2,7 @@ import type { CadProjectData } from "@/types/project";
 import type { DetectedText, Unit, VectorDocument } from "@/types/vector";
 import { TextFusionEngine } from "@/lib/ai/text-fusion";
 import { elementRecognitionEngine, type RecognizedElement } from "@/lib/ai/element-recognition";
+import type { VisionDetectedObject, VisionObjectDetectorLike } from "@/lib/ai/vision-object-detector";
 
 export type AiDimension = {
   width: number;
@@ -41,6 +42,8 @@ export type AiFeedback = {
 export type VectorCadAiAnalysis = {
   texts: AiTextElement[];
   elements: AiDetectedElement[];
+  visionObjects: VisionDetectedObject[];
+  objectDetectionStatus: "executed" | "fallback" | "skipped";
   dimensions: AiDimension[];
   objects: AiObject[];
   confidence: number;
@@ -210,14 +213,26 @@ export function consolidateAiTexts(ocrTexts: DetectedText[], visionTexts: AiText
   return new TextFusionEngine(classifyDetectedText).fuseDetectedTexts(ocrTexts, visionTexts);
 }
 
-export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionProvider = mockProvider): Promise<VectorCadAiAnalysis> {
+export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionProvider = mockProvider, objectDetector?: VisionObjectDetectorLike): Promise<VectorCadAiAnalysis> {
   const result = await provider.analyze(input);
   const ocrTexts = input.ocrTexts || input.project?.detectedTexts || [];
   const texts = consolidateAiTexts(ocrTexts, result.texts || []);
-  const elements = elementRecognitionEngine.recognize({ image: input.image, texts, visionAnalysis: result });
+  let visionObjects: VisionDetectedObject[] = [];
+  let objectDetectionStatus: VectorCadAiAnalysis["objectDetectionStatus"] = objectDetector ? "fallback" : "skipped";
+  if (objectDetector && input.imageDataUrl) {
+    try {
+      visionObjects = await objectDetector.detect({ imageDataUrl: input.imageDataUrl, context: input.context, texts: texts.map(text => ({ value: text.value, position: text.position })) });
+      objectDetectionStatus = "executed";
+    } catch (error) {
+      console.warn("[VectorCAD][AI] detecção visual indisponível", { reason: error instanceof Error ? error.message : "VISION_OBJECT_UNKNOWN_ERROR" });
+    }
+  }
+  const elements = elementRecognitionEngine.recognize({ image: input.image, texts, visionAnalysis: result, visionObjects });
   return {
     texts,
     elements,
+    visionObjects,
+    objectDetectionStatus,
     dimensions: result.dimensions || [],
     objects: result.objects || [],
     confidence: Math.max(0, Math.min(1, result.confidence ?? averageConfidence(texts))),

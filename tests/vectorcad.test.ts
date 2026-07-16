@@ -9,6 +9,7 @@ import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
+import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { CadProjectData } from "@/types/project";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
@@ -65,6 +66,22 @@ describe("VectorCAD pipeline", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("upstream failure", { status: 503 })));
     await expect(new RealVisionProvider({ apiKey: "test-key" }).analyze({ imageDataUrl: "data:image/png;base64,AA==" })).rejects.toThrow("VISION_API_503");
     vi.unstubAllGlobals();
+  });
+
+  it("recognizes a visual technical object with its box and confidence", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ objects: [{ id: "pump-1", type: "PUMP", name: "Bomba", confidence: .91, boundingBox: { x: 20, y: 30, width: 40, height: 50 }, position: { x: 20, y: 30 }, rotation: 5 }] }) } }] }), { status: 200 })));
+    const objects = await new VisionObjectDetector({ apiKey: "test-key" }).detect({ imageDataUrl: "data:image/png;base64,AA==" });
+    expect(objects[0]).toMatchObject({ id: "pump-1", type: "PUMP", name: "Bomba", confidence: .91, source: "VISION_AI" });
+    expect(objects[0].boundingBox).toEqual({ x: 20, y: 30, width: 40, height: 50 });
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to OCR when visual object detection fails", async () => {
+    const detector = { detect: vi.fn().mockRejectedValue(new Error("VISION_OBJECT_API_503")) };
+    const result = await runVectorCadAi({ imageDataUrl: "data:image/png;base64,AA==", ocrTexts: [{ text: "SALA", x: 1, y: 2, width: 20, height: 8, rotation: 0, confidence: .8 }] }, undefined, detector);
+    expect(result.objectDetectionStatus).toBe("fallback");
+    expect(result.visionObjects).toHaveLength(0);
+    expect(result.elements[0]).toMatchObject({ name: "SALA", type: "LABEL", source: "OCR" });
   });
 
   it("protects detected text regions from vectorization", () => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { MockProvider, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
+import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { createSupabaseAuthServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
 import type { DetectedText } from "@/types/vector";
 import type { VectorDocument } from "@/types/vector";
@@ -40,15 +41,18 @@ export async function POST(request: Request) {
   }
 
   const input = { imageDataUrl, ocrTexts, dimensions: body?.dimensions || null, vectors: body?.vectors || null, context: body?.context || null };
-  const local = await runVectorCadAi(input, localProvider);
-  if (!shouldUseVision(ocrTexts)) return NextResponse.json({ analysis: local, vision: { status: "skipped", reason: "ocr_confident" } });
+  const useVisionText = shouldUseVision(ocrTexts);
+  const objectDetector = process.env.VISION_API_KEY ? new VisionObjectDetector() : undefined;
+  const local = await runVectorCadAi(input, localProvider, useVisionText ? undefined : objectDetector);
+  if (!useVisionText) return NextResponse.json({ analysis: local, vision: { status: local.objectDetectionStatus === "executed" ? "executed" : "skipped", reason: local.objectDetectionStatus === "executed" ? "object_detection" : "ocr_confident" } });
 
   try {
-    const vision = await runVectorCadAi(input, new RealVisionProvider());
+    const vision = await runVectorCadAi(input, new RealVisionProvider(), objectDetector);
     return NextResponse.json({ analysis: { ...local, ...vision, objects: local.objects, dimensions: local.dimensions, provider: "hybrid-ocr-vision" }, vision: { status: "executed" } });
   } catch (visionError) {
     const reason = visionError instanceof Error ? visionError.message : "VISION_UNKNOWN_ERROR";
     console.warn("[VectorCAD][AI] Vision fallback para OCR local", { reason, userId: data.user.id });
-    return NextResponse.json({ analysis: local, vision: { status: "fallback", reason } });
+    const fallback = objectDetector ? await runVectorCadAi(input, localProvider, objectDetector) : local;
+    return NextResponse.json({ analysis: fallback, vision: { status: fallback.objectDetectionStatus === "executed" ? "executed" : "fallback", reason } });
   }
 }

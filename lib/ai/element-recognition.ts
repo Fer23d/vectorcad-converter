@@ -1,4 +1,5 @@
 import type { AiTextElement } from "@/lib/ai/vectorcad-ai";
+import type { VisionDetectedObject } from "@/lib/ai/vision-object-detector";
 
 export type RecognizedElementType =
   | "TEXT"
@@ -12,6 +13,8 @@ export type RecognizedElementType =
   | "PUMP"
   | "MOTOR"
   | "PANEL"
+  | "TANK"
+  | "SENSOR"
   | "CONNECTION"
   | "POSSIBLE_DIMENSION";
 
@@ -29,6 +32,7 @@ export type ElementRecognitionInput = {
   image?: ImageData | null;
   texts: AiTextElement[];
   visionAnalysis?: { texts?: AiTextElement[] } | null;
+  visionObjects?: VisionDetectedObject[];
 };
 
 const supportedTextTypes = new Set<RecognizedElementType>(["TEXT", "TITLE", "LABEL", "ANNOTATION", "POSSIBLE_DIMENSION"]);
@@ -49,7 +53,7 @@ function clampConfidence(value: number) {
 export class ElementRecognitionEngine {
   recognize(input: ElementRecognitionInput): RecognizedElement[] {
     const texts = input.texts.length ? input.texts : input.visionAnalysis?.texts || [];
-    return texts.map((text, index) => ({
+    const textElements = texts.map((text, index) => ({
       id: `element-${index + 1}`,
       type: elementType(text),
       name: text.value,
@@ -58,6 +62,16 @@ export class ElementRecognitionEngine {
       position: { ...text.position },
       source: text.source,
     }));
+    const objectElements = (input.visionObjects || []).map((object, index) => ({
+      id: object.id || `element-${textElements.length + index + 1}`,
+      type: object.type,
+      name: object.name,
+      confidence: object.confidence,
+      boundingBox: { ...object.boundingBox },
+      position: { ...object.position },
+      source: "VISION_AI" as const,
+    }));
+    return [...textElements, ...objectElements];
   }
 }
 
