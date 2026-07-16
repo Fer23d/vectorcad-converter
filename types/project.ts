@@ -14,6 +14,7 @@ export type CadProjectData = {
   textDetectionEnabled?: boolean;
   detectedTexts?: import("@/types/vector").DetectedText[];
   aiAnalysis?: import("@/lib/ai/vectorcad-ai").VectorCadAiAnalysis;
+  exportSmartTexts?: boolean;
   vector?: import("@/types/vector").VectorSettings;
   document?: import("@/types/vector").VectorDocument | null;
   unit?: import("@/types/vector").Unit;

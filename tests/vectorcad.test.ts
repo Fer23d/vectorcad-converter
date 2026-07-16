@@ -60,6 +60,14 @@ describe("VectorCAD pipeline", () => {
     expect(svg).toContain('viewBox="0 0 10 10"');
   });
 
+  it("exports intelligent OCR text as a CAD TEXT entity", () => {
+    const dxf = generateDxf(doc, [{ value: "PLANTA BAIXA", type: "TITLE", confidence: .94, position: { x: 2, y: 3 }, boundingBox: { x: 2, y: 3, width: 5, height: 2 }, rotation: 15, source: "OCR" }]);
+    const entities = new DxfParser().parseSync(dxf)?.entities || [];
+    expect(dxf).toContain("TEXTOS");
+    expect(dxf).toContain("PLANTA BAIXA");
+    expect(entities.some(entity => entity.type === "TEXT")).toBe(true);
+  });
+
   it("generates clean editable DXF polylines and CAD layers", () => {
     const dxf = generateDxf(doc);
     expect(dxf).toContain("LWPOLYLINE");

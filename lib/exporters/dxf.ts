@@ -1,4 +1,5 @@
 import Drawing from "dxf-writer";
+import type { AiTextElement } from "@/lib/ai/vectorcad-ai";
 import type { Point, Unit, VectorDocument, VectorPath } from "@/types/vector";
 
 const writerUnit: Record<Unit, "Unitless" | "Millimeters" | "Centimeters"> = {
@@ -27,6 +28,18 @@ function validPaths(doc: VectorDocument) {
     .filter(item => item.points.length >= (item.path.closed ? 3 : 2));
 }
 
+function validTextElements(texts: AiTextElement[]) {
+  return texts.filter((text) => ["TEXT", "LABEL", "TITLE", "ANNOTATION"].includes(text.type) && text.value.trim().length > 0 && Number.isFinite(text.position.x) && Number.isFinite(text.position.y));
+}
+
+function textHeight(text: AiTextElement, doc: VectorDocument) {
+  const sourceHeight = Math.max(doc.sourceHeight, 1);
+  const scaleY = doc.height / sourceHeight;
+  const rawHeight = text.boundingBox.height * scaleY;
+  const minimum = doc.unit === "cm" ? .05 : .5;
+  return Math.max(minimum, Math.min(doc.height * .2, rawHeight || minimum));
+}
+
 function bounds(paths: ReturnType<typeof validPaths>, height: number) {
   const points = paths.flatMap(item => item.points.map(point => ({ x: point.x, y: height - point.y })));
   const minX = Math.min(...points.map(point => point.x));
@@ -36,7 +49,7 @@ function bounds(paths: ReturnType<typeof validPaths>, height: number) {
   return { minX, minY, maxX, maxY, width: Math.max(maxX - minX, 1), height: Math.max(maxY - minY, 1) };
 }
 
-export function generateDxf(doc: VectorDocument): string {
+export function generateDxf(doc: VectorDocument, texts: AiTextElement[] = []): string {
   const height = Number.isFinite(doc.height) && doc.height > 0 ? doc.height : 1;
   const paths = validPaths(doc);
   const drawing = new Drawing();
@@ -46,10 +59,23 @@ export function generateDxf(doc: VectorDocument): string {
   drawing.addLayer("CONTOURS", Drawing.ACI.WHITE, "CONTINUOUS");
   drawing.addLayer("DETAILS", Drawing.ACI.GREEN, "CONTINUOUS");
   drawing.addLayer("GUIDES", Drawing.ACI.CYAN, "CONTINUOUS");
+  drawing.addLayer("TEXTOS", Drawing.ACI.YELLOW, "CONTINUOUS");
 
   for (const { path, points } of paths) {
     drawing.setActiveLayer(path.layer);
     drawing.drawPolyline(points.map(point => [point.x, height - point.y]), path.closed);
+  }
+
+  const sourceWidth = Math.max(doc.sourceWidth, 1);
+  const sourceHeight = Math.max(doc.sourceHeight, 1);
+  const textScaleX = doc.width / sourceWidth;
+  const textScaleY = doc.height / sourceHeight;
+  drawing.setActiveLayer("TEXTOS");
+  for (const text of validTextElements(texts)) {
+    const x = text.position.x * textScaleX;
+    const y = doc.height - text.position.y * textScaleY;
+    const rotation = Number.isFinite(text.rotation) ? text.rotation : 0;
+    drawing.drawText(x, y, textHeight(text, doc), rotation, text.value.replace(/[\r\n]+/g, " "), "left", "baseline");
   }
 
   if (paths.length) {
@@ -67,6 +93,6 @@ export function generateDxf(doc: VectorDocument): string {
   return drawing.toDxfString().replace(/\r?\n/g, "\r\n");
 }
 
-export function countDxfEntities(doc: VectorDocument) {
-  return validPaths(doc).length;
+export function countDxfEntities(doc: VectorDocument, texts: AiTextElement[] = []) {
+  return validPaths(doc).length + validTextElements(texts).length;
 }

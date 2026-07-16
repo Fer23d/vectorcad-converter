@@ -71,6 +71,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [textDetectionStatus, setTextDetectionStatus] = useState("");
   const [ocrDiagnostic, setOcrDiagnostic] = useState<OcrDiagnostic | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<VectorCadAiAnalysis | null>(initialData?.aiAnalysis || null);
+  const [exportSmartTexts, setExportSmartTexts] = useState(initialData?.exportSmartTexts ?? true);
   const [aiStatus, setAiStatus] = useState("");
   const [aiRunning, setAiRunning] = useState(false);
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
@@ -119,6 +120,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setTextDetectionEnabled(saved?.textDetectionEnabled || false);
       setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
       setAiAnalysis(saved?.aiAnalysis || null);
+      setExportSmartTexts(saved?.exportSmartTexts ?? true);
       setVector(saved?.vector || defaultVector);
       setDoc(saved?.document || null);
       setUnit(saved?.unit || "mm");
@@ -141,6 +143,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setTextDetectionEnabled(saved.textDetectionEnabled || false);
     setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
     setAiAnalysis(saved.aiAnalysis || null);
+    setExportSmartTexts(saved.exportSmartTexts ?? true);
     setVector(saved.vector || defaultVector);
     setDoc(saved.document || null);
     setUnit(saved.unit || "mm");
@@ -205,6 +208,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       textDetectionEnabled,
       detectedTexts,
       aiAnalysis: aiAnalysis || undefined,
+      exportSmartTexts,
       vector,
       document: doc,
       unit,
@@ -220,7 +224,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, detectedTexts, doc, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -401,7 +405,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       if (!allowed) return;
     }
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
-    download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc), kind === "svg" ? "image/svg+xml" : "application/dxf");
+    const smartTexts = kind === "dxf" && exportSmartTexts ? (aiAnalysis?.texts || []) : [];
+    download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc, smartTexts), kind === "svg" ? "image/svg+xml" : "application/dxf");
     setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
   };
   const exportPng = async () => {
@@ -551,6 +556,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Exportar textos inteligentes</span><input type="checkbox" checked={exportSmartTexts} onChange={e => setExportSmartTexts(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
+            <p className="mt-1 text-[9px] text-[#829087]">{aiAnalysis?.texts.filter(text => ["TEXT", "LABEL", "TITLE", "ANNOTATION"].includes(text.type)).length || 0} textos serão exportados como CAD TEXT.</p>
             {aiAnalysis && <>
               <div className="mt-2 grid grid-cols-2 gap-1 text-center text-[9px] text-[#aab8b0]">
                 <span><b className="block text-[#e8efeb]">{aiAnalysis.texts.length}</b>textos</span>
