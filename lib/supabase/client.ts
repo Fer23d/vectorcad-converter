@@ -25,10 +25,22 @@ function isLikelySupabaseAnonKey(value: string) {
 }
 
 const supabaseUrl = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL);
-const supabaseAnonKey = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabaseAnonKey = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 
-export const isSupabaseConfigured =
-  isValidSupabaseUrl(supabaseUrl) && isLikelySupabaseAnonKey(supabaseAnonKey);
+export function inspectSupabaseConfig(url: string | undefined, anonKey: string | undefined) {
+  const cleanUrl = cleanEnv(url);
+  const cleanKey = cleanEnv(anonKey);
+  return {
+    urlPresent: Boolean(cleanUrl),
+    anonKeyPresent: Boolean(cleanKey),
+    urlValid: isValidSupabaseUrl(cleanUrl),
+    anonKeyValid: isLikelySupabaseAnonKey(cleanKey),
+    configured: isValidSupabaseUrl(cleanUrl) && isLikelySupabaseAnonKey(cleanKey),
+  };
+}
+
+export const supabaseConfig = inspectSupabaseConfig(supabaseUrl, supabaseAnonKey);
+export const isSupabaseConfigured = supabaseConfig.configured;
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)

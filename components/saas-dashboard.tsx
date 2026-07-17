@@ -6,7 +6,7 @@ import type { User } from "@supabase/supabase-js";
 import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Save, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
 import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
 import { getBillingPlan } from "@/lib/billing";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { isSupabaseConfigured, supabase, supabaseConfig } from "@/lib/supabase/client";
 import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
@@ -671,7 +671,12 @@ export function SaasDashboard() {
     return <main className="min-h-screen bg-[#080c0b] p-6 text-[#e8efeb]">
       <div className="mx-auto mt-20 max-w-xl rounded-2xl border border-[#33413a] bg-[#101613] p-6">
         <h1 className="text-xl font-black">Supabase não configurado</h1>
-        <p className="mt-3 text-sm leading-6 text-[#9caaa3]">Adicione `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` no Vercel/local para ativar login, dashboard e projetos.</p>
+        <p className="mt-3 text-sm leading-6 text-[#9caaa3]">A configuração pública do Supabase não está válida neste deployment.</p>
+        <div className="mt-4 space-y-2 rounded-xl border border-[#26312c] bg-[#0b100e] p-3 text-xs">
+          <p className={supabaseConfig.urlValid ? "text-[#b7f34a]" : "text-[#ff8b87]"}>{supabaseConfig.urlValid ? "✓" : "✗"} NEXT_PUBLIC_SUPABASE_URL {supabaseConfig.urlPresent ? "encontrada" : "ausente"}</p>
+          <p className={supabaseConfig.anonKeyValid ? "text-[#b7f34a]" : "text-[#ff8b87]"}>{supabaseConfig.anonKeyValid ? "✓" : "✗"} NEXT_PUBLIC_SUPABASE_ANON_KEY {supabaseConfig.anonKeyPresent ? "encontrada" : "ausente"}</p>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-[#77867e]">Verifique as variáveis no ambiente Production da Vercel e faça um novo deploy após alterá-las.</p>
       </div>
     </main>;
   }

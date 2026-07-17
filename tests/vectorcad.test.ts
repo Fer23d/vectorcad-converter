@@ -14,6 +14,7 @@ import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detec
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { DimensionRecognitionEngine } from "@/lib/ai/dimension-recognition";
+import { inspectSupabaseConfig } from "@/lib/supabase/client";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { CadProjectData } from "@/types/project";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
@@ -49,6 +50,11 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("diagnoses Supabase configuration without exposing credentials", () => {
+    expect(inspectSupabaseConfig("https://example.supabase.co", "")).toMatchObject({ urlPresent: true, urlValid: true, anonKeyPresent: false, configured: false });
+    expect(inspectSupabaseConfig("https://example.supabase.co", "sb_publishable_123456789012345678901234567890")).toMatchObject({ urlValid: true, anonKeyValid: true, configured: true });
+  });
+
   it("classifies strong, medium and weak vector lines without losing a valid fallback", () => {
     const engine = new LineIntelligenceEngine();
     const paths = [
