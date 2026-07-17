@@ -1,6 +1,7 @@
 import type { Point, VectorPath } from "@/types/vector";
 
 export type LineClassification = "STRONG_LINE" | "MEDIUM_LINE" | "WEAK_LINE";
+export type LineIntent = "MAIN_LINE" | "SECONDARY_LINE" | "DUPLICATE_EDGE" | "NOISE";
 
 export type IntelligentLine = {
   id: string;
@@ -8,6 +9,7 @@ export type IntelligentLine = {
   points: Point[];
   confidence: number;
   classification: LineClassification;
+  intent: LineIntent;
   length: number;
   angle: number;
 };
@@ -16,6 +18,7 @@ export type LineIntelligenceMetrics = {
   detected: number;
   kept: number;
   removed: number;
+  unified: number;
   reductionPercent: number;
 };
 
@@ -47,15 +50,49 @@ function classify(path: VectorPath, width: number, height: number, length: numbe
     : confidence >= .62 || path.closed || normalizedLength >= .08
       ? "STRONG_LINE"
       : "MEDIUM_LINE";
+  const intent: LineIntent = classification === "WEAK_LINE" ? "NOISE" : classification === "STRONG_LINE" ? "MAIN_LINE" : "SECONDARY_LINE";
   return {
     id: `line-${path.layer}-${Math.round(first.x)}-${Math.round(first.y)}-${path.points.length}`,
     type: path.curved ? "CURVE" : path.closed || path.points.length > 2 ? "POLYLINE" : "LINE",
     points: path.points.map(point => ({ ...point })),
     confidence,
     classification,
+    intent,
     length,
     angle: Math.atan2(last.y - first.y, last.x - first.x),
   };
+}
+
+function lineEnds(line: IntelligentLine) {
+  return { start: line.points[0], end: line.points[line.points.length - 1] };
+}
+
+function pointLineDistance(point: Point, start: Point, end: Point) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const denominator = Math.hypot(dx, dy) || 1;
+  return Math.abs(dy * point.x - dx * point.y + end.x * start.y - end.y * start.x) / denominator;
+}
+
+function projection(point: Point, start: Point, end: Point) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const denominator = dx * dx + dy * dy || 1;
+  return ((point.x - start.x) * dx + (point.y - start.y) * dy) / denominator;
+}
+
+function isParallelDuplicate(left: IntelligentLine, right: IntelligentLine, diagonal: number) {
+  if (left.type !== "LINE" || right.type !== "LINE" || left.points.length < 2 || right.points.length < 2) return false;
+  const leftEnds = lineEnds(left), rightEnds = lineEnds(right);
+  const angle = angleDelta(left.angle, right.angle);
+  const parallel = angle < Math.PI / 18 || Math.abs(angle - Math.PI) < Math.PI / 18;
+  if (!parallel) return false;
+  const gap = Math.min(pointLineDistance(rightEnds.start, leftEnds.start, leftEnds.end), pointLineDistance(rightEnds.end, leftEnds.start, leftEnds.end));
+  const maxGap = Math.max(2, diagonal * .006);
+  if (gap > maxGap) return false;
+  const leftProjection = [projection(rightEnds.start, leftEnds.start, leftEnds.end), projection(rightEnds.end, leftEnds.start, leftEnds.end)].sort((a, b) => a - b);
+  const overlap = Math.max(0, Math.min(1, leftProjection[1]) - Math.max(0, leftProjection[0]));
+  return overlap >= .55 && Math.min(left.length, right.length) / Math.max(left.length, right.length) >= .55;
 }
 
 export class LineIntelligenceEngine {
@@ -63,15 +100,34 @@ export class LineIntelligenceEngine {
     return paths.map((path) => classify(path, width, height, pathLength(path.points), pathStability(path.points)));
   }
 
-  filterPaths(paths: VectorPath[], lines: IntelligentLine[], mode: "manual" | "auto") {
-    if (mode === "manual") return paths;
-    const kept = paths.filter((_, index) => lines[index]?.classification !== "WEAK_LINE");
-    return kept.length ? kept : paths;
+  selectPaths(paths: VectorPath[], lines: IntelligentLine[], mode: "manual" | "auto", width = 1, height = 1) {
+    const diagonal = Math.hypot(width, height) || 1;
+    const selected = paths.map((path, index) => ({ path, line: lines[index] })).filter(({ line }) => mode === "manual" || line?.classification !== "WEAK_LINE");
+    const unified = new Set<number>();
+    const kept = selected.filter((candidate, index) => {
+      if (mode === "manual") return true;
+      const duplicate = selected.slice(0, index).find(previous => {
+        const previousIndex = selected.indexOf(previous);
+        if (unified.has(previousIndex)) return false;
+        return isParallelDuplicate(previous.line, candidate.line, diagonal);
+      });
+      if (!duplicate) return true;
+      const candidateIndex = selected.indexOf(candidate);
+      unified.add(candidateIndex);
+      candidate.line.intent = "DUPLICATE_EDGE";
+      return false;
+    });
+    const pathsToKeep = kept.length ? kept.map(item => item.path) : paths;
+    return { paths: pathsToKeep, unified: unified.size, removedWeak: Math.max(0, paths.length - selected.length) };
   }
 
-  metrics(lines: IntelligentLine[], keptPaths: VectorPath[]): LineIntelligenceMetrics {
+  filterPaths(paths: VectorPath[], lines: IntelligentLine[], mode: "manual" | "auto", width = 1, height = 1) {
+    return this.selectPaths(paths, lines, mode, width, height).paths;
+  }
+
+  metrics(lines: IntelligentLine[], keptPaths: VectorPath[], unified = 0): LineIntelligenceMetrics {
     const kept = keptPaths.length;
-    return { detected: lines.length, kept, removed: Math.max(0, lines.length - kept), reductionPercent: lines.length ? Math.round((1 - kept / lines.length) * 100) : 0 };
+    return { detected: lines.length, kept, removed: Math.max(0, lines.length - kept), unified, reductionPercent: lines.length ? Math.round((1 - kept / lines.length) * 100) : 0 };
   }
 }
 

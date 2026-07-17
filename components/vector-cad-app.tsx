@@ -120,7 +120,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
   const [cadCleanMetrics, setCadCleanMetrics] = useState<CadCleanMetrics>({ pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
-  const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ detected: 0, kept: 0, removed: 0, reductionPercent: 0 });
+  const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ detected: 0, kept: 0, removed: 0, unified: 0, reductionPercent: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -416,7 +416,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setProcessedPreview(pc.toDataURL("image/png"));
     const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
     const detectedLines = lineIntelligenceEngine.analyze(rawDocument.paths, w, h);
-    const intelligentPaths = lineIntelligenceEngine.filterPaths(rawDocument.paths, detectedLines, lineProcessingMode);
+    const lineSelection = lineIntelligenceEngine.selectPaths(rawDocument.paths, detectedLines, lineProcessingMode, w, h);
+    const intelligentPaths = lineSelection.paths;
     const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
     const cleanup = cleanupVectorDocument({ ...rawDocument, paths: intelligentPaths }, cleanupMode);
     if (!cleanup.document.paths.length && lineProcessingMode === "auto") {
@@ -426,7 +427,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
         const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, vector);
         const fallbackLines = lineIntelligenceEngine.analyze(fallbackRaw.paths, w, h);
-        const fallbackPaths = lineIntelligenceEngine.filterPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode);
+        const fallbackSelection = lineIntelligenceEngine.selectPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode, w, h);
+        const fallbackPaths = fallbackSelection.paths;
         const fallbackCleanup = cleanupVectorDocument({ ...fallbackRaw, paths: fallbackPaths }, cleanupMode);
         if (fallbackCleanup.document.paths.length) {
           cleanup.document = fallbackCleanup.document;
@@ -437,17 +439,18 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           cleanup.reductionPercent = fallbackCleanup.reductionPercent;
           detectedLines.splice(0, detectedLines.length, ...fallbackLines);
           intelligentPaths.splice(0, intelligentPaths.length, ...fallbackPaths);
+          lineSelection.unified = fallbackSelection.unified;
           fallbackResult.image.data.forEach((value, index) => { if (result.image.data[index] !== value) result.image.data[index] = value; });
           break;
         }
       }
     }
     if (!cleanup.document.paths.length) {
-      setLineMetrics({ detected: detectedLines.length, kept: 0, removed: detectedLines.length, reductionPercent: detectedLines.length ? 100 : 0 });
+      setLineMetrics({ detected: detectedLines.length, kept: 0, removed: detectedLines.length, unified: 0, reductionPercent: detectedLines.length ? 100 : 0 });
       setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
       return;
     }
-    setLineMetrics(lineIntelligenceEngine.metrics(detectedLines, intelligentPaths));
+    setLineMetrics(lineIntelligenceEngine.metrics(detectedLines, intelligentPaths, lineSelection.unified));
     setCleanupStats({ beforePaths: cleanup.beforePaths, afterPaths: cleanup.afterPaths, beforePoints: cleanup.beforePoints, afterPoints: cleanup.afterPoints, reductionPercent: cleanup.reductionPercent });
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
@@ -765,6 +768,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <span><b className="block text-[#e8efeb]">{lineMetrics.detected}</b>linhas detectadas</span>
             <span><b className="block text-[#b7f34a]">{lineMetrics.kept}</b>linhas mantidas</span>
             <span><b className="block text-[#e8efeb]">{lineMetrics.removed}</b>linhas removidas</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.unified}</b>linhas unificadas</span>
             <span><b className="block text-[#b7f34a]">{lineMetrics.reductionPercent}%</b>redução</span>
           </div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de saída</label>

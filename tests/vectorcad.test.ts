@@ -72,6 +72,22 @@ describe("VectorCAD pipeline", () => {
     expect(engine.filterPaths(paths, engine.analyze(paths, 10, 10), "manual")).toHaveLength(1);
   });
 
+  it("unifies nearby parallel edges but preserves closed geometry", () => {
+    const engine = new LineIntelligenceEngine();
+    const paths = [
+      { layer: "CONTOURS" as const, closed: false, points: [{ x: 0, y: 0 }, { x: 100, y: 0 }] },
+      { layer: "CONTOURS" as const, closed: false, points: [{ x: 0, y: 2 }, { x: 100, y: 2 }] },
+      { layer: "DETAILS" as const, closed: true, points: [{ x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 20, y: 30 }] },
+    ];
+    const lines = engine.analyze(paths, 100, 100);
+    const selection = engine.selectPaths(paths, lines, "auto", 100, 100);
+
+    expect(selection.paths).toHaveLength(2);
+    expect(selection.unified).toBe(1);
+    expect(lines[1].intent).toBe("DUPLICATE_EDGE");
+    expect(selection.paths[1].closed).toBe(true);
+  });
+
   it("removes isolated noise while preserving connected CAD lines", () => {
     const input = new ImageData(7, 7);
     input.data.fill(255);
