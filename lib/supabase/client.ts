@@ -16,12 +16,9 @@ function isValidSupabaseUrl(value: string) {
 }
 
 function isLikelySupabaseAnonKey(value: string) {
-  if (value.startsWith("sb_publishable_")) {
-    return value.length > 30;
-  }
-
-  const parts = value.split(".");
-  return parts.length === 3 && value.length > 80;
+  // Supabase public keys have changed format over time (JWT and sb_publishable_*).
+  // Presence is the reliable client-side check; never accept an obvious secret key.
+  return value.length > 0 && !value.startsWith("sb_secret_") && !value.startsWith("service_role");
 }
 
 const supabaseUrl = cleanEnv(process.env.NEXT_PUBLIC_SUPABASE_URL);
