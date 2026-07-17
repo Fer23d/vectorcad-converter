@@ -10,6 +10,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { processCadCleanImage, type CadCleanMetrics } from "@/lib/image-processing/cad-clean";
 import { isAiEnhanceQuality, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
+import { imageQualityAnalyzer, type ImageQualityAnalysis } from "@/lib/image-processing/image-quality-analyzer";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
@@ -102,6 +103,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(initialData?.imageQuality || "enhanced");
+  const [imageAnalysis, setImageAnalysis] = useState<ImageQualityAnalysis | null>(initialData?.imageAnalysis || null);
   const [lineProcessingMode, setLineProcessingMode] = useState<LineProcessingMode>(initialData?.lineProcessingMode || "manual");
   const [textDetectionEnabled, setTextDetectionEnabled] = useState(initialData?.textDetectionEnabled || false);
   const [detectedTexts, setDetectedTexts] = useState<DetectedText[]>(initialData?.textDetectionEnabled ? (initialData.detectedTexts || []) : []);
@@ -168,6 +170,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setImageQuality(saved?.imageQuality || "enhanced");
+      setImageAnalysis(saved?.imageAnalysis || null);
       setLineProcessingMode(saved?.lineProcessingMode || "manual");
       setTextDetectionEnabled(saved?.textDetectionEnabled || false);
       setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
@@ -193,6 +196,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
     setImageQuality(saved.imageQuality || "enhanced");
+    setImageAnalysis(saved.imageAnalysis || null);
     setLineProcessingMode(saved.lineProcessingMode || "manual");
     setTextDetectionEnabled(saved.textDetectionEnabled || false);
     setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
@@ -260,6 +264,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       fileName,
       processing,
       imageQuality,
+      imageAnalysis: imageAnalysis || undefined,
       lineProcessingMode,
       textDetectionEnabled,
       detectedTexts,
@@ -281,7 +286,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -516,6 +521,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [detectedTexts, imageQuality, lineProcessingMode, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceRaster, vector]);
 
   useEffect(() => {
+    if (!source && !sourceRaster) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      const canvas = originalCanvas.current;
+      const context = canvas?.getContext("2d", { willReadFrequently: true });
+      if (!context || !canvas?.width || !canvas.height) return;
+      const analysis = imageQualityAnalyzer.analyze(context.getImageData(0, 0, canvas.width, canvas.height));
+      if (!cancelled) setImageAnalysis(analysis);
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [source, sourceImageDataUrl, sourceOriginalDataUrl, sourceRaster]);
+
+  useEffect(() => {
     if (!textDetectionEnabled) {
       return;
     }
@@ -712,6 +730,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="ai-enhance-3k">AI Enhance 3K</option>
             <option value="ai-enhance-4k">AI Enhance 4K</option>
           </select>
+          {imageAnalysis && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
+            <p className="font-bold text-[#b7f34a]">Análise IA</p>
+            <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 leading-4">
+              <span>Qualidade: <b className="text-[#e8efeb]">{imageAnalysis.qualityScore}%</b></span>
+              <span>Resolução: {imageAnalysis.resolutionScore < 40 ? "Baixa" : imageAnalysis.resolutionScore < 70 ? "Média" : "Alta"}</span>
+              <span>Ruído: {imageAnalysis.noiseLevel}</span>
+              <span>Contraste: {imageAnalysis.contrastLevel}</span>
+              <span>Nitidez: {imageAnalysis.sharpnessLevel}</span>
+              <span>Confiança: {imageAnalysis.confidence}%</span>
+            </div>
+            <p className="mt-2 text-[#829087]">Recomendação: <b className="text-[#b7f34a]">{({ original: "Original", enhanced: "Melhorada", ultra: "Ultra CAD", "ultra-pro": "Ultra CAD Pro", "cad-clean": "CAD Clean Image", "ai-enhance-2x": "AI Enhance 2x", "ai-enhance-3k": "AI Enhance 3K", "ai-enhance-4k": "AI Enhance 4K" } as Record<ImageQuality, string>)[imageAnalysis.recommendedMode]}</b></p>
+            <button type="button" onClick={() => { setImageQuality(imageAnalysis.recommendedMode); setMessage("Otimização recomendada aplicada."); }} className="mt-2 w-full rounded-md border border-[#b7f34a] px-2 py-1.5 font-bold text-[#b7f34a] hover:bg-[#b7f34a]/10">Aplicar otimização recomendada</button>
+          </div>}
           {isAiEnhanceQuality(imageQuality) && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
             <p className="font-bold text-[#b7f34a]">AI Enhance {imageQuality === "ai-enhance-4k" ? "4K" : imageQuality === "ai-enhance-2x" ? "Rápido 2x" : "3K"}</p>
             <p className="mt-1 leading-4 text-[#829087]">Upscale CAD, contraste adaptativo e reforço de linhas técnicas. A imagem original não é alterada.</p>

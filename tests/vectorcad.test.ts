@@ -4,6 +4,7 @@ import { Helper } from "dxf";
 import { closeBinary, removeSmallComponents } from "@/lib/image-processing/binary";
 import { processCadCleanImage } from "@/lib/image-processing/cad-clean";
 import { processAiEnhance } from "@/lib/image-processing/ai-enhance";
+import { ImageQualityAnalyzer } from "@/lib/image-processing/image-quality-analyzer";
 import { removeIsolated } from "@/lib/image-processing/process";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -61,6 +62,18 @@ describe("VectorCAD pipeline", () => {
     expect(result.metrics.finalHeight).toBe(1500);
     expect(result.metrics.scale).toBe(1500);
     expect(result.image.data[3]).toBe(255);
+  });
+
+  it("analyzes a low-quality raster and recommends stronger enhancement", () => {
+    const input = new ImageData(20, 20);
+    input.data.fill(80);
+    const analysis = new ImageQualityAnalyzer().analyze(input);
+
+    expect(analysis.width).toBe(20);
+    expect(analysis.height).toBe(20);
+    expect(analysis.qualityScore).toBeLessThan(60);
+    expect(["ai-enhance-3k", "ai-enhance-4k"]).toContain(analysis.recommendedMode);
+    expect(analysis.confidence).toBeGreaterThan(0);
   });
 
   it("diagnoses Supabase configuration without exposing credentials", () => {
