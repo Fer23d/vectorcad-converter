@@ -9,7 +9,7 @@ import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { processCadCleanImage, type CadCleanMetrics } from "@/lib/image-processing/cad-clean";
-import { isAiEnhanceQuality, processAiEnhance, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
+import { isAiEnhanceQuality, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
@@ -123,6 +123,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
   const [cadCleanMetrics, setCadCleanMetrics] = useState<CadCleanMetrics>({ pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
   const [aiEnhanceMetrics, setAiEnhanceMetrics] = useState<AiEnhanceMetrics>({ originalWidth: 0, originalHeight: 0, finalWidth: 0, finalHeight: 0, scale: 1, processingMs: 0, noiseReduced: 0, contrastApplied: 0 });
+  const [serverEnhancedDataUrl, setServerEnhancedDataUrl] = useState("");
+  const [serverEnhancedImage, setServerEnhancedImage] = useState<HTMLImageElement | null>(null);
+  const [serverEnhanceFailed, setServerEnhanceFailed] = useState(false);
   const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ pathsReceived: 0, detected: 0, strong: 0, medium: 0, weak: 0, kept: 0, removed: 0, unified: 0, beforeSegments: 0, afterSegments: 0, improvementPercent: 0, reductionPercent: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
@@ -377,52 +380,79 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [consumeUsage]);
 
   useEffect(() => {
+    if (!isAiEnhanceQuality(imageQuality)) return;
+    const imageDataUrl = sourceOriginalDataUrl || sourceImageDataUrl;
+    if (!imageDataUrl) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setServerEnhancedDataUrl("");
+      setServerEnhancedImage(null);
+      setServerEnhanceFailed(false);
+      setMessage("Analisando imagem no servidor...");
+    });
+    void (async () => {
+      try {
+        const sourceBlob = await fetch(imageDataUrl).then(response => response.blob());
+        const form = new FormData();
+        form.append("image", sourceBlob, fileName || "vectorcad-image");
+        form.append("mode", imageQuality === "ai-enhance-4k" ? "4x" : imageQuality === "ai-enhance-2x" ? "2x" : "3x");
+        setMessage("Melhorando resolução no servidor...");
+        const response = await fetch("/api/image/enhance", { method: "POST", body: form });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.imageDataUrl) throw new Error(result.error || "AI_ENHANCE_SERVER_FAILED");
+        const enhancedImage = new Image();
+        enhancedImage.onload = () => {
+          if (cancelled) return;
+          setServerEnhancedDataUrl(result.imageDataUrl);
+          setServerEnhancedImage(enhancedImage);
+          setAiEnhanceMetrics({ originalWidth: result.originalWidth, originalHeight: result.originalHeight, finalWidth: result.finalWidth, finalHeight: result.finalHeight, scale: Math.max(result.finalWidth / result.originalWidth, result.finalHeight / result.originalHeight), processingMs: result.processingMs || 0, noiseReduced: 0, contrastApplied: 0 });
+          setMessage("Modelo melhorado. Aplicando limpeza e vetorização...");
+        };
+        enhancedImage.onerror = () => { throw new Error("AI_ENHANCE_PREVIEW_FAILED"); };
+        enhancedImage.src = result.imageDataUrl;
+      } catch {
+        if (cancelled) return;
+        setServerEnhanceFailed(true);
+        setMessage("Não foi possível melhorar a imagem no servidor. A imagem original será usada.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fileName, imageQuality, sourceImageDataUrl, sourceOriginalDataUrl]);
+
+  useEffect(() => {
     if (!source && !sourceRaster) return;
-    const sourceWidth = sourceRaster?.width || source?.width || 0;
-    const sourceHeight = sourceRaster?.height || source?.height || 0;
-    const max = isAiEnhanceQuality(imageQuality) ? (imageQuality === "ai-enhance-4k" ? 4000 : 3000) : 720;
+    const usingServerEnhance = isAiEnhanceQuality(imageQuality);
+    if (usingServerEnhance && !serverEnhancedImage && !serverEnhanceFailed) return;
+    const activeSource = usingServerEnhance && serverEnhancedImage ? serverEnhancedImage : source;
+    const activeRaster = usingServerEnhance && serverEnhancedImage ? null : sourceRaster;
+    if (!activeSource && !activeRaster) return;
+    const sourceWidth = activeRaster?.width || activeSource?.width || 0;
+    const sourceHeight = activeRaster?.height || activeSource?.height || 0;
+    const max = 720;
     const scale = Math.min(1, max / Math.max(sourceWidth, sourceHeight));
     const w = Math.max(1, Math.round(sourceWidth * scale)), h = Math.max(1, Math.round(sourceHeight * scale));
     const oc = originalCanvas.current!, pc = processedCanvas.current!;
     oc.width = pc.width = w; oc.height = pc.height = h;
     const ctx = oc.getContext("2d", { willReadFrequently: true })!;
     ctx.clearRect(0, 0, w, h);
-    if (sourceRaster) {
+    if (activeRaster) {
       const rasterCanvas = document.createElement("canvas");
-      rasterCanvas.width = sourceRaster.width;
-      rasterCanvas.height = sourceRaster.height;
+      rasterCanvas.width = activeRaster.width;
+      rasterCanvas.height = activeRaster.height;
       const rasterContext = rasterCanvas.getContext("2d")!;
-      const rasterImage = rasterContext.createImageData(sourceRaster.width, sourceRaster.height);
-      rasterImage.data.set(sourceRaster.data);
+      const rasterImage = rasterContext.createImageData(activeRaster.width, activeRaster.height);
+      rasterImage.data.set(activeRaster.data);
       rasterContext.putImageData(rasterImage, 0, 0);
       ctx.drawImage(rasterCanvas, 0, 0, w, h);
-    } else if (source) {
-      ctx.drawImage(source, 0, 0, w, h);
+    } else if (activeSource) {
+      ctx.drawImage(activeSource, 0, 0, w, h);
     }
     const sourceImage = ctx.getImageData(0, 0, w, h);
     const cadClean = imageQuality === "cad-clean" ? processCadCleanImage(sourceImage) : null;
-    let aiEnhanced: ReturnType<typeof processAiEnhance> | null = null;
-    let enhancementFailed = false;
-    if (isAiEnhanceQuality(imageQuality)) {
-      try {
-        aiEnhanced = processAiEnhance(sourceImage, imageQuality);
-      } catch {
-        enhancementFailed = true;
-      }
-    }
-    const enhanced = cadClean?.image || aiEnhanced?.image || (enhancementFailed ? sourceImage : enhanceForCad(sourceImage, imageQuality));
+    const enhanced = cadClean?.image || enhanceForCad(sourceImage, usingServerEnhance ? "enhanced" : imageQuality);
     setCadCleanMetrics(cadClean?.metrics || { pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
-    setAiEnhanceMetrics(aiEnhanced?.metrics || { originalWidth: sourceImage.width, originalHeight: sourceImage.height, finalWidth: sourceImage.width, finalHeight: sourceImage.height, scale: 1, processingMs: 0, noiseReduced: 0, contrastApplied: 0 });
-    if (aiEnhanced) {
-      const previewCanvas = document.createElement("canvas");
-      previewCanvas.width = aiEnhanced.image.width;
-      previewCanvas.height = aiEnhanced.image.height;
-      previewCanvas.getContext("2d")?.putImageData(aiEnhanced.image, 0, 0);
-      setAiEnhancedPreview(previewCanvas.toDataURL("image/png"));
-    } else {
-      setAiEnhancedPreview("");
-    }
-    if (enhancementFailed) setMessage("Não foi possível aplicar o AI Enhance. A imagem original foi mantida.");
+    setAiEnhancedPreview(serverEnhancedDataUrl);
     const result = processPixels(enhanced, processing);
     const bitmap = detectedTexts.length ? protectTextRegions(result.bitmap, w, h, detectedTexts) : result.bitmap;
     if (detectedTexts.length) {
@@ -446,9 +476,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     const cleanup = cleanupVectorDocument({ ...rawDocument, paths: intelligentPaths }, cleanupMode);
     let selectedScore = lineIntelligenceEngine.score(detectedLines, cleanup.document.paths);
     if (lineProcessingMode === "auto") {
-      const fallbackQualities = (["original", "enhanced", "ultra-pro", "cad-clean", "ai-enhance-3k", "ai-enhance-4k"] as ImageQuality[]).filter(quality => quality !== imageQuality);
+      const fallbackQualities = (["original", "enhanced", "ultra-pro", "cad-clean"] as ImageQuality[]).filter(quality => quality !== imageQuality);
       for (const fallbackQuality of fallbackQualities) {
-        const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : isAiEnhanceQuality(fallbackQuality) ? processAiEnhance(sourceImage, fallbackQuality).image : enhanceForCad(sourceImage, fallbackQuality);
+        const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : enhanceForCad(sourceImage, fallbackQuality);
         const fallbackResult = processPixels(fallbackSource, processing);
         const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
         const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, vector);
@@ -483,7 +513,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [detectedTexts, imageQuality, lineProcessingMode, processing, source, sourceRaster, vector]);
+  }, [detectedTexts, imageQuality, lineProcessingMode, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceRaster, vector]);
 
   useEffect(() => {
     if (!textDetectionEnabled) {
@@ -678,11 +708,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="ultra">Ultra CAD</option>
             <option value="ultra-pro">Ultra CAD Pro</option>
             <option value="cad-clean">CAD Clean Image</option>
+            <option value="ai-enhance-2x">AI Enhance Rápido 2x</option>
             <option value="ai-enhance-3k">AI Enhance 3K</option>
             <option value="ai-enhance-4k">AI Enhance 4K</option>
           </select>
           {isAiEnhanceQuality(imageQuality) && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
-            <p className="font-bold text-[#b7f34a]">AI Enhance {imageQuality === "ai-enhance-4k" ? "4K" : "3K"}</p>
+            <p className="font-bold text-[#b7f34a]">AI Enhance {imageQuality === "ai-enhance-4k" ? "4K" : imageQuality === "ai-enhance-2x" ? "Rápido 2x" : "3K"}</p>
             <p className="mt-1 leading-4 text-[#829087]">Upscale CAD, contraste adaptativo e reforço de linhas técnicas. A imagem original não é alterada.</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <figure><figcaption className="mb-1 text-[#829087]">Antes</figcaption><DiagnosticImage src={sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem original antes do AI Enhance" className="h-24 w-full object-contain bg-white" /></figure>

@@ -1,6 +1,6 @@
 import type { ImageQuality } from "@/types/vector";
 
-export type AiEnhanceMode = "ai-enhance-3k" | "ai-enhance-4k";
+export type AiEnhanceMode = "ai-enhance-2x" | "ai-enhance-3k" | "ai-enhance-4k";
 
 export type AiEnhanceMetrics = {
   originalWidth: number;
@@ -41,12 +41,12 @@ function targetSize(width: number, height: number, maxDimension: number) {
  */
 export function processAiEnhance(input: ImageData, mode: AiEnhanceMode): AiEnhanceResult {
   const started = typeof performance !== "undefined" ? performance.now() : Date.now();
-  const maxDimension = mode === "ai-enhance-4k" ? 4000 : 3000;
+  const maxDimension = mode === "ai-enhance-4k" ? 4000 : mode === "ai-enhance-3k" ? 3000 : 2000;
   const size = targetSize(input.width, input.height, maxDimension);
   const output = new ImageData(size.width, size.height);
   const source = input.data;
-  const contrast = mode === "ai-enhance-4k" ? 1.22 : 1.14;
-  const sharpen = mode === "ai-enhance-4k" ? 0.34 : 0.24;
+  const contrast = mode === "ai-enhance-4k" ? 1.22 : mode === "ai-enhance-3k" ? 1.14 : 1.08;
+  const sharpen = mode === "ai-enhance-4k" ? 0.34 : mode === "ai-enhance-3k" ? 0.24 : 0.18;
   let contrastApplied = 0;
   let noiseReduced = 0;
 
@@ -118,5 +118,5 @@ export function processAiEnhance(input: ImageData, mode: AiEnhanceMode): AiEnhan
 }
 
 export function isAiEnhanceQuality(quality: ImageQuality): quality is AiEnhanceMode {
-  return quality === "ai-enhance-3k" || quality === "ai-enhance-4k";
+  return quality === "ai-enhance-2x" || quality === "ai-enhance-3k" || quality === "ai-enhance-4k";
 }

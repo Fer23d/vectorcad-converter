@@ -1,7 +1,7 @@
 export type Unit = "mm" | "cm" | "px";
 export type VectorMode = "logo" | "technical" | "silhouette" | "outline" | "precision" | "cnc";
 export type OutputMode = "pixel" | "smooth" | "cad";
-export type ImageQuality = "original" | "enhanced" | "ultra" | "ultra-pro" | "cad-clean" | "ai-enhance-3k" | "ai-enhance-4k";
+export type ImageQuality = "original" | "enhanced" | "ultra" | "ultra-pro" | "cad-clean" | "ai-enhance-2x" | "ai-enhance-3k" | "ai-enhance-4k";
 export type LineProcessingMode = "manual" | "auto";
 export type DetectedText = {
   text: string;
