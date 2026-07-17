@@ -15,9 +15,10 @@ import { type AiDetectedElement, type AiFeedback, type AiTextElement, type Vecto
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
+import { lineIntelligenceEngine, type LineIntelligenceMetrics } from "@/lib/vector/line-intelligence";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
-import type { DetectedText, ImageQuality, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
+import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
 const MAX_FILE = 12 * 1024 * 1024;
@@ -99,6 +100,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(initialData?.imageQuality || "enhanced");
+  const [lineProcessingMode, setLineProcessingMode] = useState<LineProcessingMode>(initialData?.lineProcessingMode || "manual");
   const [textDetectionEnabled, setTextDetectionEnabled] = useState(initialData?.textDetectionEnabled || false);
   const [detectedTexts, setDetectedTexts] = useState<DetectedText[]>(initialData?.textDetectionEnabled ? (initialData.detectedTexts || []) : []);
   const [textDetectionStatus, setTextDetectionStatus] = useState("");
@@ -118,6 +120,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
   const [cadCleanMetrics, setCadCleanMetrics] = useState<CadCleanMetrics>({ pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
+  const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ detected: 0, kept: 0, removed: 0, reductionPercent: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -159,6 +162,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setImageQuality(saved?.imageQuality || "enhanced");
+      setLineProcessingMode(saved?.lineProcessingMode || "manual");
       setTextDetectionEnabled(saved?.textDetectionEnabled || false);
       setDetectedTexts(saved?.textDetectionEnabled ? (saved.detectedTexts || []) : []);
       setAiAnalysis(saved?.aiAnalysis || null);
@@ -183,6 +187,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
     setImageQuality(saved.imageQuality || "enhanced");
+    setLineProcessingMode(saved.lineProcessingMode || "manual");
     setTextDetectionEnabled(saved.textDetectionEnabled || false);
     setDetectedTexts(saved.textDetectionEnabled ? (saved.detectedTexts || []) : []);
     setAiAnalysis(saved.aiAnalysis || null);
@@ -249,6 +254,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       fileName,
       processing,
       imageQuality,
+      lineProcessingMode,
       textDetectionEnabled,
       detectedTexts,
       aiAnalysis: aiAnalysis || undefined,
@@ -269,7 +275,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -409,13 +415,44 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
     setProcessedPreview(pc.toDataURL("image/png"));
     const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
+    const detectedLines = lineIntelligenceEngine.analyze(rawDocument.paths, w, h);
+    const intelligentPaths = lineIntelligenceEngine.filterPaths(rawDocument.paths, detectedLines, lineProcessingMode);
     const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
-    const cleanup = cleanupVectorDocument(rawDocument, cleanupMode);
+    const cleanup = cleanupVectorDocument({ ...rawDocument, paths: intelligentPaths }, cleanupMode);
+    if (!cleanup.document.paths.length && lineProcessingMode === "auto") {
+      for (const fallbackQuality of ["cad-clean", "ultra-pro"] as ImageQuality[]) {
+        const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : enhanceForCad(sourceImage, fallbackQuality);
+        const fallbackResult = processPixels(fallbackSource, processing);
+        const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
+        const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, vector);
+        const fallbackLines = lineIntelligenceEngine.analyze(fallbackRaw.paths, w, h);
+        const fallbackPaths = lineIntelligenceEngine.filterPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode);
+        const fallbackCleanup = cleanupVectorDocument({ ...fallbackRaw, paths: fallbackPaths }, cleanupMode);
+        if (fallbackCleanup.document.paths.length) {
+          cleanup.document = fallbackCleanup.document;
+          cleanup.beforePaths = fallbackCleanup.beforePaths;
+          cleanup.beforePoints = fallbackCleanup.beforePoints;
+          cleanup.afterPaths = fallbackCleanup.afterPaths;
+          cleanup.afterPoints = fallbackCleanup.afterPoints;
+          cleanup.reductionPercent = fallbackCleanup.reductionPercent;
+          detectedLines.splice(0, detectedLines.length, ...fallbackLines);
+          intelligentPaths.splice(0, intelligentPaths.length, ...fallbackPaths);
+          fallbackResult.image.data.forEach((value, index) => { if (result.image.data[index] !== value) result.image.data[index] = value; });
+          break;
+        }
+      }
+    }
+    if (!cleanup.document.paths.length) {
+      setLineMetrics({ detected: detectedLines.length, kept: 0, removed: detectedLines.length, reductionPercent: detectedLines.length ? 100 : 0 });
+      setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
+      return;
+    }
+    setLineMetrics(lineIntelligenceEngine.metrics(detectedLines, intelligentPaths));
     setCleanupStats({ beforePaths: cleanup.beforePaths, afterPaths: cleanup.afterPaths, beforePoints: cleanup.beforePoints, afterPoints: cleanup.afterPoints, reductionPercent: cleanup.reductionPercent });
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [detectedTexts, imageQuality, processing, source, sourceRaster, vector]);
+  }, [detectedTexts, imageQuality, lineProcessingMode, processing, source, sourceRaster, vector]);
 
   useEffect(() => {
     if (!textDetectionEnabled) {
@@ -720,6 +757,16 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           <Toggle label="Inverter cores" checked={processing.invert} onChange={v => setProcessing({ ...processing, invert: v })} />
         </Section>
         <Section title="Vetorização" icon={<ScanLine size={14} />}>
+          <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de processamento</label>
+          <div className="grid grid-cols-2 gap-1">
+            {([["manual", "Manual"], ["auto", "IA Automática"]] as [LineProcessingMode, string][]).map(([value, label]) => <button key={value} type="button" onClick={() => setLineProcessingMode(value)} className={`rounded-md px-1 py-2 text-[9px] font-bold ${lineProcessingMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-1 border-b border-[#29372f] pb-2 text-center text-[9px] text-[#aab8b0]">
+            <span><b className="block text-[#e8efeb]">{lineMetrics.detected}</b>linhas detectadas</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.kept}</b>linhas mantidas</span>
+            <span><b className="block text-[#e8efeb]">{lineMetrics.removed}</b>linhas removidas</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.reductionPercent}%</b>redução</span>
+          </div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de saída</label>
           <div className="grid grid-cols-3 gap-1">{([["pixel", "Original"], ["smooth", "Smooth"], ["cad", "CAD Clean"]] as [OutputMode, string][]).map(([value, label]) => <button key={value} onClick={() => setVector({ ...vector, outputMode: value })} className={`rounded-md px-1 py-2 text-[9px] font-bold ${vector.outputMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}</div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo</label>

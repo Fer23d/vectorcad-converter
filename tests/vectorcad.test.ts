@@ -9,6 +9,7 @@ import { generateSvg } from "@/lib/exporters/svg";
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
+import { LineIntelligenceEngine } from "@/lib/vector/line-intelligence";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
 import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
@@ -48,6 +49,29 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("classifies strong, medium and weak vector lines without losing a valid fallback", () => {
+    const engine = new LineIntelligenceEngine();
+    const paths = [
+      { layer: "CONTOURS" as const, closed: false, points: [{ x: 0, y: 0 }, { x: 90, y: 0 }] },
+      { layer: "DETAILS" as const, closed: false, points: [{ x: 10, y: 10 }, { x: 18, y: 11 }, { x: 25, y: 10 }] },
+      { layer: "DETAILS" as const, closed: false, points: [{ x: 4, y: 4 }] },
+    ];
+    const lines = engine.analyze(paths, 100, 100);
+    const kept = engine.filterPaths(paths, lines, "auto");
+    const metrics = engine.metrics(lines, kept);
+
+    expect(lines[0]).toMatchObject({ type: "LINE", classification: "STRONG_LINE" });
+    expect(lines[2].classification).toBe("WEAK_LINE");
+    expect(kept).toHaveLength(2);
+    expect(metrics).toMatchObject({ detected: 3, kept: 2, removed: 1 });
+  });
+
+  it("keeps all paths in manual processing mode", () => {
+    const engine = new LineIntelligenceEngine();
+    const paths = [{ layer: "DETAILS" as const, closed: false, points: [{ x: 1, y: 1 }] }];
+    expect(engine.filterPaths(paths, engine.analyze(paths, 10, 10), "manual")).toHaveLength(1);
+  });
+
   it("removes isolated noise while preserving connected CAD lines", () => {
     const input = new ImageData(7, 7);
     input.data.fill(255);
