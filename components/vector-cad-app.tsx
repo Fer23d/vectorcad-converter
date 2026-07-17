@@ -120,7 +120,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
   const [cadCleanMetrics, setCadCleanMetrics] = useState<CadCleanMetrics>({ pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
-  const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ detected: 0, kept: 0, removed: 0, unified: 0, reductionPercent: 0 });
+  const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ pathsReceived: 0, detected: 0, strong: 0, medium: 0, weak: 0, kept: 0, removed: 0, unified: 0, beforeSegments: 0, afterSegments: 0, improvementPercent: 0, reductionPercent: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -420,8 +420,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     const intelligentPaths = lineSelection.paths;
     const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
     const cleanup = cleanupVectorDocument({ ...rawDocument, paths: intelligentPaths }, cleanupMode);
-    if (!cleanup.document.paths.length && lineProcessingMode === "auto") {
-      for (const fallbackQuality of ["cad-clean", "ultra-pro"] as ImageQuality[]) {
+    let selectedScore = lineIntelligenceEngine.score(detectedLines, cleanup.document.paths);
+    if (lineProcessingMode === "auto") {
+      const fallbackQualities = (["original", "enhanced", "ultra-pro", "cad-clean"] as ImageQuality[]).filter(quality => quality !== imageQuality);
+      for (const fallbackQuality of fallbackQualities) {
         const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : enhanceForCad(sourceImage, fallbackQuality);
         const fallbackResult = processPixels(fallbackSource, processing);
         const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
@@ -430,7 +432,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const fallbackSelection = lineIntelligenceEngine.selectPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode, w, h);
         const fallbackPaths = fallbackSelection.paths;
         const fallbackCleanup = cleanupVectorDocument({ ...fallbackRaw, paths: fallbackPaths }, cleanupMode);
-        if (fallbackCleanup.document.paths.length) {
+        const fallbackScore = lineIntelligenceEngine.score(fallbackLines, fallbackCleanup.document.paths);
+        if (fallbackCleanup.document.paths.length && fallbackScore > selectedScore) {
+          selectedScore = fallbackScore;
           cleanup.document = fallbackCleanup.document;
           cleanup.beforePaths = fallbackCleanup.beforePaths;
           cleanup.beforePoints = fallbackCleanup.beforePoints;
@@ -446,7 +450,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       }
     }
     if (!cleanup.document.paths.length) {
-      setLineMetrics({ detected: detectedLines.length, kept: 0, removed: detectedLines.length, unified: 0, reductionPercent: detectedLines.length ? 100 : 0 });
+      setLineMetrics({ pathsReceived: detectedLines.length, detected: detectedLines.length, strong: 0, medium: 0, weak: detectedLines.length, kept: 0, removed: detectedLines.length, unified: 0, beforeSegments: 0, afterSegments: 0, improvementPercent: 0, reductionPercent: detectedLines.length ? 100 : 0 });
       setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
       return;
     }
@@ -765,11 +769,16 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             {([["manual", "Manual"], ["auto", "IA Automática"]] as [LineProcessingMode, string][]).map(([value, label]) => <button key={value} type="button" onClick={() => setLineProcessingMode(value)} className={`rounded-md px-1 py-2 text-[9px] font-bold ${lineProcessingMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1 border-b border-[#29372f] pb-2 text-center text-[9px] text-[#aab8b0]">
-            <span><b className="block text-[#e8efeb]">{lineMetrics.detected}</b>linhas detectadas</span>
-            <span><b className="block text-[#b7f34a]">{lineMetrics.kept}</b>linhas mantidas</span>
+            <span><b className="block text-[#e8efeb]">{lineMetrics.pathsReceived}</b>paths recebidos</span>
+            <span><b className="block text-[#e8efeb]">{lineMetrics.detected}</b>linhas analisadas</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.strong}</b>linhas fortes</span>
+            <span><b className="block text-[#e8efeb]">{lineMetrics.medium}</b>linhas médias</span>
+            <span><b className="block text-[#e8efeb]">{lineMetrics.weak}</b>linhas fracas</span>
             <span><b className="block text-[#e8efeb]">{lineMetrics.removed}</b>linhas removidas</span>
             <span><b className="block text-[#b7f34a]">{lineMetrics.unified}</b>linhas unificadas</span>
-            <span><b className="block text-[#b7f34a]">{lineMetrics.reductionPercent}%</b>redução</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.reductionPercent}%</b>redução de paths</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.beforeSegments} → {lineMetrics.afterSegments}</b>segmentos</span>
+            <span><b className="block text-[#b7f34a]">{lineMetrics.improvementPercent}%</b>melhoria</span>
           </div>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de saída</label>
           <div className="grid grid-cols-3 gap-1">{([["pixel", "Original"], ["smooth", "Smooth"], ["cad", "CAD Clean"]] as [OutputMode, string][]).map(([value, label]) => <button key={value} onClick={() => setVector({ ...vector, outputMode: value })} className={`rounded-md px-1 py-2 text-[9px] font-bold ${vector.outputMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}</div>

@@ -15,10 +15,17 @@ export type IntelligentLine = {
 };
 
 export type LineIntelligenceMetrics = {
+  pathsReceived: number;
   detected: number;
+  strong: number;
+  medium: number;
+  weak: number;
   kept: number;
   removed: number;
   unified: number;
+  beforeSegments: number;
+  afterSegments: number;
+  improvementPercent: number;
   reductionPercent: number;
 };
 
@@ -125,9 +132,36 @@ export class LineIntelligenceEngine {
     return this.selectPaths(paths, lines, mode, width, height).paths;
   }
 
+  score(lines: IntelligentLine[], paths: VectorPath[]) {
+    const strong = lines.filter(line => line.classification === "STRONG_LINE").length;
+    const medium = lines.filter(line => line.classification === "MEDIUM_LINE").length;
+    const weak = lines.filter(line => line.classification === "WEAK_LINE").length;
+    const closed = paths.filter(path => path.closed).length;
+    const segments = paths.reduce((total, path) => total + Math.max(0, path.points.length - 1), 0);
+    return strong * 3 + medium * 1.25 + closed * .5 + Math.min(segments, 2000) / 2000 - weak * .35;
+  }
+
   metrics(lines: IntelligentLine[], keptPaths: VectorPath[], unified = 0): LineIntelligenceMetrics {
+    const strong = lines.filter(line => line.classification === "STRONG_LINE").length;
+    const medium = lines.filter(line => line.classification === "MEDIUM_LINE").length;
+    const weak = lines.filter(line => line.classification === "WEAK_LINE").length;
+    const beforeSegments = lines.reduce((total, line) => total + Math.max(0, line.points.length - 1), 0);
+    const afterSegments = keptPaths.reduce((total, path) => total + Math.max(0, path.points.length - 1), 0);
     const kept = keptPaths.length;
-    return { detected: lines.length, kept, removed: Math.max(0, lines.length - kept), unified, reductionPercent: lines.length ? Math.round((1 - kept / lines.length) * 100) : 0 };
+    return {
+      pathsReceived: lines.length,
+      detected: lines.length,
+      strong,
+      medium,
+      weak,
+      kept,
+      removed: Math.max(0, lines.length - kept),
+      unified,
+      beforeSegments,
+      afterSegments,
+      improvementPercent: beforeSegments ? Math.max(0, Math.round((1 - afterSegments / beforeSegments) * 100)) : 0,
+      reductionPercent: lines.length ? Math.round((1 - kept / lines.length) * 100) : 0,
+    };
   }
 }
 
