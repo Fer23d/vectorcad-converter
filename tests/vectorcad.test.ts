@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import DxfParser from "dxf-parser";
 import { Helper } from "dxf";
 import { closeBinary, removeSmallComponents } from "@/lib/image-processing/binary";
+import { processCadCleanImage } from "@/lib/image-processing/cad-clean";
 import { removeIsolated } from "@/lib/image-processing/process";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -16,6 +17,30 @@ import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCo
 import type { CadProjectData } from "@/types/project";
 import type { VectorDocument, VectorSettings } from "@/types/vector";
 
+if (typeof ImageData === "undefined") {
+  class TestImageData {
+    data: Uint8ClampedArray;
+    width: number;
+    height: number;
+
+    constructor(width: number, height: number);
+    constructor(data: Uint8ClampedArray, width: number, height: number);
+    constructor(dataOrWidth: Uint8ClampedArray | number, widthOrHeight: number, height?: number) {
+      if (typeof dataOrWidth === "number") {
+        this.width = dataOrWidth;
+        this.height = widthOrHeight;
+        this.data = new Uint8ClampedArray(this.width * this.height * 4);
+      } else {
+        this.data = dataOrWidth;
+        this.width = widthOrHeight;
+        this.height = height || 0;
+      }
+    }
+  }
+
+  (globalThis as typeof globalThis & { ImageData: typeof TestImageData }).ImageData = TestImageData;
+}
+
 const doc: VectorDocument = {
   width: 10, height: 10, sourceWidth: 10, sourceHeight: 10, unit: "px",
   paths: [{ closed: true, layer: "CONTOURS", points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 0, y: 0 }] }],
@@ -23,6 +48,45 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("removes isolated noise while preserving connected CAD lines", () => {
+    const input = new ImageData(7, 7);
+    input.data.fill(255);
+    for (let index = 3; index < input.data.length; index += 4) input.data[index] = 255;
+    input.data[(1 * 7 + 1) * 4] = 0;
+    input.data[(1 * 7 + 1) * 4 + 1] = 0;
+    input.data[(1 * 7 + 1) * 4 + 2] = 0;
+    for (let x = 2; x <= 4; x++) {
+      const offset = (4 * 7 + x) * 4;
+      input.data[offset] = 0;
+      input.data[offset + 1] = 0;
+      input.data[offset + 2] = 0;
+    }
+
+    const result = processCadCleanImage(input);
+    const isolated = (1 * 7 + 1) * 4;
+    const connected = (4 * 7 + 3) * 4;
+
+    expect(result.image.width).toBe(7);
+    expect(result.image.height).toBe(7);
+    expect(result.image.data[isolated]).toBe(255);
+    expect(result.image.data[connected]).toBe(0);
+    expect(result.image.data[isolated + 3]).toBe(255);
+    expect(result.metrics.pixelsProcessed).toBe(49);
+    expect(result.metrics.noiseRemoved).toBeGreaterThan(0);
+  });
+
+  it("keeps dimensions and opaque output for color image inputs", () => {
+    const input = new ImageData(2, 1);
+    input.data.set([220, 210, 190, 40, 20, 30, 40, 0]);
+    const result = processCadCleanImage(input);
+
+    expect(result.image.width).toBe(2);
+    expect(result.image.height).toBe(1);
+    expect(result.image.data[3]).toBe(255);
+    expect(result.image.data[7]).toBe(255);
+    expect(result.metrics.pixelsProcessed).toBe(2);
+  });
+
   it("normalizes local OCR into the VectorCAD AI analysis structure", async () => {
     const result = await runVectorCadAi({ vectors: doc, dimensions: { width: 10, height: 10, unit: "mm" }, ocrTexts: [{ text: "SALA", x: 1, y: 1, width: 10, height: 4, rotation: 0, confidence: .9 }] });
     expect(result.texts[0].value).toBe("SALA");

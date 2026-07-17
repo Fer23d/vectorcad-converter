@@ -8,6 +8,7 @@ import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
+import { processCadCleanImage, type CadCleanMetrics } from "@/lib/image-processing/cad-clean";
 import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
@@ -93,6 +94,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
+  const [processedPreview, setProcessedPreview] = useState("");
   const [sourceOriginalDataUrl, setSourceOriginalDataUrl] = useState(initialData?.sourceOriginalDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
@@ -115,6 +117,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [vector, setVector] = useState(initialData?.vector || defaultVector);
   const [doc, setDoc] = useState<VectorDocument | null>(initialData?.document || null);
   const [cleanupStats, setCleanupStats] = useState({ beforePaths: 0, afterPaths: 0, beforePoints: 0, afterPoints: 0, reductionPercent: 0 });
+  const [cadCleanMetrics, setCadCleanMetrics] = useState<CadCleanMetrics>({ pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -386,7 +389,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     } else if (source) {
       ctx.drawImage(source, 0, 0, w, h);
     }
-    const enhanced = enhanceForCad(ctx.getImageData(0, 0, w, h), imageQuality);
+    const sourceImage = ctx.getImageData(0, 0, w, h);
+    const cadClean = imageQuality === "cad-clean" ? processCadCleanImage(sourceImage) : null;
+    const enhanced = cadClean?.image || enhanceForCad(sourceImage, imageQuality);
+    setCadCleanMetrics(cadClean?.metrics || { pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
     const result = processPixels(enhanced, processing);
     const bitmap = detectedTexts.length ? protectTextRegions(result.bitmap, w, h, detectedTexts) : result.bitmap;
     if (detectedTexts.length) {
@@ -401,6 +407,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       }
     }
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
+    setProcessedPreview(pc.toDataURL("image/png"));
     const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
     const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
     const cleanup = cleanupVectorDocument(rawDocument, cleanupMode);
@@ -602,7 +609,26 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="enhanced">Melhorada</option>
             <option value="ultra">Ultra CAD</option>
             <option value="ultra-pro">Ultra CAD Pro</option>
+            <option value="cad-clean">CAD Clean Image</option>
           </select>
+          {imageQuality === "cad-clean" && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
+            <p className="font-bold text-[#b7f34a]">Original vs CAD Clean Image</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <figure>
+                <figcaption className="mb-1 text-[#829087]">Original</figcaption>
+                <DiagnosticImage src={sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem original" className="h-24 w-full object-contain bg-white" />
+              </figure>
+              <figure>
+                <figcaption className="mb-1 text-[#829087]">CAD Clean Image</figcaption>
+                <DiagnosticImage src={processedPreview || sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem CAD Clean" className="h-24 w-full object-contain bg-white" />
+              </figure>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 leading-4">
+              <span>Pixels tratados: {cadCleanMetrics.pixelsProcessed.toLocaleString("pt-BR")}</span>
+              <span>Ruído removido: {cadCleanMetrics.noiseRemoved.toLocaleString("pt-BR")}</span>
+              <span>Contraste aplicado: {cadCleanMetrics.contrastApplied.toFixed(1)}</span>
+            </div>
+          </div>}
           <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 text-xs text-[#bdc9c3]" title="Detecta letras e números para proteger essas regiões da vetorização.">
             <span>Reconhecimento inteligente</span>
             <input type="checkbox" checked={textDetectionEnabled} onChange={e => { setTextDetectionEnabled(e.target.checked); if (!e.target.checked) { setDetectedTexts([]); setOcrDiagnostic(null); } }} className="h-4 w-4 accent-[#b7f34a]" />
