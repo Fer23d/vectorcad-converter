@@ -3,6 +3,7 @@ import DxfParser from "dxf-parser";
 import { Helper } from "dxf";
 import { closeBinary, removeSmallComponents } from "@/lib/image-processing/binary";
 import { processCadCleanImage } from "@/lib/image-processing/cad-clean";
+import { processAiEnhance } from "@/lib/image-processing/ai-enhance";
 import { removeIsolated } from "@/lib/image-processing/process";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -50,6 +51,18 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("VectorCAD pipeline", () => {
+  it("enhances a raster to the requested 3K working resolution", () => {
+    const input = new ImageData(new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 255]), 2, 1);
+    const result = processAiEnhance(input, "ai-enhance-3k");
+
+    expect(result.image.width).toBe(3000);
+    expect(result.image.height).toBe(1500);
+    expect(result.metrics.finalWidth).toBe(3000);
+    expect(result.metrics.finalHeight).toBe(1500);
+    expect(result.metrics.scale).toBe(1500);
+    expect(result.image.data[3]).toBe(255);
+  });
+
   it("diagnoses Supabase configuration without exposing credentials", () => {
     expect(inspectSupabaseConfig("https://example.supabase.co", "")).toMatchObject({ urlPresent: true, urlValid: true, anonKeyPresent: false, configured: false });
     expect(inspectSupabaseConfig("https://example.supabase.co", "sb_publishable_123456789012345678901234567890")).toMatchObject({ urlValid: true, anonKeyValid: true, configured: true });
