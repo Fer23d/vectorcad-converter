@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicSiteShell } from "@/components/public-site-shell";
+import { PublicTechnicalPreview } from "@/components/public-technical-preview";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
@@ -66,6 +67,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <PublicTechnicalPreview />
 
       <section className="relative overflow-hidden border-b border-[#1c2822] bg-[#0a0f0d]">
         <div className="absolute -right-24 top-10 h-64 w-64 rounded-full bg-[#b7f34a]/10 blur-3xl" />
