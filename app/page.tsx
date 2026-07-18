@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicSiteShell } from "@/components/public-site-shell";
-import { PublicTechnicalPreview3D } from "@/components/public-technical-preview-3d";
+import { PublicHeroElegant } from "@/components/public-hero-elegant";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
@@ -34,7 +34,8 @@ const faqs = [
 export default function Home() {
   return (
     <PublicSiteShell>
-      <section className="relative overflow-hidden border-b border-[#1c2822]">
+      <PublicHeroElegant />
+      <section className="hidden relative overflow-hidden border-b border-[#1c2822]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(183,243,74,.18),transparent_42%)]" />
         <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-20 lg:grid-cols-[1.1fr_.9fr] lg:px-8 lg:py-28">
           <div>
@@ -67,8 +68,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      <PublicTechnicalPreview3D />
 
       <section className="relative overflow-hidden border-b border-[#1c2822] bg-[#0a0f0d]">
         <div className="absolute -right-24 top-10 h-64 w-64 rounded-full bg-[#b7f34a]/10 blur-3xl" />
