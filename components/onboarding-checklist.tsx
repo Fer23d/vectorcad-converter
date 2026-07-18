@@ -19,7 +19,7 @@ export function OnboardingChecklist({ emailConfirmed, hasProject, hasFile, hasAn
   return <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <div className="text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Seu início no VectorCAD</div>
+        <div className="text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Seu início no VetorCAD</div>
         <p className="mt-2 text-xs text-[#8c9a93]">Acompanhe seu progresso para começar.</p>
       </div>
       <span className="rounded-full border border-[#34413b] px-3 py-1 text-[10px] font-black text-[#9caaa3]">{items.filter(([, done]) => done).length}/{items.length}</span>

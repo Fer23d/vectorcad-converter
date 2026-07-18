@@ -540,7 +540,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(finalGeometry, material);
-  mesh.name = options.enhanced ? "VectorCAD_Enhanced_Extrusion" : "VectorCAD_Extrusion";
+  mesh.name = options.enhanced ? "VetorCAD_Enhanced_Extrusion" : "VetorCAD_Extrusion";
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   apply3DStyle(mesh, options.style);
@@ -1039,7 +1039,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     setAiClean(true);
     setEnhanced(true);
     setQualityRun((value) => value + 1);
-    setMessage("AI Clean aplicado: SVG normalizado, paths fechados e pontos duplicados reduzidos.");
+    setMessage("CAD Clean aplicado: SVG normalizado, paths fechados e pontos duplicados reduzidos.");
   };
 
   const applyStyle = () => {
@@ -1176,9 +1176,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
 
     <div className="mt-3 grid gap-2">
       <div className="rounded-xl border border-[#2b3832] bg-[#0d1411] p-3">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">AI Enhance</div>
+        <div className="mb-3 text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">Melhoria de imagem</div>
         <div className="grid gap-2">
-          <button type="button" onClick={fixModel} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#1b241c] py-2.5 text-xs font-black text-[#b7f34a]">✨ Fix Model (AI Clean)</button>
+          <button type="button" onClick={fixModel} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#1b241c] py-2.5 text-xs font-black text-[#b7f34a]">✨ Fix Model (CAD Clean)</button>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Estilo 3D</label>
           <select value={selectedStyle} onChange={(event) => setSelectedStyle(event.target.value as ModelStyle)} className="w-full text-xs">
             {styles.map((style) => <option key={style} value={style}>{styleLabels[style]}</option>)}

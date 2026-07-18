@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const { adminClient, role, user: adminUser } = adminAuth;
   const adminFirstName = String(adminUser.user_metadata?.first_name || "").trim();
   const adminLastName = String(adminUser.user_metadata?.last_name || "").trim();
-  const adminName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Administrador VectorCAD";
+  const adminName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Administrador VetorCAD";
   const [
     { data: usersData, error: usersError },
     { data: projectsData, error: projectsError },

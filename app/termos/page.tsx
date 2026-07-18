@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { PublicSiteShell } from "@/components/public-site-shell";
 
 export const metadata: Metadata = {
-  title: "Termos de Uso | VectorCAD",
-  description: "Termos de uso do VectorCAD para clientes, empresas e usuários da plataforma SaaS.",
+  title: "Termos de Uso | VetorCAD",
+  description: "Termos de uso do VetorCAD para clientes, empresas e usuários da plataforma SaaS.",
   alternates: { canonical: "https://vetorcad.com.br/termos" },
 };
 
 const sections = [
   {
     title: "Sobre a plataforma",
-    text: "O VectorCAD é uma plataforma SaaS criada para apoiar processos de engenharia, análise técnica, organização de projetos e automação de fluxos digitais relacionados a arquivos, imagens e dados técnicos.",
+    text: "O VetorCAD é uma plataforma SaaS criada para apoiar processos de engenharia, análise técnica, organização de projetos e automação de fluxos digitais relacionados a arquivos, imagens e dados técnicos.",
   },
   {
     title: "Uso permitido",
@@ -22,11 +22,11 @@ const sections = [
   },
   {
     title: "Propriedade intelectual",
-    text: "A marca VectorCAD, a interface, os fluxos, textos, componentes, códigos e recursos da plataforma pertencem aos seus respectivos titulares. O usuário mantém a responsabilidade e os direitos sobre os arquivos e dados que enviar, observadas as leis aplicáveis.",
+    text: "A marca VetorCAD, a interface, os fluxos, textos, componentes, códigos e recursos da plataforma pertencem aos seus respectivos titulares. O usuário mantém a responsabilidade e os direitos sobre os arquivos e dados que enviar, observadas as leis aplicáveis.",
   },
   {
     title: "Limitação de responsabilidade",
-    text: "Embora o VectorCAD busque entregar resultados confiáveis, a plataforma pode depender da qualidade dos arquivos enviados e de fatores externos. O serviço não substitui validação técnica profissional quando o projeto exigir precisão, segurança ou conformidade normativa.",
+    text: "Embora o VetorCAD busque entregar resultados confiáveis, a plataforma pode depender da qualidade dos arquivos enviados e de fatores externos. O serviço não substitui validação técnica profissional quando o projeto exigir precisão, segurança ou conformidade normativa.",
   },
   {
     title: "Cancelamento",
@@ -43,7 +43,7 @@ export default function TermosPage() {
           <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Legal</div>
           <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Termos de Uso</h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-[#b8c8c0]">
-            Estes termos definem as regras de uso do VectorCAD e ajudam a manter uma relação transparente com usuários, equipes técnicas e clientes empresariais.
+            Estes termos definem as regras de uso do VetorCAD e ajudam a manter uma relação transparente com usuários, equipes técnicas e clientes empresariais.
           </p>
         </div>
       </section>

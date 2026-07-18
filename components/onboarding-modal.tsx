@@ -20,7 +20,7 @@ export function OnboardingModal({ saving, message, onStart }: OnboardingModalPro
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#b7f34a] text-[#09120d]"><Sparkles size={17} /></span>
           Primeiros passos
         </div>
-        <h2 id="onboarding-title" className="mt-5 text-3xl font-black tracking-[-.04em] text-white sm:text-4xl">Bem-vindo ao VectorCAD 🚀</h2>
+        <h2 id="onboarding-title" className="mt-5 text-3xl font-black tracking-[-.04em] text-white sm:text-4xl">Bem-vindo ao VetorCAD 🚀</h2>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-[#aebeb6]">Sua plataforma inteligente para análise e organização de projetos de engenharia.</p>
 
         <div className="mt-7 grid gap-3 md:grid-cols-3">

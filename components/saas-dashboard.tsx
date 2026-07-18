@@ -699,7 +699,7 @@ export function SaasDashboard() {
         <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Aceite obrigatório</div>
         <h1 className="mt-4 text-3xl font-black tracking-[-.04em]">Termos de Uso e Política de Privacidade</h1>
         <p className="mt-4 text-sm leading-7 text-[#aebeb6]">
-          Para acessar o dashboard do VectorCAD, confirme que leu e concorda com os documentos legais da plataforma.
+          Para acessar o dashboard do VetorCAD, confirme que leu e concorda com os documentos legais da plataforma.
           Esta confirmação protege sua conta e prepara o SaaS para novas versões dos termos.
         </p>
         <div className="mt-5 rounded-2xl border border-[#2b382f] bg-[#0b100e] p-4 text-sm leading-7 text-[#b8c8c0]">
@@ -730,7 +730,7 @@ export function SaasDashboard() {
           <div className="flex items-center gap-3">
             <div className={`grid place-items-center rounded-xl bg-[#b7f34a] text-[#09120d] transition-all ${headerCollapsed ? "h-8 w-8" : "h-10 w-10"}`}><FolderOpen size={headerCollapsed ? 15 : 19} /></div>
             <div className={headerCollapsed ? "hidden min-w-0 sm:block" : ""}>
-              <h1 className={`${headerCollapsed ? "text-[11px]" : "text-sm"} font-black uppercase tracking-[.18em]`}>VectorCAD SaaS</h1>
+              <h1 className={`${headerCollapsed ? "text-[11px]" : "text-sm"} font-black uppercase tracking-[.18em]`}>VetorCAD SaaS</h1>
               {!headerCollapsed && <p className="mt-1 text-xs text-[#84938b]">{activeProject?.name || "Workspace sem projeto ativo"}</p>}
             </div>
           </div>

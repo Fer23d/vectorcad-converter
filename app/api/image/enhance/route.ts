@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       stages: ["Analisando imagem", "Melhorando resolução", "Aplicando limpeza", "Finalizando"],
     });
   } catch (error) {
-    console.error("[VectorCAD][AI Enhance] server processing failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+    console.error("[VetorCAD][AI Enhance] server processing failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
     return jsonError("Não foi possível melhorar esta imagem no servidor.", 500);
   }
 }

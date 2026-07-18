@@ -13,21 +13,21 @@ export type BlogArticle = {
 
 export const blogArticles: BlogArticle[] = [
   {
-    slug: "vectorcad-ai-conversao-desenhos-tecnicos",
-    title: "VectorCAD AI: como a Inteligência Artificial está transformando a conversão de desenhos técnicos em CAD",
-    description: "Conheça como a Inteligência Artificial está tornando a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e inteligente.",
+    slug: "vetorcad-conversao-desenhos-tecnicos",
+    title: "VetorCAD Converter: como a vetorização transforma desenhos técnicos em CAD",
+    description: "Conheça como o processamento de imagem torna a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e organizada.",
     date: "2026-07-16",
     readTime: "8 min",
-    category: "VectorCAD AI",
-    metaTitle: "VectorCAD AI | Conversão de desenhos técnicos para CAD usando Inteligência Artificial",
-    metaDescription: "Conheça como a Inteligência Artificial está tornando a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e inteligente.",
-    keywords: ["conversão CAD", "imagem para DXF", "inteligência artificial CAD", "desenho técnico", "engenharia"],
+    category: "VetorCAD",
+    metaTitle: "VetorCAD Converter | Conversão de desenhos técnicos para CAD",
+    metaDescription: "Conheça como o processamento de imagem torna a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e organizada.",
+    keywords: ["conversão CAD", "imagem para DXF", "vetorização CAD", "desenho técnico", "engenharia"],
     sections: [
       {
         heading: "Introdução",
         body: [
           "Profissionais de engenharia e projetos ainda gastam muitas horas convertendo desenhos antigos, imagens e plantas para CAD. Esse trabalho manual consome tempo e pode dificultar a preservação de informações técnicas importantes.",
-          "O VectorCAD AI foi criado para apoiar esse processo, combinando processamento de imagem, reconhecimento de textos e interpretação inteligente em um fluxo voltado para arquivos CAD editáveis.",
+          "O VetorCAD Converter foi criado para apoiar esse processo, combinando processamento de imagem, reconhecimento de textos e organização técnica em um fluxo voltado para arquivos CAD editáveis.",
         ],
       },
       {
@@ -38,14 +38,14 @@ export const blogArticles: BlogArticle[] = [
         ],
       },
       {
-        heading: "Como a Inteligência Artificial ajuda",
+        heading: "Como o processamento inteligente ajuda",
         body: [
-          "O VectorCAD AI usa OCR local para reconhecer textos e pode recorrer à análise visual em regiões que exigem uma interpretação adicional. Assim, títulos, legendas, anotações e identificações técnicas podem ser organizados como informações estruturadas.",
-          "Essa separação ajuda a preservar o contexto do desenho, reduzir interferências na vetorização e preparar os dados para arquivos editáveis. A IA atua como apoio à produtividade, enquanto o usuário continua validando o resultado no editor.",
+          "O VetorCAD usa OCR local para reconhecer textos e análise de regiões que exigem uma interpretação adicional. Assim, títulos, legendas, anotações e identificações técnicas podem ser organizados como informações estruturadas.",
+          "Essa separação ajuda a preservar o contexto do desenho, reduzir interferências na vetorização e preparar os dados para arquivos editáveis. O usuário continua validando o resultado no editor.",
         ],
       },
       {
-        heading: "Aplicações do VectorCAD AI",
+        heading: "Aplicações do VetorCAD Converter",
         body: [
           "Na engenharia industrial, o fluxo pode apoiar a análise de fluxogramas, instrumentação e diagramas técnicos. Na arquitetura, pode auxiliar na organização de plantas, fachadas e desenhos técnicos digitalizados.",
           "Em projetos de diferentes áreas, a ferramenta ajuda na documentação, revisão e conversão de materiais legados, reduzindo o redesenho manual e centralizando os resultados em um workspace.",
@@ -61,7 +61,7 @@ export const blogArticles: BlogArticle[] = [
       {
         heading: "Conclusão",
         body: [
-          "O VectorCAD AI posiciona a Inteligência Artificial como uma camada de produtividade para profissionais técnicos. Ao unir OCR, análise visual e exportação CAD, a plataforma ajuda a transformar desenhos existentes em uma base mais organizada para o trabalho de engenharia.",
+          "O VetorCAD Converter combina OCR, análise visual e exportação CAD para transformar desenhos existentes em uma base mais organizada para o trabalho de engenharia.",
         ],
       },
     ],
@@ -78,7 +78,7 @@ export const blogArticles: BlogArticle[] = [
         heading: "O que o DXF precisa ter para ser editável",
         body: [
           "Um arquivo DXF útil para CAD não deve ser apenas uma imagem colada dentro do desenho. Ele precisa conter entidades vetoriais, como polilinhas, contornos e curvas aproximadas, para que o usuário consiga editar, medir, escalar e enviar para corte ou fabricação.",
-          "No VectorCAD, a imagem passa por pré-processamento, vetorização por contorno e exportação em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais próximas de um desenho técnico.",
+          "No VetorCAD, a imagem passa por pré-processamento, vetorização por contorno e exportação em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais próximas de um desenho técnico.",
         ],
       },
       {

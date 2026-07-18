@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ analysis: { ...local, ...vision, objects: local.objects, dimensions: local.dimensions, provider: "hybrid-ocr-vision" }, vision: { status: "executed" } });
   } catch (visionError) {
     const reason = visionError instanceof Error ? visionError.message : "VISION_UNKNOWN_ERROR";
-    console.warn("[VectorCAD][AI] Vision fallback para OCR local", { reason, userId: data.user.id });
+    console.warn("[VetorCAD][AI] Vision fallback para OCR local", { reason, userId: data.user.id });
     const fallback = objectDetector ? await runVectorCadAi(input, localProvider, objectDetector) : local;
     return NextResponse.json({ analysis: fallback, vision: { status: fallback.objectDetectionStatus === "executed" ? "executed" : "fallback", reason } });
   }

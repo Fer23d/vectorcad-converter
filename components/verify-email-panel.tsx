@@ -66,7 +66,7 @@ function VerifyEmailContent() {
       }
 
       setStatus("idle");
-      setMessage("Enviamos um link de confirmação para o seu endereço de e-mail. Verifique sua caixa de entrada para ativar sua conta VectorCAD.");
+      setMessage("Enviamos um link de confirmação para o seu endereço de e-mail. Verifique sua caixa de entrada para ativar sua conta VetorCAD.");
     }
 
     verifySession();
@@ -107,7 +107,7 @@ function VerifyEmailContent() {
       <div className="flex items-center gap-4">
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><MailCheck size={23} /></div>
         <div>
-          <div className="text-base font-black tracking-[.12em]">VectorCAD</div>
+          <div className="text-base font-black tracking-[.12em]">VetorCAD</div>
           <div className="mt-1 text-[11px] text-[#84938b]">Ativação segura da conta</div>
         </div>
       </div>
@@ -116,7 +116,7 @@ function VerifyEmailContent() {
         <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]"><ShieldCheck size={15} /> Confirmação obrigatória</div>
         <h1 className="mt-4 text-3xl font-black tracking-[-.04em]">Confirme seu e-mail</h1>
         <p className="mt-4 text-sm leading-7 text-[#aebeb6]">
-          Enviamos um link de confirmação para o seu endereço de e-mail. Verifique sua caixa de entrada para ativar sua conta VectorCAD.
+          Enviamos um link de confirmação para o seu endereço de e-mail. Verifique sua caixa de entrada para ativar sua conta VetorCAD.
         </p>
         <p className={`mt-5 rounded-2xl border px-4 py-3 text-sm leading-6 ${status === "success" ? "border-[#b7f34a]/40 bg-[#172314] text-[#dfffc0]" : status === "error" ? "border-red-500/30 bg-red-950/20 text-red-100" : "border-[#2d3933] bg-[#101613] text-[#9caaa3]"}`}>{message}</p>
       </div>

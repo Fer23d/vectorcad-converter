@@ -18,7 +18,7 @@ function authMessage(message: string) {
   }
 
   if (lowerMessage.includes("email not confirmed")) {
-    return "Confirme seu e-mail para acessar o VectorCAD.";
+    return "Confirme seu e-mail para acessar o VetorCAD.";
   }
 
   if (lowerMessage.includes("already")) {
@@ -46,7 +46,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [resetEmail, setResetEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [loading, setLoading] = useState(isSupabaseConfigured);
-  const [message, setMessage] = useState(isSupabaseConfigured ? mode === "login" ? "Faça login para acessar seus projetos." : "Crie sua conta para iniciar o VectorCAD." : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  const [message, setMessage] = useState(isSupabaseConfigured ? mode === "login" ? "Faça login para acessar seus projetos." : "Crie sua conta para iniciar o VetorCAD." : "Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
 
   useEffect(() => {
     const client = supabase;
@@ -180,7 +180,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
   return <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10">
     <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613]/95 p-8 text-[#e8efeb] shadow-2xl shadow-black/40 backdrop-blur">
-      <div className="mb-7 flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div><div><div className="text-base font-black tracking-[.12em]">VectorCAD</div><div className="mt-1 text-[11px] text-[#84938b]">{mode === "login" ? "Acesse seu workspace SaaS" : "Crie sua conta profissional"}</div></div></div>
+      <div className="mb-7 flex items-center gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div><div><div className="text-base font-black tracking-[.12em]">VetorCAD</div><div className="mt-1 text-[11px] text-[#84938b]">{mode === "login" ? "Acesse seu workspace SaaS" : "Crie sua conta profissional"}</div></div></div>
       {mode === "signup" && <div className="mb-4 grid gap-3 sm:grid-cols-2">
         <label className="block text-xs font-bold text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={inputClass} type="text" placeholder="Fernando" required /></label>
         <label className="block text-xs font-bold text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className={inputClass} type="text" placeholder="Fernandes" required /></label>
@@ -207,7 +207,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           <Link href="/termos" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Termos de Uso</Link>
           {" "}e a{" "}
           <Link href="/privacidade" className="font-black text-[#b7f34a] underline-offset-4 hover:underline">Política de Privacidade</Link>
-          {" "}do VectorCAD.
+          {" "}do VetorCAD.
         </span>
       </label>}
       <button disabled={loading || !isSupabaseConfigured || (mode === "signup" && !termsAccepted)} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60">{loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}</button>

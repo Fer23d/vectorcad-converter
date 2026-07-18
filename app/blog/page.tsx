@@ -4,7 +4,7 @@ import { PublicSiteShell } from "@/components/public-site-shell";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "Blog VectorCAD | Guias de SVG, DXF, CAD e CNC",
+  title: "Blog VetorCAD | Guias de SVG, DXF, CAD e CNC",
   description: "Artigos sobre vetorização, conversão de imagem para DXF, SVG para corte laser, CAD/CAM e preparação de arquivos técnicos.",
   alternates: { canonical: "https://vetorcad.com.br/blog" },
 };

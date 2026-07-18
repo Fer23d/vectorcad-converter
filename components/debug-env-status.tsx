@@ -5,7 +5,7 @@ import { supabaseConfig } from "@/lib/supabase/client";
 export function DebugEnvStatus({ serverUrlPresent, serverKeyPresent }: { serverUrlPresent: boolean; serverKeyPresent: boolean }) {
   return <main className="grid min-h-screen place-items-center bg-[#080c0b] px-4 text-[#e8efeb]">
     <section className="w-full max-w-xl rounded-2xl border border-[#33413a] bg-[#101613] p-6">
-      <p className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">VectorCAD diagnostics</p>
+      <p className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">VetorCAD diagnostics</p>
       <h1 className="mt-3 text-2xl font-black">Supabase público</h1>
       <div className="mt-6 space-y-3 text-sm">
         <Status label="NEXT_PUBLIC_SUPABASE_URL" found={supabaseConfig.urlPresent} />

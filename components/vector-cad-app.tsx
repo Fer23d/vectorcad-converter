@@ -318,7 +318,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!isSupabaseConfigured || !supabase) return true;
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      setMessage("Faça login para usar o VectorCAD.");
+      setMessage("Faça login para usar o VetorCAD.");
       return false;
     }
 
@@ -620,7 +620,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       return;
     }
     setAiRunning(true);
-    setAiStatus("Analisando com o VectorCAD AI...");
+    setAiStatus("Analisando o projeto...");
     try {
       if (!supabase) throw new Error("SUPABASE_NOT_CONFIGURED");
       const { data: sessionData } = await supabase.auth.getSession();
@@ -643,12 +643,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setSelectedAiText(null);
       setSelectedAiElement(null);
       setVisionStatus(payload.vision?.status === "executed" ? "executed" : payload.vision?.status === "fallback" ? "fallback" : "skipped");
-      const visionStatus = payload.vision?.status === "executed" ? "OCR + Vision AI" : payload.vision?.status === "fallback" ? "OCR local (Vision AI indisponível)" : "OCR local (confiança suficiente)";
+      const visionStatus = payload.vision?.status === "executed" ? "OCR + análise visual" : payload.vision?.status === "fallback" ? "OCR local (análise visual indisponível)" : "OCR local (confiança suficiente)";
       setAiStatus(`${visionStatus} · ${analysis.elements.length} elementos encontrados`);
     } catch (error) {
-      console.warn("[VectorCAD][AI] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
+      console.warn("[VetorCAD][AI] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
       setVisionStatus("idle");
-      setAiStatus("Não foi possível concluir a análise de IA.");
+      setAiStatus("Não foi possível concluir a análise do projeto.");
     } finally {
       setAiRunning(false);
     }
@@ -692,22 +692,22 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!projectId) setMessage("Salvando projeto para abrir visualização 3D...");
     const savedProjectId = projectId || await onPrepare3dProject?.(data);
     if (!savedProjectId) {
-      console.info("[VectorCAD][3D] project id unavailable", { hasProjectId: false });
+      console.info("[VetorCAD][3D] project id unavailable", { hasProjectId: false });
       setMessage("Salve o projeto antes de abrir o visualizador em nova guia.");
       return;
     }
 
     const viewerUrl = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
-    console.info("[VectorCAD][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
+    console.info("[VetorCAD][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
     try {
       const newTab = window.open(viewerUrl, "_blank", "noopener,noreferrer");
-      console.info("[VectorCAD][3D] window.open result", { opened: Boolean(newTab) });
+      console.info("[VetorCAD][3D] window.open result", { opened: Boolean(newTab) });
       if (!newTab) {
-        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o VectorCAD.");
+        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o VetorCAD.");
         return;
       }
     } catch (error) {
-      console.error("[VectorCAD][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+      console.error("[VetorCAD][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
       setMessage("Não foi possível abrir o visualizador 3D em uma nova guia.");
       return;
     }
@@ -717,7 +717,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">VectorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
+      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
@@ -742,12 +742,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="ultra">Ultra CAD</option>
             <option value="ultra-pro">Ultra CAD Pro</option>
             <option value="cad-clean">CAD Clean Image</option>
-            <option value="ai-enhance-2x">AI Enhance Rápido 2x</option>
-            <option value="ai-enhance-3k">AI Enhance 3K</option>
-            <option value="ai-enhance-4k">AI Enhance 4K</option>
+            <option value="ai-enhance-2x">Melhoria rápida 2x</option>
+            <option value="ai-enhance-3k">Melhoria 3K</option>
+            <option value="ai-enhance-4k">Melhoria 4K</option>
           </select>
           {imageAnalysis && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
-            <p className="font-bold text-[#b7f34a]">Análise IA</p>
+            <p className="font-bold text-[#b7f34a]">Análise de imagem</p>
             <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 leading-4">
               <span>Qualidade: <b className="text-[#e8efeb]">{imageAnalysis.qualityScore}%</b></span>
               <span>Resolução: {imageAnalysis.resolutionScore < 40 ? "Baixa" : imageAnalysis.resolutionScore < 70 ? "Média" : "Alta"}</span>
@@ -756,15 +756,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
               <span>Nitidez: {imageAnalysis.sharpnessLevel}</span>
               <span>Confiança: {imageAnalysis.confidence}%</span>
             </div>
-            <p className="mt-2 text-[#829087]">Recomendação: <b className="text-[#b7f34a]">{({ original: "Original", enhanced: "Melhorada", ultra: "Ultra CAD", "ultra-pro": "Ultra CAD Pro", "cad-clean": "CAD Clean Image", "ai-enhance-2x": "AI Enhance 2x", "ai-enhance-3k": "AI Enhance 3K", "ai-enhance-4k": "AI Enhance 4K" } as Record<ImageQuality, string>)[imageAnalysis.recommendedMode]}</b></p>
+            <p className="mt-2 text-[#829087]">Recomendação: <b className="text-[#b7f34a]">{({ original: "Original", enhanced: "Melhorada", ultra: "Ultra CAD", "ultra-pro": "Ultra CAD Pro", "cad-clean": "CAD Clean Image", "ai-enhance-2x": "Melhoria 2x", "ai-enhance-3k": "Melhoria 3K", "ai-enhance-4k": "Melhoria 4K" } as Record<ImageQuality, string>)[imageAnalysis.recommendedMode]}</b></p>
             <button type="button" onClick={() => { setImageQuality(imageAnalysis.recommendedMode); setMessage("Otimização recomendada aplicada."); }} className="mt-2 w-full rounded-md border border-[#b7f34a] px-2 py-1.5 font-bold text-[#b7f34a] hover:bg-[#b7f34a]/10">Aplicar otimização recomendada</button>
           </div>}
           {isAiEnhanceQuality(imageQuality) && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
-            <p className="font-bold text-[#b7f34a]">AI Enhance {imageQuality === "ai-enhance-4k" ? "4K" : imageQuality === "ai-enhance-2x" ? "Rápido 2x" : "3K"}</p>
+            <p className="font-bold text-[#b7f34a]">Melhoria de imagem {imageQuality === "ai-enhance-4k" ? "4K" : imageQuality === "ai-enhance-2x" ? "rápida 2x" : "3K"}</p>
             <p className="mt-1 leading-4 text-[#829087]">Upscale CAD, contraste adaptativo e reforço de linhas técnicas. A imagem original não é alterada.</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <figure><figcaption className="mb-1 text-[#829087]">Antes</figcaption><DiagnosticImage src={sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem original antes do AI Enhance" className="h-24 w-full object-contain bg-white" /></figure>
-              <figure><figcaption className="mb-1 text-[#829087]">Depois</figcaption><DiagnosticImage src={aiEnhancedPreview || processedPreview || sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem após AI Enhance" className="h-24 w-full object-contain bg-white" /></figure>
+              <figure><figcaption className="mb-1 text-[#829087]">Antes</figcaption><DiagnosticImage src={sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem original antes da melhoria" className="h-24 w-full object-contain bg-white" /></figure>
+              <figure><figcaption className="mb-1 text-[#829087]">Depois</figcaption><DiagnosticImage src={aiEnhancedPreview || processedPreview || sourceOriginalDataUrl || sourceImageDataUrl} alt="Imagem após a melhoria" className="h-24 w-full object-contain bg-white" /></figure>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 leading-4">
               <span>Resolução original: {aiEnhanceMetrics.originalWidth.toLocaleString("pt-BR")} × {aiEnhanceMetrics.originalHeight.toLocaleString("pt-BR")}</span>
@@ -822,14 +822,14 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             </div>
           </details>}
           <div className="mt-4 rounded-lg border border-[#33433a] bg-[#111914] p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VectorCAD AI</div>
+            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VetorCAD Converter</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
-            {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Vision AI: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executado" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
+            {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Análise visual: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executada" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
             <div className="mt-3 rounded border border-[#29372f] bg-[#0b110d] p-2 text-[9px] text-[#aab8b0]">
               <div className="grid grid-cols-3 gap-1 text-center">
                 <span><b className="block text-[#54a9ff]">{detectedTexts.length}</b>OCR encontrados</span>
-                <span><b className="block text-[#b7f34a]">{visionStatus === "executed" ? "Sim" : "Não"}</b>Vision AI</span>
+                <span><b className="block text-[#b7f34a]">{visionStatus === "executed" ? "Sim" : "Não"}</b>análise visual</span>
                 <span><b className="block text-[#e8efeb]">{aiAnalysis?.texts.length || 0}</b>resultado final</span>
               </div>
               {aiAnalysis && <div className="mt-2 grid grid-cols-3 gap-1 border-t border-[#29372f] pt-2 text-center">
@@ -839,7 +839,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
                 <span><b className="block text-[#e8efeb]">{Math.round(aiAnalysis.confidence * 100)}%</b>confiança média</span>
               </div>}
             </div>
-            <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Visualizar análise IA</span><input type="checkbox" checked={showAiOverlay} onChange={e => setShowAiOverlay(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Visualizar análise do projeto</span><input type="checkbox" checked={showAiOverlay} onChange={e => setShowAiOverlay(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
             {showAiOverlay && <Slider label="Confiança mínima (%)" value={Math.round(aiConfidenceThreshold * 100)} min={0} max={100} onChange={value => setAiConfidenceThreshold(value / 100)} />}
             {showAiOverlay && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-[#aab8b0]"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#b7f34a]" />Texto exportável</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#54a9ff]" />Anotação</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ffd34d]" />Possível cota</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-[#ff5c57]" />Baixa confiança</span></div>}
             <label className="mt-3 flex cursor-pointer items-center justify-between gap-2 text-[10px] text-[#bdc9c3]"><span>Exportar textos inteligentes</span><input type="checkbox" checked={exportSmartTexts} onChange={e => setExportSmartTexts(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" /></label>
@@ -883,7 +883,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         <Section title="Vetorização" icon={<ScanLine size={14} />}>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Modo de processamento</label>
           <div className="grid grid-cols-2 gap-1">
-            {([["manual", "Manual"], ["auto", "IA Automática"]] as [LineProcessingMode, string][]).map(([value, label]) => <button key={value} type="button" onClick={() => setLineProcessingMode(value)} className={`rounded-md px-1 py-2 text-[9px] font-bold ${lineProcessingMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}
+            {([["manual", "Manual"], ["auto", "Automático"]] as [LineProcessingMode, string][]).map(([value, label]) => <button key={value} type="button" onClick={() => setLineProcessingMode(value)} className={`rounded-md px-1 py-2 text-[9px] font-bold ${lineProcessingMode === value ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{label}</button>)}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1 border-b border-[#29372f] pb-2 text-center text-[9px] text-[#aab8b0]">
             <span><b className="block text-[#e8efeb]">{lineMetrics.pathsReceived}</b>paths recebidos</span>
@@ -919,7 +919,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
           <div className="flex gap-1 rounded-lg bg-[#151c19] p-1">{(["original", "processed", "vector"] as const).map(v => <button key={v} onClick={() => setActiveView(v)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase ${activeView === v ? "bg-[#334039] text-white" : "text-[#7f8e86]"}`}>{v === "original" ? "Original" : v === "processed" ? "Processada" : "Vetor"}</button>)}</div>
           <div className="flex items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button></div>
         </div>
-          {activeView === "vector" && <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px]"><button type="button" onClick={() => setShowPreviewContours(value => !value)} className={`rounded border px-2 py-1 ${showPreviewContours ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Contours</button><button type="button" onClick={() => setShowPreviewLayers(value => !value)} className={`rounded border px-2 py-1 ${showPreviewLayers ? "border-[#54a9ff] text-[#54a9ff]" : "border-[#34413b] text-[#7f8e86]"}`}>Layers</button><span className="rounded border border-[#34413b] px-2 py-1 text-[#aab8b0]">Scale: {unit}</span><button type="button" onClick={() => setShowAiOverlay(value => !value)} className={`rounded border px-2 py-1 ${showAiOverlay ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Visual AI Overlay</button><button type="button" onClick={() => setShowPreviewTexts(value => !value)} className={`rounded border px-2 py-1 ${showPreviewTexts ? "border-[#ff8a3d] text-[#ff8a3d]" : "border-[#34413b] text-[#7f8e86]"}`}>Textos</button></div>}
+          {activeView === "vector" && <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px]"><button type="button" onClick={() => setShowPreviewContours(value => !value)} className={`rounded border px-2 py-1 ${showPreviewContours ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Contours</button><button type="button" onClick={() => setShowPreviewLayers(value => !value)} className={`rounded border px-2 py-1 ${showPreviewLayers ? "border-[#54a9ff] text-[#54a9ff]" : "border-[#34413b] text-[#7f8e86]"}`}>Layers</button><span className="rounded border border-[#34413b] px-2 py-1 text-[#aab8b0]">Scale: {unit}</span><button type="button" onClick={() => setShowAiOverlay(value => !value)} className={`rounded border px-2 py-1 ${showAiOverlay ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Overlay inteligente</button><button type="button" onClick={() => setShowPreviewTexts(value => !value)} className={`rounded border px-2 py-1 ${showPreviewTexts ? "border-[#ff8a3d] text-[#ff8a3d]" : "border-[#34413b] text-[#7f8e86]"}`}>Textos</button></div>}
         <div ref={previewViewport} onPointerDown={viewer.onPointerDown} onPointerMove={viewer.onPointerMove} onPointerUp={viewer.onPointerUp} onPointerCancel={viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex flex-1 items-center justify-center overflow-hidden p-6 ${viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
           <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
@@ -955,7 +955,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
       <div className="mx-auto flex max-w-4xl flex-col items-center justify-center gap-5 text-center md:flex-row md:gap-8">
         <div className="max-w-xs">
-          <div className="text-sm font-black tracking-[.12em] text-[#b7f34a]">VectorCAD</div>
+          <div className="text-sm font-black tracking-[.12em] text-[#b7f34a]">VetorCAD</div>
           <div className="mt-2 text-[11px] text-[#8b9a92]">A inteligência aplicada aos seus projetos de engenharia.</div>
         </div>
         <div className="mx-auto hidden h-12 w-px bg-[#304238] md:block" aria-hidden="true" />
