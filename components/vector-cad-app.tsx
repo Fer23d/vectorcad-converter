@@ -92,6 +92,18 @@ function DimensionOverlay({ dimensions, threshold, selectedIndex, onSelect }: { 
   </div>;
 }
 
+function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { doc: VectorDocument | null; showContours: boolean; showLayers: boolean; onSelect: (path: VectorDocument["paths"][number], index: number) => void }) {
+  if (!doc || !showContours) return null;
+  const colors = { CONTOURS: "#b7f34a", DETAILS: "#54a9ff", GUIDES: "#ffd34d" } as const;
+  return <svg viewBox={`0 0 ${doc.sourceWidth || doc.width} ${doc.sourceHeight || doc.height}`} className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
+    {doc.paths.map((path, index) => {
+      if (path.points.length < 2) return null;
+      const d = path.points.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${point.x} ${point.y}`).join(" ") + (path.closed ? " Z" : "");
+      return <path key={`${path.layer}-${index}`} d={d} fill={path.closed ? `${colors[path.layer]}12` : "none"} stroke={showLayers ? colors[path.layer] : "#b7f34a"} strokeWidth={Math.max(0.8, (doc.sourceWidth || doc.width) / 900)} vectorEffect="non-scaling-stroke" className="pointer-events-auto cursor-pointer transition-opacity hover:opacity-70" onMouseEnter={() => onSelect(path, index)} onClick={() => onSelect(path, index)} />;
+    })}
+  </svg>;
+}
+
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
@@ -113,6 +125,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [exportSmartTexts, setExportSmartTexts] = useState(initialData?.exportSmartTexts ?? true);
   const [aiFeedback, setAiFeedback] = useState<AiFeedback[]>(initialData?.aiFeedback || []);
   const [showAiOverlay, setShowAiOverlay] = useState(false);
+  const [showPreviewContours, setShowPreviewContours] = useState(true);
+  const [showPreviewLayers, setShowPreviewLayers] = useState(true);
+  const [showPreviewTexts, setShowPreviewTexts] = useState(false);
+  const [selectedPreviewPath, setSelectedPreviewPath] = useState<{ path: VectorDocument["paths"][number]; index: number } | null>(null);
   const [aiConfidenceThreshold, setAiConfidenceThreshold] = useState(0);
   const [selectedAiText, setSelectedAiText] = useState<number | null>(null);
   const [selectedAiElement, setSelectedAiElement] = useState<number | null>(null);
@@ -899,19 +915,27 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       <button type="button" aria-label="Redimensionar painel de controles" title="Arraste para redimensionar" onPointerDown={panel.startResize} className={`panel-resizer ${panel.resizing ? "is-resizing" : ""}`}><span /></button>
 
       <div className="preview-panel flex min-h-[600px] min-w-0 flex-col overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#26312c] bg-[#0d1210] px-4 py-3">
+        <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-3">
           <div className="flex gap-1 rounded-lg bg-[#151c19] p-1">{(["original", "processed", "vector"] as const).map(v => <button key={v} onClick={() => setActiveView(v)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase ${activeView === v ? "bg-[#334039] text-white" : "text-[#7f8e86]"}`}>{v === "original" ? "Original" : v === "processed" ? "Processada" : "Vetor"}</button>)}</div>
           <div className="flex items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button></div>
         </div>
+          {activeView === "vector" && <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px]"><button type="button" onClick={() => setShowPreviewContours(value => !value)} className={`rounded border px-2 py-1 ${showPreviewContours ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Contours</button><button type="button" onClick={() => setShowPreviewLayers(value => !value)} className={`rounded border px-2 py-1 ${showPreviewLayers ? "border-[#54a9ff] text-[#54a9ff]" : "border-[#34413b] text-[#7f8e86]"}`}>Layers</button><span className="rounded border border-[#34413b] px-2 py-1 text-[#aab8b0]">Scale: {unit}</span><button type="button" onClick={() => setShowAiOverlay(value => !value)} className={`rounded border px-2 py-1 ${showAiOverlay ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Visual AI Overlay</button><button type="button" onClick={() => setShowPreviewTexts(value => !value)} className={`rounded border px-2 py-1 ${showPreviewTexts ? "border-[#ff8a3d] text-[#ff8a3d]" : "border-[#34413b] text-[#7f8e86]"}`}>Textos</button></div>}
         <div ref={previewViewport} onPointerDown={viewer.onPointerDown} onPointerMove={viewer.onPointerMove} onPointerUp={viewer.onPointerUp} onPointerCancel={viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex flex-1 items-center justify-center overflow-hidden p-6 ${viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
           <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full`} />
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {activeView === "vector" && <VectorInspectionOverlay doc={doc} showContours={showPreviewContours} showLayers={showPreviewLayers} onSelect={(path, index) => setSelectedPreviewPath({ path, index })} />}
+            {activeView === "vector" && showPreviewTexts && <div className="pointer-events-none absolute inset-0">{detectedTexts.map((text, index) => <button key={`${text.text}-${index}`} type="button" className="pointer-events-auto absolute border border-[#ff8a3d] bg-[#ff8a3d]/10 text-[8px] text-[#c95d27]" style={{ left: text.x, top: text.y, width: Math.max(8, text.width), height: Math.max(8, text.height) }} title={`${text.text} · confiança ${Math.round(text.confidence * 100)}%`}><span className="absolute left-0 top-full whitespace-nowrap bg-white px-1">{text.text}</span></button>)}</div>}
             {showAiOverlay && aiAnalysis && <><AiAnalysisOverlay elements={aiAnalysis.elements || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiElement} onSelect={index => { setSelectedAiElement(index); const selected = aiAnalysis.elements?.[index]; const textIndex = selected ? aiAnalysis.texts.findIndex(text => text.value === selected.name && text.position.x === selected.position.x && text.position.y === selected.position.y) : -1; setSelectedAiText(textIndex >= 0 ? textIndex : null); }} /><DimensionOverlay dimensions={aiAnalysis.detectedDimensions || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiDimension} onSelect={setSelectedAiDimension} /></>}
           </div>
         </div>
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
+        <div className="border-t border-[#26312c] bg-[#101613] px-4 py-3">
+          <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4"><Stat label="Linhas" value={pathCount} /><Stat label="Objetos detectados" value={aiAnalysis?.elements?.length || 0} /><Stat label="Redução de ruído" value={`${cleanupStats.reductionPercent}%`} /><Stat label="Confiança média" value={aiAnalysis ? `${Math.round(aiAnalysis.confidence * 100)}%` : "Informação não disponível"} /></div>
+          <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => exportFile("svg")} className="rounded-lg bg-white px-3 py-2 text-[10px] font-black text-[#111713]">Exportar SVG</button><button type="button" onClick={() => exportFile("dxf")} className="rounded-lg bg-[#b7f34a] px-3 py-2 text-[10px] font-black text-[#0a120c]">Exportar DXF</button><span className="self-center text-[9px] text-[#829087]">Hover para inspecionar · clique para selecionar</span></div>
+          {selectedPreviewPath && <div className="mt-2 rounded-lg border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Objeto selecionado</b><br />Tipo: {selectedPreviewPath.path.closed ? "Curva/contorno fechado" : "Linha/polilinha"}<br />Layer: {selectedPreviewPath.path.layer}<br />Pontos: {selectedPreviewPath.path.points.length}<br />Dimensão: Informação não disponível<button type="button" onClick={() => setSelectedPreviewPath(null)} className="ml-3 text-[#b7f34a]">Fechar</button></div>}
+        </div>
       </div>
 
       <button type="button" aria-label="Redimensionar painel CAD" title="Arraste para redimensionar" onPointerDown={cadPanel.startResize} className={`panel-resizer panel-resizer-right ${cadPanel.resizing ? "is-resizing" : ""}`}><span /></button>
