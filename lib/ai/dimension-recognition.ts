@@ -101,7 +101,7 @@ export class DimensionRecognitionEngine {
     const fallbackUnit = input.unit || "mm";
     return input.texts.flatMap((text, index) => {
       if (!dimensionTextTypes.has(text.type) || text.type === "LABEL" || text.type === "TITLE") return [];
-      const parsed = parseDimensionText(text.value, fallbackUnit);
+      const parsed = parseDimensionText(text.value.replace(/^[\u00d8\u2300]\s*/, ""), fallbackUnit);
       if (!parsed) return [];
       const nearby = evidence.find(item => overlapsOrNear(text.boundingBox, item.boundingBox));
       if (!nearby) return [];

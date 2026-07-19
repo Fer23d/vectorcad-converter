@@ -18,7 +18,7 @@ function normalized(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
-function sameText(left: AiTextElement, right: AiTextElement) {
+export function sameText(left: AiTextElement, right: AiTextElement) {
   if (Math.hypot(left.position.x - right.position.x, left.position.y - right.position.y) >= 40) return false;
   const a = normalized(left.value);
   const b = normalized(right.value);
@@ -35,6 +35,22 @@ function sameText(left: AiTextElement, right: AiTextElement) {
     }
   }
   return rows[a.length][b.length] <= Math.max(2, Math.floor(Math.max(a.length, b.length) * .2));
+}
+
+/** Keeps the best candidate when OCR and Vision inspect overlapping regions. */
+export function deduplicateAiTexts(texts: AiTextElement[]) {
+  const merged: AiTextElement[] = [];
+  for (const candidate of texts) {
+    const duplicateIndex = merged.findIndex((text) => sameText(text, candidate));
+    if (duplicateIndex < 0) {
+      merged.push(candidate);
+      continue;
+    }
+    const current = merged[duplicateIndex];
+    const candidateWins = candidate.confidence > current.confidence;
+    if (candidateWins) merged[duplicateIndex] = candidate;
+  }
+  return merged;
 }
 
 export class TextFusionEngine {
@@ -56,13 +72,10 @@ export class TextFusionEngine {
   }
 
   fuse(ocrTexts: FusionOcrText[], visionTexts: AiTextElement[] = []) {
-    const merged = ocrTexts.map((text) => this.normalizeOcr(text));
-    for (const visionText of visionTexts) {
-      const duplicateIndex = merged.findIndex((text) => sameText(text, visionText));
-      if (duplicateIndex < 0) merged.push({ ...visionText, source: "VISION_AI" });
-      else if (visionText.confidence > merged[duplicateIndex].confidence) merged[duplicateIndex] = { ...visionText, source: "VISION_AI" };
-    }
-    return merged;
+    return deduplicateAiTexts([
+      ...ocrTexts.map((text) => this.normalizeOcr(text)),
+      ...visionTexts.map((text) => ({ ...text, source: "VISION_AI" as const })),
+    ]);
   }
 
   fuseDetectedTexts(ocrTexts: DetectedText[], visionTexts: AiTextElement[] = []) {

@@ -67,6 +67,46 @@ function aiTextKey(text: AiTextElement, index: number) {
   return `${index}:${text.value}:${Math.round(text.position.x)}:${Math.round(text.position.y)}`;
 }
 
+type VisionRegionPayload = {
+  imageDataUrl: string;
+  region: { x: number; y: number; width: number; height: number };
+};
+
+function createVisionRegions(canvas: HTMLCanvasElement, texts: DetectedText[]): VisionRegionPayload[] {
+  const width = canvas.width;
+  const height = canvas.height;
+  const boxes = texts
+    .filter((text) => (text.confidenceFinal ?? text.confidence) < 0.7 && text.width > 0 && text.height > 0)
+    .slice(0, 6)
+    .map((text) => ({ x: Math.max(0, text.x - 32), y: Math.max(0, text.y - 24), width: Math.min(width, text.width + 64), height: Math.min(height, text.height + 48) }));
+  if (!boxes.length) {
+    const halfWidth = Math.ceil(width / 2);
+    const halfHeight = Math.ceil(height / 2);
+    boxes.push(
+      { x: 0, y: 0, width: halfWidth, height: halfHeight },
+      { x: halfWidth, y: 0, width: width - halfWidth, height: halfHeight },
+      { x: 0, y: halfHeight, width: halfWidth, height: height - halfHeight },
+      { x: halfWidth, y: halfHeight, width: width - halfWidth, height: height - halfHeight },
+    );
+  }
+  return boxes.filter((box) => box.width > 0 && box.height > 0).map((box) => {
+    const crop = document.createElement("canvas");
+    crop.width = Math.round(box.width);
+    crop.height = Math.round(box.height);
+    crop.getContext("2d")?.drawImage(canvas, box.x, box.y, box.width, box.height, 0, 0, crop.width, crop.height);
+    let imageDataUrl = crop.toDataURL("image/png");
+    if (imageDataUrl.length > 14 * 1024 * 1024) {
+      const scale = Math.min(1, 2800 / Math.max(crop.width, crop.height));
+      const safeCrop = document.createElement("canvas");
+      safeCrop.width = Math.max(1, Math.round(crop.width * scale));
+      safeCrop.height = Math.max(1, Math.round(crop.height * scale));
+      safeCrop.getContext("2d")?.drawImage(crop, 0, 0, safeCrop.width, safeCrop.height);
+      imageDataUrl = safeCrop.toDataURL("image/png");
+    }
+    return { imageDataUrl, region: box };
+  });
+}
+
 function aiElementColor(element: AiDetectedElement, threshold: number) {
   if (element.confidence < threshold || element.confidence < .5) return { border: "#ff5c57", text: "#ff8b87" };
   if (["EQUIPMENT", "INSTRUMENT", "VALVE", "PUMP", "MOTOR", "PANEL"].includes(element.type)) return { border: "#b7f34a", text: "#d7ff9b" };
@@ -625,11 +665,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       if (!supabase) throw new Error("SUPABASE_NOT_CONFIGURED");
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) throw new Error("SESSION_MISSING");
+      const averageOcrConfidence = detectedTexts.length ? detectedTexts.reduce((sum, text) => sum + (text.confidenceFinal ?? text.confidence), 0) / detectedTexts.length : 0;
+      const visionRegions = !detectedTexts.length || averageOcrConfidence < 0.7 ? createVisionRegions(image, detectedTexts) : [];
+      console.info("[vetorcad][analysis] regiões enviadas", { count: visionRegions.length, bounds: visionRegions.map(region => region.region) });
       const response = await fetch("/api/ai/vision", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({
-          imageDataUrl: image.toDataURL("image/png"),
+          imageDataUrl: visionRegions[0]?.imageDataUrl || image.toDataURL("image/png"),
+          regions: visionRegions,
           ocrTexts: detectedTexts,
           vectors: doc,
           dimensions: { width: realWidth, height: realHeight, unit },
@@ -644,7 +688,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setSelectedAiElement(null);
       setVisionStatus(payload.vision?.status === "executed" ? "executed" : payload.vision?.status === "fallback" ? "fallback" : "skipped");
       const visionStatus = payload.vision?.status === "executed" ? "OCR + análise visual" : payload.vision?.status === "fallback" ? "OCR local (análise visual indisponível)" : "OCR local (confiança suficiente)";
-      setAiStatus(`${visionStatus} · ${analysis.elements.length} elementos encontrados`);
+      setAiStatus(`${visionStatus} · ${analysis.elements.length} elementos encontrados · ${analysis.texts.length} textos consolidados`);
     } catch (error) {
       console.warn("[vetorcad][analysis] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
       setVisionStatus("idle");
@@ -825,7 +869,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> vetorcad Converter</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Análise visual: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executada" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
-            <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
+            <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Executar análise Vision AI"}</button>
+            <p className="mt-1 text-center text-[9px] text-[#829087]">OCR local → Vision AI por regiões → TextFusion</p>
             <div className="mt-3 rounded border border-[#29372f] bg-[#0b110d] p-2 text-[9px] text-[#aab8b0]">
               <div className="grid grid-cols-3 gap-1 text-center">
                 <span><b className="block text-[#54a9ff]">{detectedTexts.length}</b>OCR encontrados</span>

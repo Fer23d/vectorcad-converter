@@ -13,7 +13,7 @@ import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
 import { LineIntelligenceEngine } from "@/lib/vector/line-intelligence";
 import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detection/ocr";
-import { consolidateAiTexts, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
+import { classifyDetectedText, consolidateAiTexts, mergeAiAnalyses, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { DimensionRecognitionEngine } from "@/lib/ai/dimension-recognition";
 import { inspectSupabaseConfig } from "@/lib/supabase/client";
@@ -198,6 +198,27 @@ describe("vetorcad pipeline", () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].value).toBe("Instrumentação");
     expect(merged[0].source).toBe("VISION_AI");
+  });
+
+  it("merges regional Vision results and keeps only the highest-confidence duplicate", async () => {
+    const local = await runVectorCadAi({ ocrTexts: [{ text: "Instrumentacao", x: 10, y: 20, width: 80, height: 12, rotation: 0, confidence: .35 }] });
+    const regional = await runVectorCadAi({ ocrTexts: [] }, { name: "vision-test", analyze: async () => ({ texts: [{ value: "Instrumentação", type: "LABEL", confidence: .96, position: { x: 11, y: 21 }, boundingBox: { x: 11, y: 21, width: 80, height: 12 }, rotation: 0, source: "VISION_AI" }] }) });
+    const merged = mergeAiAnalyses(local, [regional]);
+
+    expect(merged.texts).toHaveLength(1);
+    expect(merged.texts[0]).toMatchObject({ value: "Instrumentação", source: "VISION_AI", confidence: .96 });
+    expect(merged.elements[0]).toMatchObject({ name: "Instrumentação", source: "VISION_AI" });
+    expect(merged.provider).toBe("hybrid-ocr-vision");
+  });
+
+  it("classifies diameter and scale notation without turning equipment tags into dimensions", () => {
+    const diameter = classifyDetectedText({ text: "Ø50", x: 0, y: 0, width: 20, height: 8, rotation: 0, confidence: .8 });
+    const scale = classifyDetectedText({ text: "1:50", x: 0, y: 0, width: 20, height: 8, rotation: 0, confidence: .8 });
+    const tag = classifyDetectedText({ text: "P-101", x: 0, y: 0, width: 20, height: 8, rotation: 0, confidence: .8 });
+
+    expect(diameter.type).toBe("POSSIBLE_DIMENSION");
+    expect(scale.type).toBe("SCALE");
+    expect(tag.type).toBe("EQUIPMENT_TAG");
   });
 
   it("reports a Vision API error without exposing a secret", async () => {

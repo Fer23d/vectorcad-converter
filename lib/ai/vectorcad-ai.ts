@@ -1,6 +1,6 @@
 import type { CadProjectData } from "@/types/project";
 import type { DetectedText, Unit, VectorDocument } from "@/types/vector";
-import { TextFusionEngine } from "@/lib/ai/text-fusion";
+import { deduplicateAiTexts, TextFusionEngine } from "@/lib/ai/text-fusion";
 import { elementRecognitionEngine, type RecognizedElement } from "@/lib/ai/element-recognition";
 import type { VisionDetectedObject, VisionObjectDetectorLike } from "@/lib/ai/vision-object-detector";
 import { dimensionRecognitionEngine, type RecognizedDimension } from "@/lib/ai/dimension-recognition";
@@ -175,9 +175,10 @@ export function classifyDetectedText(text: DetectedText): AiTextElement {
   const isTitle = /(?:PLANTA|CORTE|FACHADA|LAYOUT|PROJETO|IMPLANTAÇÃO|IMPLANTACAO|DIAGRAMA|MEMORIAL)/.test(normalized) && normalized.split(/\s+/).length >= 2;
   const isLabel = hasLetters && !hasNumbers && normalized.length >= 3;
   const type: AiTextType = isDimension ? "POSSIBLE_DIMENSION" : isScale ? "SCALE" : isNote ? "NOTE" : isEquipmentTag ? "EQUIPMENT_TAG" : isRoomName ? "ROOM_NAME" : isTitle ? "TITLE" : isAnnotation ? "ANNOTATION" : isLabel ? "LABEL" : hasLetters || hasNumbers ? "TEXT" : "UNKNOWN";
+  const correctedType: AiTextType = /^[A-Z]{1,3}-\d{2,4}[A-Z0-9-]*$/.test(normalized) ? "EQUIPMENT_TAG" : /^[\u00d8\u2300]\s*\d/.test(normalized) ? "POSSIBLE_DIMENSION" : /^(?:ESCALA\s*)?\d+\s*[:/]\s*\d+$/.test(normalized) ? "SCALE" : type;
   return {
     value: text.text,
-    type,
+    type: correctedType,
     confidence: text.confidence,
     position: { x: text.x, y: text.y },
     boundingBox: { x: text.x, y: text.y, width: text.width, height: text.height },
@@ -213,6 +214,80 @@ export const mockProvider = new MockProvider();
 
 export function consolidateAiTexts(ocrTexts: DetectedText[], visionTexts: AiTextElement[]) {
   return new TextFusionEngine(classifyDetectedText).fuseDetectedTexts(ocrTexts, visionTexts);
+}
+
+function nearObject(left: VisionDetectedObject, right: VisionDetectedObject) {
+  if (left.type !== right.type) return false;
+  return Math.hypot(left.position.x - right.position.x, left.position.y - right.position.y) < 48;
+}
+
+function deduplicateVisionObjects(objects: VisionDetectedObject[]) {
+  const merged: VisionDetectedObject[] = [];
+  for (const candidate of objects) {
+    const index = merged.findIndex((object) => nearObject(object, candidate));
+    if (index < 0) merged.push(candidate);
+    else if (candidate.confidence > merged[index].confidence) merged[index] = candidate;
+  }
+  return merged;
+}
+
+function offsetPoint(point: { x: number; y: number }, region: { x: number; y: number }) {
+  return { x: point.x + region.x, y: point.y + region.y };
+}
+
+function offsetBox(box: { x: number; y: number; width: number; height: number }, region: { x: number; y: number }) {
+  return { ...box, x: box.x + region.x, y: box.y + region.y };
+}
+
+/** Moves region-local coordinates back into the original project coordinate system. */
+export function offsetAiAnalysis(analysis: VectorCadAiAnalysis, region: { x: number; y: number; width: number; height: number }): VectorCadAiAnalysis {
+  return {
+    ...analysis,
+    texts: analysis.texts.map((text) => ({ ...text, position: offsetPoint(text.position, region), boundingBox: offsetBox(text.boundingBox, region) })),
+    elements: analysis.elements.map((element) => ({ ...element, position: offsetPoint(element.position, region), boundingBox: offsetBox(element.boundingBox, region) })),
+    visionObjects: analysis.visionObjects.map((object) => ({ ...object, position: offsetPoint(object.position, region), boundingBox: offsetBox(object.boundingBox, region) })),
+    detectedDimensions: analysis.detectedDimensions.map((dimension) => ({
+      ...dimension,
+      position: offsetPoint(dimension.position, region),
+      boundingBox: offsetBox(dimension.boundingBox, region),
+      startPoint: offsetPoint(dimension.startPoint, region),
+      endPoint: offsetPoint(dimension.endPoint, region),
+    })),
+  };
+}
+
+/** Consolidates OCR and one or more Vision responses without losing low-confidence candidates. */
+export function mergeAiAnalyses(base: VectorCadAiAnalysis, analyses: VectorCadAiAnalysis[]): VectorCadAiAnalysis {
+  const allTexts = [base.texts, ...analyses.map((analysis) => analysis.texts)].flat();
+  const texts = deduplicateAiTexts(allTexts);
+  const visionObjects = deduplicateVisionObjects([base.visionObjects, ...analyses.map((analysis) => analysis.visionObjects)].flat());
+  const elements = elementRecognitionEngine.recognize({ texts, visionObjects, visionAnalysis: { texts } });
+  const dimensionUnit = base.dimensions[0]?.unit === "cm" ? "cm" : base.dimensions[0]?.unit === "mm" ? "mm" : undefined;
+  const detectedDimensions = dimensionRecognitionEngine.recognize({ texts, elements, visionObjects, unit: dimensionUnit });
+  const confidence = texts.length ? averageConfidence(texts) : Math.max(base.confidence, ...analyses.map((analysis) => analysis.confidence), 0);
+  return {
+    ...base,
+    texts,
+    elements,
+    visionObjects,
+    detectedDimensions,
+    objectDetectionStatus: [base, ...analyses].some((analysis) => analysis.objectDetectionStatus === "executed") ? "executed" : [base, ...analyses].some((analysis) => analysis.objectDetectionStatus === "fallback") ? "fallback" : "skipped",
+    provider: analyses.length ? "hybrid-ocr-vision" : base.provider,
+    confidence,
+    analyzedAt: new Date().toISOString(),
+  };
+}
+
+/** Safe diagnostics: coordinates and confidence, never image data or recognized text. */
+export function logAiAnalysisDiagnostics(label: string, analysis: VectorCadAiAnalysis) {
+  console.info(`[vetorcad][analysis] ${label}`, {
+    texts: analysis.texts.length,
+    elements: analysis.elements.length,
+    dimensions: analysis.detectedDimensions.length,
+    confidence: Number(analysis.confidence.toFixed(3)),
+    textDiagnostics: analysis.texts.map((text) => ({ type: text.type, source: text.source, confidence: Number(text.confidence.toFixed(3)), rotation: text.rotation, boundingBox: text.boundingBox, valueLength: text.value.length })),
+    objectDiagnostics: analysis.visionObjects.map((object) => ({ type: object.type, confidence: Number(object.confidence.toFixed(3)), boundingBox: object.boundingBox })),
+  });
 }
 
 export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionProvider = mockProvider, objectDetector?: VisionObjectDetectorLike): Promise<VectorCadAiAnalysis> {
