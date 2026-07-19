@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicSiteShell } from "@/components/public-site-shell";
-import { PublicHeroElegant } from "@/components/public-hero-elegant";
+import { LandingSection } from "@/components/landing-section";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "VetorCAD Converter | Conversão de desenhos técnicos para CAD",
+  title: "VectorCAD Converter | Conversão de desenhos técnicos para CAD",
   description: "Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.",
   alternates: { canonical: "https://vetorcad.com.br/" },
 };
@@ -25,7 +25,7 @@ const steps = [
 ];
 
 const faqs = [
-  { q: "O VetorCAD substitui um desenhista CAD?", a: "Ele reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final." },
+  { q: "O VectorCAD substitui um desenhista CAD?", a: "Ele reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final." },
   { q: "O DXF abre no AutoCAD?", a: "Sim. A exportação é feita com entidades editáveis, como polilinhas e layers, pensadas para importação em AutoCAD e fluxos CAD/CAM." },
   { q: "Qual imagem gera melhor resultado?", a: "Imagens com fundo simples, alto contraste, poucas sombras e bordas bem definidas geram vetores mais limpos." },
   { q: "Consigo usar para corte laser?", a: "Sim. O modo simplificado ajuda a reduzir pontos e manter contornos mais adequados para corte CNC e laser." },
@@ -34,53 +34,20 @@ const faqs = [
 export default function Home() {
   return (
     <PublicSiteShell>
-      <PublicHeroElegant />
-      <section className="hidden relative overflow-hidden border-b border-[#1c2822]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(183,243,74,.18),transparent_42%)]" />
-        <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-20 lg:grid-cols-[1.1fr_.9fr] lg:px-8 lg:py-28">
-          <div>
-            <div className="mb-5 inline-flex rounded-full border border-[#b7f34a]/30 bg-[#111915] px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Imagem para CAD em minutos</div>
-            <h1 className="max-w-4xl text-4xl font-black leading-tight tracking-[-.04em] md:text-6xl">Transforme imagens em vetores para CAD, CNC e corte laser</h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-[#b8c8c0]">O VetorCAD Converter converte PNG, JPG, WEBP, TIF e TIFF em SVG e DXF editáveis, com pré-processamento de imagem, vetorização por contorno, escala em milímetros e exportação pronta para softwares como AutoCAD, Fusion 360, CorelDRAW e Illustrator.</p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Começar agora</Link>
-              <Link href="/blog" className="rounded-2xl border border-[#304238] px-6 py-4 text-sm font-black text-[#edf5f0] transition hover:bg-[#111915]">Ler guias CAD</Link>
-            </div>
-          </div>
-          <div className="rounded-[2rem] border border-[#26362f] bg-[#0d1411] p-5 shadow-2xl shadow-black/30">
-            <div className="rounded-3xl border border-[#34463d] bg-[#050807] p-5">
-              <div className="mb-4 flex items-center justify-between text-xs text-[#8ea098]">
-                <span>Preview técnico</span>
-                <span>SVG + DXF</span>
-              </div>
-              <div className="grid min-h-[360px] place-items-center rounded-2xl bg-[linear-gradient(45deg,#111915_25%,transparent_25%),linear-gradient(-45deg,#111915_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#111915_75%),linear-gradient(-45deg,transparent_75%,#111915_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0]">
-                <div className="relative h-48 w-48 rounded-[42%] border-[10px] border-[#b7f34a]">
-                  <div className="absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-[8px] border-white" />
-                  <div className="absolute inset-x-10 top-1/2 h-2 -translate-y-1/2 rounded-full bg-[#b7f34a]" />
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 text-center text-[11px] font-black uppercase tracking-[.12em] text-[#b7f34a]">
-                <span className="rounded-xl bg-[#121b16] p-3">Contours</span>
-                <span className="rounded-xl bg-[#121b16] p-3">Layers</span>
-                <span className="rounded-xl bg-[#121b16] p-3">Scale mm</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <LandingSection />
 
       <section className="relative overflow-hidden border-b border-[#1c2822] bg-[#0a0f0d]">
         <div className="absolute -right-24 top-10 h-64 w-64 rounded-full bg-[#b7f34a]/10 blur-3xl" />
         <div className="relative mx-auto max-w-7xl px-4 py-16 lg:px-8 lg:py-20">
           <div className="max-w-3xl">
-            <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">VetorCAD Converter</span>
-            <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">VetorCAD Converter: conversão CAD profissional</h2>
+            <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">VectorCAD Converter</span>
+            <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">VectorCAD Converter: conversão CAD profissional</h2>
             <p className="mt-5 text-lg leading-8 text-[#b8c8c0]">Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
               <h3 className="font-black text-[#b7f34a]">Processamento inteligente para desenhos técnicos</h3>
-              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">O VetorCAD prepara seu desenho para identificar informações técnicas e auxiliar na conversão para CAD.</p>
+              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">O VectorCAD prepara seu desenho para identificar informações técnicas e auxiliar na conversão para CAD.</p>
             </article>
             <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
               <h3 className="font-black text-[#b7f34a]">Textos inteligentes</h3>
@@ -102,7 +69,7 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Teste o VetorCAD</Link>
+            <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Teste o VectorCAD</Link>
             <span className="text-sm text-[#aebeb6]">Converta seu primeiro desenho técnico.</span>
           </div>
         </div>
@@ -139,7 +106,7 @@ export default function Home() {
       <section className="mx-auto grid max-w-7xl gap-8 px-4 py-16 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
         <div>
           <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Por que vetor CAD não é apenas um SVG bonito?</h2>
-          <p className="mt-4 leading-7 text-[#aebeb6]">Para ser útil em CAD, o arquivo precisa ter geometrias editáveis, escala coerente, contornos fechados quando possível e poucos pontos desnecessários. O VetorCAD prioriza esse fluxo técnico para reduzir ajustes depois da importação.</p>
+          <p className="mt-4 leading-7 text-[#aebeb6]">Para ser útil em CAD, o arquivo precisa ter geometrias editáveis, escala coerente, contornos fechados quando possível e poucos pontos desnecessários. O VectorCAD prioriza esse fluxo técnico para reduzir ajustes depois da importação.</p>
         </div>
         <div className="grid gap-3">
           {faqs.map((faq) => (
