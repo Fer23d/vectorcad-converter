@@ -3,7 +3,6 @@
 import { CTAButton } from "@/components/cta-button";
 import { FeatureCard } from "@/components/feature-card";
 import { ParallaxBackground } from "@/components/parallax-background";
-import { ScrollProgressIndicator } from "@/components/scroll-progress-indicator";
 import { SVGPreview } from "@/components/svg-preview";
 import { useEffect, useState } from "react";
 
@@ -56,7 +55,6 @@ export function LandingSection() {
 
   return (
     <section id="inicio" className="relative isolate overflow-hidden border-b border-[#1c2822] bg-[#070b09]">
-      <ScrollProgressIndicator />
       <ParallaxBackground />
       <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicSiteShell } from "@/components/public-site-shell";
+import { FAQSection } from "@/components/faq-section";
 import { LandingSection } from "@/components/landing-section";
 import { blogArticles } from "@/lib/public-content";
 
@@ -22,13 +23,6 @@ const steps = [
   { title: "2. Limpe o desenho", text: "Ajuste brilho, contraste, limiar, ruído e bordas antes da vetorização." },
   { title: "3. Gere o vetor", text: "Transforme áreas da imagem em paths, contornos e polilinhas editáveis." },
   { title: "4. Exporte para CAD", text: "Baixe SVG ou DXF com escala correta para abrir em softwares técnicos." },
-];
-
-const faqs = [
-  { q: "O VectorCAD substitui um desenhista CAD?", a: "Ele reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final." },
-  { q: "O DXF abre no AutoCAD?", a: "Sim. A exportação é feita com entidades editáveis, como polilinhas e layers, pensadas para importação em AutoCAD e fluxos CAD/CAM." },
-  { q: "Qual imagem gera melhor resultado?", a: "Imagens com fundo simples, alto contraste, poucas sombras e bordas bem definidas geram vetores mais limpos." },
-  { q: "Consigo usar para corte laser?", a: "Sim. O modo simplificado ajuda a reduzir pontos e manter contornos mais adequados para corte CNC e laser." },
 ];
 
 export default function Home() {
@@ -103,20 +97,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-16 lg:grid-cols-[.9fr_1.1fr] lg:px-8">
-        <div>
-          <h2 className="text-3xl font-black tracking-[-.03em] md:text-4xl">Por que vetor CAD não é apenas um SVG bonito?</h2>
-          <p className="mt-4 leading-7 text-[#aebeb6]">Para ser útil em CAD, o arquivo precisa ter geometrias editáveis, escala coerente, contornos fechados quando possível e poucos pontos desnecessários. O VectorCAD prioriza esse fluxo técnico para reduzir ajustes depois da importação.</p>
-        </div>
-        <div className="grid gap-3">
-          {faqs.map((faq) => (
-            <details key={faq.q} className="rounded-2xl border border-[#223028] bg-[#0d1411] p-5">
-              <summary className="cursor-pointer font-black text-[#edf5f0]">{faq.q}</summary>
-              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">{faq.a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
+      <FAQSection />
 
       <section className="border-t border-[#1c2822] bg-[#0a0f0d]">
         <div className="mx-auto max-w-7xl px-4 py-16 lg:px-8">
