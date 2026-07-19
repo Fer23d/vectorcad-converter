@@ -318,7 +318,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!isSupabaseConfigured || !supabase) return true;
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      setMessage("Faça login para usar o VetorCAD.");
+      setMessage("Faça login para usar o vetorcad.");
       return false;
     }
 
@@ -646,7 +646,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       const visionStatus = payload.vision?.status === "executed" ? "OCR + análise visual" : payload.vision?.status === "fallback" ? "OCR local (análise visual indisponível)" : "OCR local (confiança suficiente)";
       setAiStatus(`${visionStatus} · ${analysis.elements.length} elementos encontrados`);
     } catch (error) {
-      console.warn("[VetorCAD][AI] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
+      console.warn("[vetorcad][analysis] análise não concluída", { reason: error instanceof Error ? error.message : "AI_UNKNOWN_ERROR" });
       setVisionStatus("idle");
       setAiStatus("Não foi possível concluir a análise do projeto.");
     } finally {
@@ -692,22 +692,22 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!projectId) setMessage("Salvando projeto para abrir visualização 3D...");
     const savedProjectId = projectId || await onPrepare3dProject?.(data);
     if (!savedProjectId) {
-      console.info("[VetorCAD][3D] project id unavailable", { hasProjectId: false });
+      console.info("[vetorcad][3D] project id unavailable", { hasProjectId: false });
       setMessage("Salve o projeto antes de abrir o visualizador em nova guia.");
       return;
     }
 
     const viewerUrl = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
-    console.info("[VetorCAD][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
+    console.info("[vetorcad][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
     try {
       const newTab = window.open(viewerUrl, "_blank", "noopener,noreferrer");
-      console.info("[VetorCAD][3D] window.open result", { opened: Boolean(newTab) });
+      console.info("[vetorcad][3D] window.open result", { opened: Boolean(newTab) });
       if (!newTab) {
-        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o VetorCAD.");
+        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o vetorcad.");
         return;
       }
     } catch (error) {
-      console.error("[VetorCAD][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+      console.error("[vetorcad][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
       setMessage("Não foi possível abrir o visualizador 3D em uma nova guia.");
       return;
     }
@@ -717,7 +717,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
+      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
@@ -822,7 +822,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             </div>
           </details>}
           <div className="mt-4 rounded-lg border border-[#33433a] bg-[#111914] p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> VetorCAD Converter</div>
+            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> vetorcad Converter</div>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Análise visual: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executada" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Analisar projeto"}</button>
@@ -955,7 +955,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
       <div className="mx-auto flex max-w-4xl flex-col items-center justify-center gap-5 text-center md:flex-row md:gap-8">
         <div className="max-w-xs">
-          <div className="text-sm font-black tracking-[.12em] text-[#b7f34a]">VetorCAD</div>
+          <div className="text-sm font-black tracking-[.12em] text-[#b7f34a]">vetorcad</div>
           <div className="mt-2 text-[11px] text-[#8b9a92]">A inteligência aplicada aos seus projetos de engenharia.</div>
         </div>
         <div className="mx-auto hidden h-12 w-px bg-[#304238] md:block" aria-hidden="true" />

@@ -121,7 +121,7 @@ export function PricingPage() {
     <section className="mx-auto max-w-7xl">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="text-xs font-black uppercase tracking-[.22em] text-[#b7f34a]">VetorCAD Billing</div>
+          <div className="text-xs font-black uppercase tracking-[.22em] text-[#b7f34a]">vetorcad Billing</div>
           <h1 className="mt-3 text-4xl font-black tracking-[-.05em] md:text-5xl">Planos para converter sem travar</h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-[#9caaa3]">{message}</p>
         </div>

@@ -24,7 +24,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
   free: {
     id: "free",
     title: "FREE",
-    checkoutTitle: "VectorCAD FREE",
+    checkoutTitle: "vetorcad FREE",
     price: 0,
     priceLabel: "R$0",
     currency: "BRL",
@@ -41,7 +41,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
   plus: {
     id: "plus",
     title: "PLUS",
-    checkoutTitle: "VectorCAD PLUS",
+    checkoutTitle: "vetorcad PLUS",
     price: 19.9,
     priceLabel: "R$19,90/mes",
     currency: "BRL",
@@ -58,7 +58,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
   pro: {
     id: "pro",
     title: "PRO",
-    checkoutTitle: "VectorCAD PRO",
+    checkoutTitle: "vetorcad PRO",
     price: 25.9,
     priceLabel: "R$25,90/mes",
     currency: "BRL",
@@ -75,7 +75,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
   empresarial: {
     id: "empresarial",
     title: "EMPRESARIAL",
-    checkoutTitle: "VectorCAD EMPRESARIAL",
+    checkoutTitle: "vetorcad EMPRESARIAL",
     price: 300,
     priceLabel: "R$300/mes",
     currency: "BRL",
@@ -92,7 +92,7 @@ export const BILLING_PLANS: Record<CompanyPlan, BillingPlan> = {
   enterprise: {
     id: "empresarial",
     title: "EMPRESARIAL",
-    checkoutTitle: "VectorCAD EMPRESARIAL",
+    checkoutTitle: "vetorcad EMPRESARIAL",
     price: 300,
     priceLabel: "R$300/mes",
     currency: "BRL",

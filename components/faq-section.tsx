@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 
 const questions = [
   {
-    question: "Por que VectorCAD não é apenas um SVG bonito?",
+    question: "Por que vetorcad não é apenas um SVG bonito?",
     answer: "Porque o resultado é pensado para uso técnico: geometrias editáveis, escala coerente, contornos fechados quando possível e menos pontos desnecessários. Isso reduz o retrabalho depois da importação no CAD.",
   },
   {
-    question: "O VectorCAD substitui um desenhista CAD?",
-    answer: "O VectorCAD reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final.",
+    question: "O vetorcad substitui um desenhista CAD?",
+    answer: "O vetorcad reduz o redesenho manual em imagens simples, logos e contornos. Em desenhos complexos, ainda pode ser necessário revisar e ajustar o arquivo final.",
   },
   {
     question: "O DXF abre no AutoCAD?",

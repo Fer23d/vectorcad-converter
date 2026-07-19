@@ -59,7 +59,7 @@ async function getUsageContext(request: Request) {
 
   const token = bearerToken(request);
   if (!token) {
-    return { response: NextResponse.json({ error: "Faça login para usar o VetorCAD." }, { status: 401 }) };
+    return { response: NextResponse.json({ error: "Faça login para usar o vetorcad." }, { status: 401 }) };
   }
 
   const authClient = createSupabaseAuthServerClient(token);
@@ -71,7 +71,7 @@ async function getUsageContext(request: Request) {
   const adminClient = createSupabaseAdminClient();
   const user = userData.user;
   if (!user.email_confirmed_at) {
-    return { response: NextResponse.json({ error: "Confirme seu e-mail para usar o VetorCAD." }, { status: 403 }) };
+    return { response: NextResponse.json({ error: "Confirme seu e-mail para usar o vetorcad." }, { status: 403 }) };
   }
 
   const { data: profileRow, error: profileError } = await adminClient

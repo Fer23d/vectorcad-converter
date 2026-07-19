@@ -6,7 +6,7 @@ import { LandingSection } from "@/components/landing-section";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "VectorCAD Converter | Conversão de desenhos técnicos para CAD",
+  title: "vetorcad Converter | Conversão de desenhos técnicos para CAD",
   description: "Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.",
   alternates: { canonical: "https://vetorcad.com.br/" },
 };
@@ -34,14 +34,14 @@ export default function Home() {
         <div className="absolute -right-24 top-10 h-64 w-64 rounded-full bg-[#b7f34a]/10 blur-3xl" />
         <div className="relative mx-auto max-w-7xl px-4 py-16 lg:px-8 lg:py-20">
           <div className="max-w-3xl">
-            <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">VectorCAD Converter</span>
-            <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">VectorCAD Converter: conversão CAD profissional</h2>
+            <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">vetorcad Converter</span>
+            <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">vetorcad Converter: conversão CAD profissional</h2>
             <p className="mt-5 text-lg leading-8 text-[#b8c8c0]">Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
               <h3 className="font-black text-[#b7f34a]">Processamento inteligente para desenhos técnicos</h3>
-              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">O VectorCAD prepara seu desenho para identificar informações técnicas e auxiliar na conversão para CAD.</p>
+              <p className="mt-3 text-sm leading-6 text-[#aebeb6]">O vetorcad prepara seu desenho para identificar informações técnicas e auxiliar na conversão para CAD.</p>
             </article>
             <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
               <h3 className="font-black text-[#b7f34a]">Textos inteligentes</h3>
@@ -63,7 +63,7 @@ export default function Home() {
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Teste o VectorCAD</Link>
+            <Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:brightness-105">Teste o vetorcad</Link>
             <span className="text-sm text-[#aebeb6]">Converta seu primeiro desenho técnico.</span>
           </div>
         </div>

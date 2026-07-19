@@ -544,7 +544,7 @@ export function AdminDashboard() {
   const filteredUsers = companyFilter === "all" ? overview.users : backendFilteredUsers || overview.users.filter((user) => (user.company || "Sem empresa") === companyFilter);
   const filteredProjects = companyFilter === "all" ? overview.projects : backendFilteredProjects || overview.projects.filter((project) => (project.company || "Sem empresa") === companyFilter);
   const premiumByCompany = companyNames.filter((company) => (overview.companyCounts[company]?.premium || 0) > 0 || isPremiumCompany(company));
-  const adminDisplayName = overview.adminUser?.name || "Administrador VetorCAD";
+  const adminDisplayName = overview.adminUser?.name || "Administrador vetorcad";
   const adminDisplayRole = overview.adminUser?.role || overview.role || "ADMIN";
 
   return <main className="min-h-screen bg-[#080c0b] text-[#e8efeb]">

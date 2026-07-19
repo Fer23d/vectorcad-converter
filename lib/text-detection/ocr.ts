@@ -391,7 +391,7 @@ function createSyntheticOcrImage() {
 export async function detectText(image: ImageData, originalImage: ImageData = image): Promise<TextDetectionResult> {
   if (typeof document === "undefined") throw new Error("OCR_BROWSER_REQUIRED");
   const inputStats = getImageStats(originalImage);
-  console.info("[VectorCAD][OCR] entrada", inputStats);
+  console.info("[vetorcad][OCR] entrada", inputStats);
   const prepared = prepareOcrImage(image);
   const candidates = detectCandidateRegions(prepared.image);
   const regions = candidates.regions.slice(0, 24);
@@ -406,7 +406,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
       if (message.status && (message.status.includes("load") || message.status.includes("init") || message.status.includes("recogniz"))) workerEvents.add(message.status);
     },
   });
-  console.info("[VectorCAD][OCR][worker] criado", { languages: ["por+eng"], loaded: true, events: [...workerEvents] });
+  console.info("[vetorcad][OCR][worker] criado", { languages: ["por+eng"], loaded: true, events: [...workerEvents] });
   try {
     const syntheticImage = createSyntheticOcrImage();
     const syntheticOcr: OcrDiagnostic["syntheticOcr"] = [];
@@ -418,10 +418,10 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
       const syntheticText = syntheticResult.data.text?.trim() || syntheticWords.map((word) => word.text).join(" ").trim();
       const syntheticConfidence = syntheticWords.length ? syntheticWords.reduce((total, word) => total + word.confidence / 100, 0) / syntheticWords.length : 0;
       syntheticOcr.push({ language, rawText: syntheticText, confidence: syntheticConfidence });
-      console.info("[VectorCAD][OCR][synthetic] resultado bruto", { language, rawText: syntheticText, confidence: Number(syntheticConfidence.toFixed(3)), width: syntheticImage.width, height: syntheticImage.height, version: syntheticResult.data.version || "indisponível" });
+      console.info("[vetorcad][OCR][synthetic] resultado bruto", { language, rawText: syntheticText, confidence: Number(syntheticConfidence.toFixed(3)), width: syntheticImage.width, height: syntheticImage.height, version: syntheticResult.data.version || "indisponível" });
     }
     await worker.reinitialize("por+eng", 1);
-    console.info("[VectorCAD][OCR][worker] modelos carregados", { languages: workerLanguages, version: "será reportada pelo resultado OCR", syntheticResults: syntheticOcr.length });
+    console.info("[vetorcad][OCR][worker] modelos carregados", { languages: workerLanguages, version: "será reportada pelo resultado OCR", syntheticResults: syntheticOcr.length });
     const directPsm = 6;
     await worker.setParameters({ tessedit_pageseg_mode: String(directPsm) as never });
     let tesseractCalls = 0;
@@ -431,7 +431,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
     const directConfidence = directWords.length ? directWords.reduce((total, word) => total + word.confidence / 100, 0) / directWords.length : 0;
     const directOcr = { rawText: directResult.data.text?.trim() || directWords.map((word) => word.text).join(" ").trim(), confidence: directConfidence, psm: directPsm };
     const workerVersion = directResult.data.version || "indisponível";
-    console.info("[VectorCAD][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
+    console.info("[vetorcad][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
     const wordCandidates: DetectedText[] = directWords.flatMap((word) => {
       const text = normalizeCandidateText(word.text);
       if (!hasMinimumTextContent(text)) return [];
@@ -487,7 +487,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
     }
     const unique = detected.filter((word, index, values) => values.findIndex((candidate) => candidate.text === word.text && Math.abs(candidate.x - word.x) < 2 && Math.abs(candidate.y - word.y) < 2) === index);
     const confidence = unique.length ? unique.reduce((total, word) => total + word.confidence, 0) / unique.length : 0;
-    console.info("[VectorCAD][OCR]", {
+    console.info("[vetorcad][OCR]", {
       regionsAnalyzed: regions.length,
       textsFound: unique.length,
       componentsFound: candidates.componentsFound,

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
   const firstName = String(user.user_metadata?.first_name || "").trim();
   const lastName = String(user.user_metadata?.last_name || "").trim();
-  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Usuário VetorCAD";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ") || "Usuário vetorcad";
 
   try {
     const payload = await sendWelcomeEmail({ to: user.email, name: fullName });

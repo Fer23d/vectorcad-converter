@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { PublicSiteShell } from "@/components/public-site-shell";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade | VetorCAD",
-  description: "Política de privacidade do VetorCAD, incluindo dados coletados, uso, segurança, cookies e direitos LGPD.",
+  title: "Política de Privacidade | vetorcad",
+  description: "Política de privacidade do vetorcad, incluindo dados coletados, uso, segurança, cookies e direitos LGPD.",
   alternates: { canonical: "https://vetorcad.com.br/privacidade" },
 };
 
@@ -22,7 +22,7 @@ const sections = [
   },
   {
     title: "Armazenamento e segurança",
-    text: "Os dados podem ser armazenados em provedores de infraestrutura e banco de dados utilizados pelo VetorCAD. Aplicamos medidas técnicas e organizacionais para reduzir riscos de acesso indevido, perda ou alteração não autorizada.",
+    text: "Os dados podem ser armazenados em provedores de infraestrutura e banco de dados utilizados pelo vetorcad. Aplicamos medidas técnicas e organizacionais para reduzir riscos de acesso indevido, perda ou alteração não autorizada.",
   },
   {
     title: "Cookies",
@@ -47,7 +47,7 @@ export default function PrivacidadePage() {
           <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Privacidade e LGPD</div>
           <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Política de Privacidade</h1>
           <p className="mt-6 max-w-3xl text-lg leading-8 text-[#b8c8c0]">
-            Esta política explica como o VetorCAD trata dados pessoais e informações técnicas para operar uma plataforma SaaS segura, profissional e preparada para clientes empresariais.
+            Esta política explica como o vetorcad trata dados pessoais e informações técnicas para operar uma plataforma SaaS segura, profissional e preparada para clientes empresariais.
           </p>
         </div>
       </section>

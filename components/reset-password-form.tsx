@@ -310,7 +310,7 @@ export function ResetPasswordForm() {
         <div className="mb-7 flex items-center gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div>
           <div>
-            <div className="text-base font-black tracking-[.12em]">VetorCAD</div>
+            <div className="text-base font-black tracking-[.12em]">vetorcad</div>
             <div className="mt-1 text-[11px] text-[#84938b]">Redefinição de senha</div>
           </div>
         </div>

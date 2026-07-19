@@ -46,7 +46,7 @@ export function EmailShell({
           <Section style={brandRow}>
             <Text style={logo}>VC</Text>
             <Section style={{ display: "inline-block", verticalAlign: "middle" }}>
-              <Text style={brand}>VectorCAD</Text>
+              <Text style={brand}>vetorcad</Text>
               <Text style={brandSub}>Plataforma SaaS para conversão CAD</Text>
             </Section>
           </Section>
@@ -61,10 +61,10 @@ export function EmailShell({
             ) : null}
             <Hr style={hr} />
             <Text style={signatureText}>Atenciosamente</Text>
-            <Text style={signatureTeam}>Equipe VectorCAD</Text>
+            <Text style={signatureTeam}>Equipe vetorcad</Text>
             <Text style={footerBrand}>Grupo ShiftCore</Text>
             <Text style={footerText}>Tecnologia, inovação e soluções inteligentes.</Text>
-            <Text style={footerNotice}>© 2026 VectorCAD. Todos os direitos reservados.</Text>
+            <Text style={footerNotice}>© 2026 vetorcad. Todos os direitos reservados.</Text>
           </Section>
         </Container>
       </Body>

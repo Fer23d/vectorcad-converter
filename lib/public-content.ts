@@ -14,12 +14,12 @@ export type BlogArticle = {
 export const blogArticles: BlogArticle[] = [
   {
     slug: "vetorcad-conversao-desenhos-tecnicos",
-    title: "VetorCAD Converter: como a vetorização transforma desenhos técnicos em CAD",
+    title: "vetorcad Converter: como a vetorização transforma desenhos técnicos em CAD",
     description: "Conheça como o processamento de imagem torna a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e organizada.",
     date: "2026-07-16",
     readTime: "8 min",
-    category: "VetorCAD",
-    metaTitle: "VetorCAD Converter | Conversão de desenhos técnicos para CAD",
+    category: "vetorcad",
+    metaTitle: "vetorcad Converter | Conversão de desenhos técnicos para CAD",
     metaDescription: "Conheça como o processamento de imagem torna a conversão de imagens, plantas e desenhos técnicos em CAD mais rápida e organizada.",
     keywords: ["conversão CAD", "imagem para DXF", "vetorização CAD", "desenho técnico", "engenharia"],
     sections: [
@@ -27,7 +27,7 @@ export const blogArticles: BlogArticle[] = [
         heading: "Introdução",
         body: [
           "Profissionais de engenharia e projetos ainda gastam muitas horas convertendo desenhos antigos, imagens e plantas para CAD. Esse trabalho manual consome tempo e pode dificultar a preservação de informações técnicas importantes.",
-          "O VetorCAD Converter foi criado para apoiar esse processo, combinando processamento de imagem, reconhecimento de textos e organização técnica em um fluxo voltado para arquivos CAD editáveis.",
+          "O vetorcad Converter foi criado para apoiar esse processo, combinando processamento de imagem, reconhecimento de textos e organização técnica em um fluxo voltado para arquivos CAD editáveis.",
         ],
       },
       {
@@ -40,12 +40,12 @@ export const blogArticles: BlogArticle[] = [
       {
         heading: "Como o processamento inteligente ajuda",
         body: [
-          "O VetorCAD usa OCR local para reconhecer textos e análise de regiões que exigem uma interpretação adicional. Assim, títulos, legendas, anotações e identificações técnicas podem ser organizados como informações estruturadas.",
+          "O vetorcad usa OCR local para reconhecer textos e análise de regiões que exigem uma interpretação adicional. Assim, títulos, legendas, anotações e identificações técnicas podem ser organizados como informações estruturadas.",
           "Essa separação ajuda a preservar o contexto do desenho, reduzir interferências na vetorização e preparar os dados para arquivos editáveis. O usuário continua validando o resultado no editor.",
         ],
       },
       {
-        heading: "Aplicações do VetorCAD Converter",
+        heading: "Aplicações do vetorcad Converter",
         body: [
           "Na engenharia industrial, o fluxo pode apoiar a análise de fluxogramas, instrumentação e diagramas técnicos. Na arquitetura, pode auxiliar na organização de plantas, fachadas e desenhos técnicos digitalizados.",
           "Em projetos de diferentes áreas, a ferramenta ajuda na documentação, revisão e conversão de materiais legados, reduzindo o redesenho manual e centralizando os resultados em um workspace.",
@@ -61,7 +61,7 @@ export const blogArticles: BlogArticle[] = [
       {
         heading: "Conclusão",
         body: [
-          "O VetorCAD Converter combina OCR, análise visual e exportação CAD para transformar desenhos existentes em uma base mais organizada para o trabalho de engenharia.",
+          "O vetorcad Converter combina OCR, análise visual e exportação CAD para transformar desenhos existentes em uma base mais organizada para o trabalho de engenharia.",
         ],
       },
     ],
@@ -78,7 +78,7 @@ export const blogArticles: BlogArticle[] = [
         heading: "O que o DXF precisa ter para ser editável",
         body: [
           "Um arquivo DXF útil para CAD não deve ser apenas uma imagem colada dentro do desenho. Ele precisa conter entidades vetoriais, como polilinhas, contornos e curvas aproximadas, para que o usuário consiga editar, medir, escalar e enviar para corte ou fabricação.",
-          "No VetorCAD, a imagem passa por pré-processamento, vetorização por contorno e exportação em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais próximas de um desenho técnico.",
+          "No vetorcad, a imagem passa por pré-processamento, vetorização por contorno e exportação em layers. Isso ajuda a transformar logos, desenhos em preto e branco e silhuetas em geometrias mais próximas de um desenho técnico.",
         ],
       },
       {

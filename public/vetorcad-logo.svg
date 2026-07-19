@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">VectorCAD</title>
-  <desc id="desc">Monograma VC do VectorCAD em verde neon sobre fundo escuro.</desc>
+  <title id="title">vetorcad</title>
+  <desc id="desc">Monograma VC do vetorcad em verde neon sobre fundo escuro.</desc>
   <rect width="512" height="512" rx="112" fill="#07100a"/>
   <rect x="72" y="72" width="368" height="368" rx="88" fill="#b7f34a"/>
   <path d="M143 178h48l65 116 65-116h48L281 352h-50z" fill="#07100a"/>

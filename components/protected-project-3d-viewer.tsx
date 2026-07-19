@@ -22,7 +22,7 @@ export function ProtectedProject3DViewer() {
     let cancelled = false;
     const load = async () => {
       const projectId = typeof params.id === "string" ? params.id : "";
-      console.info("[VetorCAD][3D] route opened", {
+      console.info("[vetorcad][3D] route opened", {
         pathname: window.location.pathname,
         hasProjectId: Boolean(projectId),
       });
@@ -35,7 +35,7 @@ export function ProtectedProject3DViewer() {
         }
 
         const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        console.info("[VetorCAD][3D] session check", {
+        console.info("[vetorcad][3D] session check", {
           hasSession: Boolean(sessionData.session),
           errorCode: sessionError?.status || null,
         });
@@ -46,7 +46,7 @@ export function ProtectedProject3DViewer() {
 
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError || !userData.user) {
-          console.info("[VetorCAD][3D] user check failed", { errorCode: userError?.status || null });
+          console.info("[vetorcad][3D] user check failed", { errorCode: userError?.status || null });
           router.replace("/login");
           return;
         }
@@ -61,7 +61,7 @@ export function ProtectedProject3DViewer() {
           .eq("id", projectId)
           .eq("user_id", userData.user.id)
           .single();
-        console.info("[VetorCAD][3D] project query", { found: Boolean(data), errorCode: error?.code || null });
+        console.info("[vetorcad][3D] project query", { found: Boolean(data), errorCode: error?.code || null });
 
         if (cancelled) return;
         if (error || !data) throw new Error("PROJECT_NOT_FOUND");
@@ -79,7 +79,7 @@ export function ProtectedProject3DViewer() {
         setState({ project, svg, unit, fileName: projectData.fileName });
       } catch (error) {
         if (cancelled) return;
-        console.error("[VetorCAD][3D] load failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
+        console.error("[vetorcad][3D] load failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
         setMessage(error instanceof Error && error.message === "VECTOR_NOT_AVAILABLE"
           ? "Este projeto ainda nao possui um vetor para visualizar em 3D."
           : "Nao foi possivel carregar o visualizador 3D deste projeto.");
@@ -94,7 +94,7 @@ export function ProtectedProject3DViewer() {
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] text-[#e8efeb]">
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-[#26312c] px-4 py-3 md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualizador 3D</div></div></div>
+      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualizador 3D</div></div></div>
       {state && <div className="order-3 w-full text-center text-xs text-[#aab8b1] md:order-none md:w-auto"><span className="text-[#7e9187]">Projeto:</span> <strong className="text-[#b7f34a]">{state.project.name}</strong></div>}
       <button type="button" onClick={() => router.push("/dashboard")} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao projeto</button>
     </header>

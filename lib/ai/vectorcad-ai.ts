@@ -226,7 +226,7 @@ export async function runVectorCadAi(input: VectorCadAiInput, provider: VisionPr
       visionObjects = await objectDetector.detect({ imageDataUrl: input.imageDataUrl, context: input.context, texts: texts.map(text => ({ value: text.value, position: text.position })) });
       objectDetectionStatus = "executed";
     } catch (error) {
-      console.warn("[VectorCAD][AI] detecção visual indisponível", { reason: error instanceof Error ? error.message : "VISION_OBJECT_UNKNOWN_ERROR" });
+      console.warn("[vetorcad][analysis] detecção visual indisponível", { reason: error instanceof Error ? error.message : "VISION_OBJECT_UNKNOWN_ERROR" });
     }
   }
   const elements = elementRecognitionEngine.recognize({ image: input.image, texts, visionAnalysis: result, visionObjects });

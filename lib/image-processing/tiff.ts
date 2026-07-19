@@ -126,7 +126,7 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
   const width = frame.t256?.[0] || 0;
   const height = frame.t257?.[0] || 0;
   if (width * height > TIFF_MAX_PIXELS) throw new Error("TIFF_DIMENSIONS_UNSUPPORTED");
-  console.info("[VectorCAD][TIFF] metadata", {
+  console.info("[vetorcad][TIFF] metadata", {
     width,
     height,
     bitsPerSample: frame.t258 || [],
@@ -153,10 +153,10 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
       ? decodeOneBit(frame, frame.width || width, frame.height || height, photometric)
       : UTIF.toRGBA8(frame);
     const normalized = normalizeRgba(rgba, frame, frame.width || width, frame.height || height);
-    console.info("[VectorCAD][TIFF] RGBA output", { rgbaBytes: normalized.length });
+    console.info("[vetorcad][TIFF] RGBA output", { rgbaBytes: normalized.length });
     return { width: frame.width || width, height: frame.height || height, data: normalized };
   } catch (error) {
-    console.error("[VectorCAD][TIFF] decode failed", { error: error instanceof Error ? error.message : "unknown_error" });
+    console.error("[vetorcad][TIFF] decode failed", { error: error instanceof Error ? error.message : "unknown_error" });
     throw new Error("TIFF_DECODE_FAILED");
   }
 }

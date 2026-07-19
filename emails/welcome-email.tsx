@@ -1,7 +1,7 @@
 import { Body, Head, Html, Preview } from "@react-email/components";
 
 function safeName(name: string) {
-  return name?.trim() || "Usuário VectorCAD";
+  return name?.trim() || "Usuário vetorcad";
 }
 
 export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUrl: string }) {
@@ -10,7 +10,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
   return (
     <Html lang="pt-BR">
       <Head />
-      <Preview>Sua &aacute;rea de projetos VectorCAD est&aacute; pronta.</Preview>
+      <Preview>Sua &aacute;rea de projetos vetorcad est&aacute; pronta.</Preview>
       <Body style={{ margin: 0, padding: 0, backgroundColor: "#050807", color: "#eef5f1", fontFamily: "Arial, Helvetica, sans-serif" }}>
         <table role="presentation" width="100%" cellSpacing="0" cellPadding="0" border={0} style={{ width: "100%", margin: 0, padding: 0, backgroundColor: "#050807" }}>
           <tbody>
@@ -25,7 +25,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                             <tr>
                               <td align="center" valign="middle" style={{ width: "48px", height: "48px", borderRadius: "16px", backgroundColor: "#b7f34a", color: "#09120d", fontSize: "15px", fontWeight: 900, lineHeight: "48px", textAlign: "center" }}>VC</td>
                               <td style={{ paddingLeft: "14px" }}>
-                                <div style={{ color: "#f2f8f4", fontSize: "16px", fontWeight: 900, letterSpacing: "1px", lineHeight: "20px" }}>VectorCAD</div>
+                                <div style={{ color: "#f2f8f4", fontSize: "16px", fontWeight: 900, letterSpacing: "1px", lineHeight: "20px" }}>vetorcad</div>
                                 <div style={{ color: "#91a098", fontSize: "12px", lineHeight: "18px" }}>Workspace inteligente para projetos t&eacute;cnicos</div>
                               </td>
                             </tr>
@@ -41,13 +41,13 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                               <td style={{ padding: "0 0 12px 0", color: "#b7f34a", fontSize: "11px", fontWeight: 900, letterSpacing: "2.4px", lineHeight: "16px", textTransform: "uppercase" }}>Conta criada</td>
                             </tr>
                             <tr>
-                              <td style={{ padding: "0 0 18px 0", color: "#edf5f0", fontSize: "30px", fontWeight: 900, lineHeight: "36px" }}>Bem-vindo ao VectorCAD</td>
+                              <td style={{ padding: "0 0 18px 0", color: "#edf5f0", fontSize: "30px", fontWeight: 900, lineHeight: "36px" }}>Bem-vindo ao vetorcad</td>
                             </tr>
                             <tr>
                               <td style={{ padding: "0 0 16px 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Ol&aacute;, {displayName}!</td>
                             </tr>
                             <tr>
-                              <td style={{ padding: "0 0 16px 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Seja bem-vindo ao VectorCAD.</td>
+                              <td style={{ padding: "0 0 16px 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Seja bem-vindo ao vetorcad.</td>
                             </tr>
                             <tr>
                               <td style={{ padding: "0 0 22px 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>
@@ -90,7 +90,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                               </td>
                             </tr>
                             <tr>
-                              <td style={{ padding: "28px 0 0 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Atenciosamente<br /><strong style={{ color: "#edf5f0" }}>Equipe VectorCAD</strong></td>
+                              <td style={{ padding: "28px 0 0 0", color: "#a6b4ad", fontSize: "15px", lineHeight: "26px" }}>Atenciosamente<br /><strong style={{ color: "#edf5f0" }}>Equipe vetorcad</strong></td>
                             </tr>
                             <tr>
                               <td style={{ padding: "26px 0 0 0" }}>
@@ -100,7 +100,7 @@ export function WelcomeEmail({ name, dashboardUrl }: { name: string; dashboardUr
                                       <td style={{ paddingTop: "20px", color: "#7e8c85", fontSize: "12px", lineHeight: "20px" }}>
                                         <strong style={{ color: "#edf5f0", letterSpacing: "1.1px" }}>Grupo ShiftCore</strong><br />
                                         Tecnologia, inovação e soluções inteligentes.<br />
-                                        © 2026 VectorCAD. Todos os direitos reservados.
+                                        © 2026 vetorcad. Todos os direitos reservados.
                                       </td>
                                     </tr>
                                   </tbody>

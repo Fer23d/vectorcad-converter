@@ -189,7 +189,7 @@ function saveBlob(name: string, blob: Blob) {
 }
 
 function baseName(fileName?: string) {
-  return (fileName || "vectorcad-3d").replace(/\.[^.]+$/, "") || "vectorcad-3d";
+  return (fileName || "vetorcad-3d").replace(/\.[^.]+$/, "") || "vetorcad-3d";
 }
 
 function disposeObject(object: THREE.Object3D) {
@@ -540,7 +540,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(finalGeometry, material);
-  mesh.name = options.enhanced ? "VetorCAD_Enhanced_Extrusion" : "VetorCAD_Extrusion";
+  mesh.name = options.enhanced ? "vetorcad_Enhanced_Extrusion" : "vetorcad_Extrusion";
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   apply3DStyle(mesh, options.style);

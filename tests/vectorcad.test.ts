@@ -51,7 +51,7 @@ const doc: VectorDocument = {
 };
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
-describe("VectorCAD pipeline", () => {
+describe("vetorcad pipeline", () => {
   it("enhances a raster to the requested 3K working resolution", () => {
     const input = new ImageData(new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 255]), 2, 1);
     const result = processAiEnhance(input, "ai-enhance-3k");
@@ -159,7 +159,7 @@ describe("VectorCAD pipeline", () => {
     expect(result.metrics.pixelsProcessed).toBe(2);
   });
 
-  it("normalizes local OCR into the VectorCAD AI analysis structure", async () => {
+  it("normalizes local OCR into the vetorcad analysis structure", async () => {
     const result = await runVectorCadAi({ vectors: doc, dimensions: { width: 10, height: 10, unit: "mm" }, ocrTexts: [{ text: "SALA", x: 1, y: 1, width: 10, height: 4, rotation: 0, confidence: .9 }] });
     expect(result.texts[0].value).toBe("SALA");
     expect(result.texts[0].type).toBe("LABEL");
@@ -190,7 +190,7 @@ describe("VectorCAD pipeline", () => {
     expect(candidates[0].source).toBe("OCR");
   });
 
-  it("prefers a higher-confidence Vision AI result over a duplicate OCR result", () => {
+  it("prefers a higher-confidence visual result over a duplicate OCR result", () => {
     const merged = consolidateAiTexts(
       [{ text: "Instrumenlacao", x: 10, y: 20, width: 80, height: 12, rotation: 0, confidence: .7 }],
       [{ value: "Instrumentação", type: "LABEL", confidence: .97, position: { x: 11, y: 21 }, boundingBox: { x: 11, y: 21, width: 80, height: 12 }, rotation: 0, source: "VISION_AI" }],

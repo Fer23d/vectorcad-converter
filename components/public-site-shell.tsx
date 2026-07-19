@@ -18,7 +18,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
           <Link href="/" className="flex items-center gap-3">
             <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#b7f34a] text-sm font-black text-[#07100a]">VC</span>
             <span>
-              <span className="block text-sm font-black tracking-[.12em]">VectorCAD</span>
+              <span className="block text-sm font-black tracking-[.12em]">vetorcad</span>
               <span className="block text-[10px] uppercase tracking-[.22em] text-[#8ea098]">Converter</span>
             </span>
           </Link>
@@ -40,7 +40,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-7xl px-4 py-10 lg:px-8">
           <div className="flex flex-col items-center justify-center gap-6 text-center text-sm text-[#94a49c] md:flex-row md:gap-8">
             <div className="max-w-xs">
-              <div className="text-lg font-black tracking-[.12em] text-[#b7f34a]">VectorCAD</div>
+              <div className="text-lg font-black tracking-[.12em] text-[#b7f34a]">vetorcad</div>
               <p className="mt-3 leading-6">A inteligência aplicada aos seus projetos de engenharia.</p>
             </div>
             <div className="mx-auto hidden h-16 w-px bg-[#304238] md:block" aria-hidden="true" />

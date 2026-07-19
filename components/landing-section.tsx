@@ -60,7 +60,7 @@ export function LandingSection() {
         <div className="grid items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">
           <div className="max-w-2xl">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#b7f34a] shadow-[0_0_10px_#b7f34a]" /> VectorCAD Converter
+              <span className="h-1.5 w-1.5 rounded-full bg-[#b7f34a] shadow-[0_0_10px_#b7f34a]" /> vetorcad Converter
             </div>
             <h1 className="max-w-xl text-4xl font-black leading-[1.05] tracking-[-.055em] text-[#f2f8f4] sm:text-5xl lg:text-6xl">Transforme imagens em vetores para CAD, CNC e corte laser</h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-[#b8c8c0] sm:text-lg">Converta PNG, JPG, WEBP, TIF e TIFF em SVG e DXF editáveis com pré-processamento de imagem e vetorização por contorno.</p>

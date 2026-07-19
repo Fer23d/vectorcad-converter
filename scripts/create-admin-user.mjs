@@ -28,7 +28,7 @@ async function syncPublicRole(userId, email) {
   await supabase.from("profiles").upsert({
     user_id: userId,
     name: "Admin",
-    surname: "VectorCAD",
+    surname: "vetorcad",
     admin_role: "SUPER_ADMIN",
     updated_at: now,
   }, { onConflict: "user_id" }).then(({ error }) => {
@@ -80,7 +80,7 @@ const { data, error } = await supabase.auth.admin.createUser({
   password: adminPassword,
   email_confirm: true,
   app_metadata: { role: "SUPER_ADMIN" },
-  user_metadata: { role: "SUPER_ADMIN", first_name: "Admin", last_name: "VectorCAD" },
+  user_metadata: { role: "SUPER_ADMIN", first_name: "Admin", last_name: "vetorcad" },
 });
 
 if (error) {

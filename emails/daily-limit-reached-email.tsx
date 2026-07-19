@@ -3,7 +3,7 @@ import { EmailParagraph, EmailShell } from "@/emails/email-shell";
 export function DailyLimitReachedEmail({ name, used, limit, pricingUrl }: { name: string; used: number; limit: number; pricingUrl: string }) {
   return (
     <EmailShell
-      preview={`Você usou ${used}/${limit} conversões gratuitas hoje no VectorCAD.`}
+      preview={`Você usou ${used}/${limit} conversões gratuitas hoje no vetorcad.`}
       eyebrow="Limite diário"
       title="Limite gratuito atingido"
       ctaHref={pricingUrl}

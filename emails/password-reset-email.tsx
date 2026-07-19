@@ -11,7 +11,7 @@ export function PasswordResetEmail({ resetUrl }: { name: string; resetUrl: strin
     >
       <EmailParagraph>Olá, tudo bem?</EmailParagraph>
       <EmailParagraph>
-        Recebemos uma solicitação para redefinir a senha da sua conta VectorCAD.
+        Recebemos uma solicitação para redefinir a senha da sua conta vetorcad.
       </EmailParagraph>
       <EmailParagraph>
         Para criar uma nova senha com segurança, clique no botão abaixo:

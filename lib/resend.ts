@@ -10,7 +10,7 @@ function cleanEnv(value: string | undefined) {
 }
 
 const resendApiKey = cleanEnv(process.env.RESEND_API_KEY);
-const fromEmail = cleanEnv(process.env.RESEND_FROM_EMAIL) || "VectorCAD <contato@vetorcad.com.br>";
+const fromEmail = cleanEnv(process.env.RESEND_FROM_EMAIL) || "vetorcad <contato@vetorcad.com.br>";
 const appUrl = cleanEnv(process.env.NEXT_PUBLIC_APP_URL) || "https://vetorcad.com.br";
 
 let resendClient: Resend | null = null;
@@ -94,7 +94,7 @@ function passwordResetEmailHtml(resetUrl: string) {
                   <tr>
                     <td align="center" valign="middle" style="width:48px;height:48px;border-radius:16px;background:#b7f34a;color:#09120d;font-size:15px;font-weight:900;line-height:48px;text-align:center;">VC</td>
                     <td style="padding-left:14px;">
-                      <div style="font-size:16px;line-height:20px;font-weight:900;letter-spacing:1px;color:#f2f8f4;">VectorCAD</div>
+                      <div style="font-size:16px;line-height:20px;font-weight:900;letter-spacing:1px;color:#f2f8f4;">vetorcad</div>
                       <div style="font-size:12px;line-height:18px;color:#91a098;">SaaS para engenharia, tecnologia e produtividade CAD</div>
                     </td>
                   </tr>
@@ -114,7 +114,7 @@ function passwordResetEmailHtml(resetUrl: string) {
                     <td style="padding:0 0 16px 0;font-size:15px;line-height:26px;color:#a6b4ad;">Ol&aacute;!</td>
                   </tr>
                   <tr>
-                    <td style="padding:0 0 16px 0;font-size:15px;line-height:26px;color:#a6b4ad;">Recebemos uma solicita&ccedil;&atilde;o para redefinir a senha da sua conta VectorCAD.</td>
+                    <td style="padding:0 0 16px 0;font-size:15px;line-height:26px;color:#a6b4ad;">Recebemos uma solicita&ccedil;&atilde;o para redefinir a senha da sua conta vetorcad.</td>
                   </tr>
                   <tr>
                     <td style="padding:0 0 24px 0;font-size:15px;line-height:26px;color:#a6b4ad;">Clique no bot&atilde;o abaixo para criar uma nova senha com seguran&ccedil;a.</td>
@@ -128,7 +128,7 @@ function passwordResetEmailHtml(resetUrl: string) {
                     <td style="padding:18px;border:1px solid #2d3933;border-radius:18px;background:#0b100e;font-size:13px;line-height:22px;color:#93a29a;">Se voc&ecirc; n&atilde;o solicitou essa altera&ccedil;&atilde;o, ignore este e-mail. Sua conta continuar&aacute; protegida.</td>
                   </tr>
                   <tr>
-                    <td style="padding:28px 0 0 0;font-size:15px;line-height:26px;color:#a6b4ad;">Atenciosamente<br><strong style="color:#edf5f0;">Equipe VectorCAD</strong></td>
+                    <td style="padding:28px 0 0 0;font-size:15px;line-height:26px;color:#a6b4ad;">Atenciosamente<br><strong style="color:#edf5f0;">Equipe vetorcad</strong></td>
                   </tr>
                   <tr>
                     <td style="padding:26px 0 0 0;">
@@ -137,7 +137,7 @@ function passwordResetEmailHtml(resetUrl: string) {
                           <td style="padding-top:20px;font-size:12px;line-height:20px;color:#7e8c85;">
                             <strong style="color:#edf5f0;letter-spacing:1.1px;">Grupo ShiftCore</strong><br>
                             Tecnologia, inovação e soluções inteligentes.<br>
-                            &copy; 2026 VectorCAD. Todos os direitos reservados.
+                            &copy; 2026 vetorcad. Todos os direitos reservados.
                           </td>
                         </tr>
                       </table>
@@ -155,13 +155,13 @@ function passwordResetEmailHtml(resetUrl: string) {
 }
 
 export async function sendWelcomeEmail({ to, name }: { to: string; name: string }) {
-  const displayName = name || "Usuário VectorCAD";
+  const displayName = name || "Usuário vetorcad";
 
   return sendVectorCadEmail({
     to,
-    subject: "Bem-vindo ao VectorCAD \u{1F680} Sua \u00e1rea de projetos est\u00e1 pronta",
+    subject: "Bem-vindo ao vetorcad \u{1F680} Sua \u00e1rea de projetos est\u00e1 pronta",
     react: createElement(WelcomeEmail, { name: displayName, dashboardUrl: getAppUrl("/dashboard") }),
-    text: `Olá, ${displayName}!\n\nSeja bem-vindo ao VectorCAD.\n\nSua conta foi criada com sucesso e agora você tem acesso a uma plataforma desenvolvida para facilitar análises, organização e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informações técnicas do projeto\n- Gerar relatórios organizados\n- Centralizar seus projetos em um único workspace\n\nSeu próximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos técnicos, unindo engenharia, automação e inteligência.\n\nAtenciosamente\n\nEquipe VectorCAD\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
+    text: `Olá, ${displayName}!\n\nSeja bem-vindo ao vetorcad.\n\nSua conta foi criada com sucesso e agora você tem acesso a uma plataforma desenvolvida para facilitar análises, organização e gerenciamento de projetos de engenharia.\n\n- Analisar arquivos CAD de forma inteligente\n- Identificar informações técnicas do projeto\n- Gerar relatórios organizados\n- Centralizar seus projetos em um único workspace\n\nSeu próximo passo:\nAcesse sua conta e envie seu primeiro projeto.\n\nEstamos construindo uma nova forma de trabalhar com projetos técnicos, unindo engenharia, automação e inteligência.\n\nAtenciosamente\n\nEquipe vetorcad\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 vetorcad. Todos os direitos reservados.`,
   });
 }
 
@@ -170,35 +170,35 @@ export async function sendEmailConfirmationEmail({ to, name, confirmUrl }: { to:
 
   return sendVectorCadEmail({
     to,
-    subject: "Confirme sua conta VectorCAD 🚀",
+    subject: "Confirme sua conta vetorcad 🚀",
     react: createElement(EmailConfirmationEmail, { name: displayName, confirmUrl }),
-    text: `Olá, ${displayName}.\n\nSua conta VectorCAD foi criada com sucesso.\n\nPara começar a utilizar a plataforma, confirme seu endereço de e-mail clicando no link abaixo:\n${confirmUrl}\n\nApós a confirmação, você terá acesso ao seu workspace.\n\nAtenciosamente\n\nEquipe VectorCAD\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
+    text: `Olá, ${displayName}.\n\nSua conta vetorcad foi criada com sucesso.\n\nPara começar a utilizar a plataforma, confirme seu endereço de e-mail clicando no link abaixo:\n${confirmUrl}\n\nApós a confirmação, você terá acesso ao seu workspace.\n\nAtenciosamente\n\nEquipe vetorcad\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 vetorcad. Todos os direitos reservados.`,
   });
 }
 
 export async function sendPasswordResetEmail({ to, resetUrl }: { to: string; name: string; resetUrl: string }) {
   return sendVectorCadEmail({
     to,
-    subject: "Redefini\u00e7\u00e3o de senha da sua conta VectorCAD",
+    subject: "Redefini\u00e7\u00e3o de senha da sua conta vetorcad",
     html: passwordResetEmailHtml(resetUrl),
-    text: `Olá!\n\nRecebemos uma solicitação para redefinir a senha da sua conta VectorCAD.\n\nClique no link abaixo para criar uma nova senha com segurança:\n${resetUrl}\n\nSe você não solicitou essa alteração, ignore este e-mail. Sua conta continuará protegida.\n\nAtenciosamente\n\nEquipe VectorCAD\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 VectorCAD. Todos os direitos reservados.`,
+    text: `Olá!\n\nRecebemos uma solicitação para redefinir a senha da sua conta vetorcad.\n\nClique no link abaixo para criar uma nova senha com segurança:\n${resetUrl}\n\nSe você não solicitou essa alteração, ignore este e-mail. Sua conta continuará protegida.\n\nAtenciosamente\n\nEquipe vetorcad\n\nGrupo ShiftCore\nTecnologia, inovação e soluções inteligentes.\n\n© 2026 vetorcad. Todos os direitos reservados.`,
   });
 }
 
 export async function sendPaymentApprovedEmail({ to, name, plan }: { to: string; name: string; plan: string }) {
   return sendVectorCadEmail({
     to,
-    subject: `Pagamento aprovado - Plano ${plan.toUpperCase()} VectorCAD`,
+    subject: `Pagamento aprovado - Plano ${plan.toUpperCase()} vetorcad`,
     react: createElement(PaymentApprovedEmail, { name, plan, dashboardUrl: getAppUrl("/dashboard") }),
-    text: `Pagamento aprovado. Seu plano ${plan.toUpperCase()} foi ativado no VectorCAD.`,
+    text: `Pagamento aprovado. Seu plano ${plan.toUpperCase()} foi ativado no vetorcad.`,
   });
 }
 
 export async function sendDailyLimitReachedEmail({ to, name, used, limit }: { to: string; name: string; used: number; limit: number }) {
   return sendVectorCadEmail({
     to,
-    subject: "Limite diário atingido no VectorCAD",
+    subject: "Limite diário atingido no vetorcad",
     react: createElement(DailyLimitReachedEmail, { name, used, limit, pricingUrl: getAppUrl("/pricing") }),
-    text: `Você atingiu o limite diário do plano FREE no VectorCAD: ${used}/${limit} usos hoje.`,
+    text: `Você atingiu o limite diário do plano FREE no vetorcad: ${used}/${limit} usos hoje.`,
   });
 }
