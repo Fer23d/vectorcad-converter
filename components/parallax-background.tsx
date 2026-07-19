@@ -75,6 +75,18 @@ export function ParallaxBackground() {
           className="transition-[stroke-dashoffset] duration-700 ease-out"
         />
       </svg>
+      <svg
+        className="absolute bottom-[-4rem] left-[-12%] h-64 w-[42rem] max-w-none opacity-20 sm:left-[-5%]"
+        viewBox="0 0 700 280"
+        fill="none"
+        style={{ transform: `translate3d(${shift * 0.28}px, ${shift * 0.2}px, 0)` }}
+      >
+        <g stroke="#35d6a0" strokeWidth="1.2">
+          <path d="M20 212h140V82h110v96h132V52h138v160h140" />
+          <path d="M20 236h180M318 236h202M580 236h110" />
+          <circle cx="160" cy="82" r="10" /><circle cx="402" cy="52" r="10" /><rect x="520" y="116" width="42" height="42" />
+        </g>
+      </svg>
       <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[#070b09] via-[#070b09]/60 to-transparent" />
       <div className="absolute inset-0 bg-[linear-gradient(rgba(183,243,74,.035)_1px,transparent_1px),linear-gradient(90deg,rgba(183,243,74,.035)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
     </div>
