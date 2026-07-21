@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, ChevronDown, Crosshair, Download, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, ChevronDown, ChevronUp, Crosshair, Download, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
@@ -11,7 +11,7 @@ import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
 import { processCadCleanImage, type CadCleanMetrics } from "@/lib/image-processing/cad-clean";
 import { isAiEnhanceQuality, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
 import { imageQualityAnalyzer, type ImageQualityAnalysis } from "@/lib/image-processing/image-quality-analyzer";
-import { decodeTiffDataUrl, isTiffFile, processTiff, type TiffRaster } from "@/lib/image-processing/tiff";
+import { decodeTiffDataUrl, isTiffFile, processTiff, rasterToPngDataUrl, type TiffRaster } from "@/lib/image-processing/tiff";
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
@@ -155,6 +155,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [fileName, setFileName] = useState(initialData?.fileName || "");
   const [processing, setProcessing] = useState(initialData?.processing || defaultProcessing);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(initialData?.imageQuality || "enhanced");
+  const [tiffOptimizationEnabled, setTiffOptimizationEnabled] = useState(initialData?.tiffOptimizationEnabled ?? false);
+  const [isVetorcadMinimized, setIsVetorcadMinimized] = useState(false);
   const [imageAnalysis, setImageAnalysis] = useState<ImageQualityAnalysis | null>(initialData?.imageAnalysis || null);
   const [lineProcessingMode, setLineProcessingMode] = useState<LineProcessingMode>(initialData?.lineProcessingMode || "manual");
   const [textDetectionEnabled, setTextDetectionEnabled] = useState(initialData?.textDetectionEnabled || false);
@@ -226,6 +228,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setImageQuality(saved?.imageQuality || "enhanced");
+      setTiffOptimizationEnabled(saved?.tiffOptimizationEnabled ?? false);
       setImageAnalysis(saved?.imageAnalysis || null);
       setLineProcessingMode(saved?.lineProcessingMode || "manual");
       setTextDetectionEnabled(saved?.textDetectionEnabled || false);
@@ -252,6 +255,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setFileName(saved.fileName || "");
     setProcessing(saved.processing || defaultProcessing);
     setImageQuality(saved.imageQuality || "enhanced");
+    setTiffOptimizationEnabled(saved.tiffOptimizationEnabled ?? false);
     setImageAnalysis(saved.imageAnalysis || null);
     setLineProcessingMode(saved.lineProcessingMode || "manual");
     setTextDetectionEnabled(saved.textDetectionEnabled || false);
@@ -320,6 +324,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       fileName,
       processing,
       imageQuality,
+      tiffOptimizationEnabled,
       imageAnalysis: imageAnalysis || undefined,
       lineProcessingMode,
       textDetectionEnabled,
@@ -342,7 +347,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -393,7 +398,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       if (!allowed) return;
       try {
         setMessage("Convertendo TIFF para um formato processável...");
-        const processedTiff = await processTiff(await file.arrayBuffer());
+        const processedTiff = await processTiff(await file.arrayBuffer(), { optimizeForVectorization: tiffOptimizationEnabled });
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ""));
@@ -438,7 +443,22 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     };
     image.onerror = () => setMessage("Não foi possível processar essa imagem. Tente outro arquivo.");
     image.src = url;
-  }, [consumeUsage]);
+  }, [consumeUsage, tiffOptimizationEnabled]);
+
+  useEffect(() => {
+    if (sourceFormat !== "tiff" || !sourceOriginalDataUrl) return;
+    let cancelled = false;
+    void decodeTiffDataUrl(sourceOriginalDataUrl, { optimizeForVectorization: tiffOptimizationEnabled }).then((raster) => {
+      if (cancelled) return;
+      setSource(null);
+      setSourceRaster(raster);
+      setSourceImageDataUrl(rasterToPngDataUrl(raster));
+      setMessage(tiffOptimizationEnabled ? "Otimização TIFF aplicada com preservação de resolução e contornos." : "TIFF original restaurado.");
+    }).catch(() => {
+      if (!cancelled) setMessage("Não foi possível aplicar a otimização TIFF. O arquivo original foi preservado.");
+    });
+    return () => { cancelled = true; };
+  }, [sourceFormat, sourceOriginalDataUrl, tiffOptimizationEnabled]);
 
   useEffect(() => {
     if (!isAiEnhanceQuality(imageQuality)) return;
@@ -490,7 +510,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!activeSource && !activeRaster) return;
     const sourceWidth = activeRaster?.width || activeSource?.width || 0;
     const sourceHeight = activeRaster?.height || activeSource?.height || 0;
-    const max = 720;
+    // TIFF optimization keeps more source detail for contour extraction while
+    // retaining a bounded canvas size for large scans.
+    const max = sourceFormat === "tiff" && tiffOptimizationEnabled ? 1600 : 720;
     const scale = Math.min(1, max / Math.max(sourceWidth, sourceHeight));
     const w = Math.max(1, Math.round(sourceWidth * scale)), h = Math.max(1, Math.round(sourceHeight * scale));
     const oc = originalCanvas.current!, pc = processedCanvas.current!;
@@ -574,7 +596,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [detectedTexts, imageQuality, lineProcessingMode, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceRaster, vector]);
+  }, [detectedTexts, imageQuality, lineProcessingMode, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, vector]);
 
   useEffect(() => {
     if (!source && !sourceRaster) return;
@@ -790,6 +812,11 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             <option value="ai-enhance-3k">Melhoria 3K</option>
             <option value="ai-enhance-4k">Melhoria 4K</option>
           </select>
+          <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-md border border-[#33433a] bg-[#111914] px-2 py-2 text-[10px] text-[#bdc9c3]" title="Mantém a resolução do TIFF e reforça nitidez, arestas e contornos para a vetorização.">
+            <span>(arquivo TIFF)</span>
+            <input type="checkbox" checked={tiffOptimizationEnabled} onChange={e => setTiffOptimizationEnabled(e.target.checked)} className="h-4 w-4 accent-[#b7f34a]" />
+          </label>
+          {sourceFormat !== "tiff" && <p className="mt-1 text-[9px] leading-4 text-[#829087]">Disponível para arquivos TIFF/TIF.</p>}
           {imageAnalysis && <div className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
             <p className="font-bold text-[#b7f34a]">Análise de imagem</p>
             <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 leading-4">
@@ -866,7 +893,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
             </div>
           </details>}
           <div className="mt-4 rounded-lg border border-[#33433a] bg-[#111914] p-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#b7f34a]"><Sparkles size={13} /> vetorcad Converter</div>
+            <button type="button" onClick={() => setIsVetorcadMinimized(value => !value)} className="flex w-full items-center gap-2 text-left text-xs font-bold text-[#b7f34a]" aria-expanded={!isVetorcadMinimized} aria-controls="vetorcad-converter-panel">
+              <Sparkles size={13} />
+              <span>vetorcad Converter</span>
+              {isVetorcadMinimized ? <ChevronDown size={14} className="ml-auto" /> : <ChevronUp size={14} className="ml-auto" />}
+            </button>
+            <div id="vetorcad-converter-panel" className={`overflow-hidden transition-all duration-300 ${isVetorcadMinimized ? "max-h-0 opacity-0" : "max-h-[1800px] opacity-100"}`}>
             <p className="mt-1 text-[10px] leading-4 text-[#829087]">{aiStatus || "Combine o OCR local com a análise inteligente do projeto."}</p>
             {aiAnalysis && <div className="mt-2 grid grid-cols-2 gap-1 text-[9px] text-[#aab8b0]"><span>OCR: <b className="text-[#b7f34a]">✓ executado</b></span><span>Análise visual: <b className={visionStatus === "executed" ? "text-[#b7f34a]" : "text-[#829087]"}>{visionStatus === "executed" ? "✓ executada" : visionStatus === "fallback" ? "fallback OCR" : "não acionada"}</b></span></div>}
             <button type="button" disabled={aiRunning} onClick={() => void analyzeWithAi()} className="mt-2 w-full rounded-md bg-[#b7f34a] px-2 py-2 text-[10px] font-black text-[#0c150e] disabled:cursor-wait disabled:opacity-60">{aiRunning ? "Analisando..." : "Executar análise Vision AI"}</button>
@@ -912,6 +944,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
               {selectedAiElement !== null && aiAnalysis.elements?.[selectedAiElement] && <div className="mt-3 rounded border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Elemento detectado</b><br />Nome: {aiAnalysis.elements[selectedAiElement].name}<br />Tipo: {aiAnalysis.elements[selectedAiElement].type}<br />Confiança: {Math.round(aiAnalysis.elements[selectedAiElement].confidence * 100)}%<br />Origem: {aiAnalysis.elements[selectedAiElement].source}<br />Posição: {Math.round(aiAnalysis.elements[selectedAiElement].position.x)}, {Math.round(aiAnalysis.elements[selectedAiElement].position.y)}<div className="mt-2 flex gap-1"><button type="button" onClick={() => setAiElementFeedback("confirmed")} className="flex-1 rounded bg-[#2a4a2d] py-1 text-[9px] font-bold text-[#caffab]">Confirmar</button><button type="button" onClick={() => setAiElementFeedback("rejected")} className="flex-1 rounded bg-[#4a2929] py-1 text-[9px] font-bold text-[#ffb2ac]">Rejeitar</button></div></div>}
               {selectedAiDimension !== null && aiAnalysis.detectedDimensions?.[selectedAiDimension] && <div className="mt-3 rounded border border-[#5a3822] bg-[#2a1d15] p-2 text-[10px] leading-4 text-[#ffd9bd]"><b className="text-[#ff8a3d]">Cota selecionada</b><br />Valor: {aiAnalysis.detectedDimensions[selectedAiDimension].value} {aiAnalysis.detectedDimensions[selectedAiDimension].unit}<br />Tipo: DIMENSION<br />Origem: {aiAnalysis.detectedDimensions[selectedAiDimension].source}<br />Confiança: {Math.round(aiAnalysis.detectedDimensions[selectedAiDimension].confidence * 100)}%<br />Orientação: {aiAnalysis.detectedDimensions[selectedAiDimension].orientation}</div>}
             </>}
+            </div>
           </div>
           <Slider label="Brilho" value={processing.brightness} min={-100} max={100} onChange={v => setProcessing({ ...processing, brightness: v })} />
           <Slider label="Contraste" value={processing.contrast} min={20} max={250} onChange={v => setProcessing({ ...processing, contrast: v })} />

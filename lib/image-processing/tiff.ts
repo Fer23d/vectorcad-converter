@@ -23,6 +23,11 @@ export type ProcessedTiff = {
   previewPng: string;
 };
 
+export type TiffProcessOptions = {
+  /** Keeps the original dimensions while emphasizing technical edges for vectorization. */
+  optimizeForVectorization?: boolean;
+};
+
 function isBigTiff(buffer: ArrayBuffer) {
   const bytes = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 4));
   return bytes.length === 4 && ((bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2b && bytes[3] === 0x00) || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2b));
@@ -52,6 +57,41 @@ export function rasterToPngDataUrl(raster: TiffRaster) {
   }
   context.putImageData(image, 0, 0);
   return canvas.toDataURL("image/png");
+}
+
+/**
+ * Applies a dimension-preserving, opt-in enhancement to TIFF pixels.
+ * It intentionally avoids resizing, thresholding, or morphology so thin lines
+ * and palette details remain available to the existing vectorization pipeline.
+ */
+export function optimizeTiffRaster(raster: TiffRaster): TiffRaster {
+  const { width, height } = raster;
+  const source = raster.data;
+  const optimized = new Uint8ClampedArray(source.length);
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+  const luminance = (offset: number) => source[offset] * 0.299 + source[offset + 1] * 0.587 + source[offset + 2] * 0.114;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      const current = luminance(offset);
+      const left = luminance((y * width + Math.max(0, x - 1)) * 4);
+      const right = luminance((y * width + Math.min(width - 1, x + 1)) * 4);
+      const top = luminance((Math.max(0, y - 1) * width + x) * 4);
+      const bottom = luminance((Math.min(height - 1, y + 1) * width + x) * 4);
+      const neighborAverage = (left + right + top + bottom) / 4;
+      const sharpened = current + (current - neighborAverage) * 0.65;
+      const contrasted = (sharpened - 128) * 1.18 + 128;
+      const delta = contrasted - current;
+
+      optimized[offset] = clamp(source[offset] + delta);
+      optimized[offset + 1] = clamp(source[offset + 1] + delta);
+      optimized[offset + 2] = clamp(source[offset + 2] + delta);
+      optimized[offset + 3] = 255;
+    }
+  }
+
+  return { width, height, data: optimized };
 }
 
 function normalizeRgba(rgba: ArrayLike<number>, frame: { t258?: number[]; t277?: number[]; t338?: number[] }, width: number, height: number) {
@@ -110,7 +150,7 @@ function decodeOneBit(frame: { data?: Uint8Array; t320?: number[]; t266?: number
 }
 
 /** Decodes the first TIFF page directly to RGBA pixels for the existing raster pipeline. */
-export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
+export function decodeTiff(buffer: ArrayBuffer, options: TiffProcessOptions = {}): TiffRaster {
   if (isBigTiff(buffer)) throw new Error("TIFF_BIGTIFF_UNSUPPORTED");
   const frames = UTIF.decode(buffer);
   const frame = frames.find((candidate) => {
@@ -154,7 +194,8 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
       : UTIF.toRGBA8(frame);
     const normalized = normalizeRgba(rgba, frame, frame.width || width, frame.height || height);
     console.info("[vetorcad][TIFF] RGBA output", { rgbaBytes: normalized.length });
-    return { width: frame.width || width, height: frame.height || height, data: normalized };
+    const raster = { width: frame.width || width, height: frame.height || height, data: normalized };
+    return options.optimizeForVectorization ? optimizeTiffRaster(raster) : raster;
   } catch (error) {
     console.error("[vetorcad][TIFF] decode failed", { error: error instanceof Error ? error.message : "unknown_error" });
     throw new Error("TIFF_DECODE_FAILED");
@@ -162,8 +203,8 @@ export function decodeTiff(buffer: ArrayBuffer): TiffRaster {
 }
 
 /** Processes any supported TIFF into the stable RGBA + PNG contract used by the editor. */
-export async function processTiff(buffer: ArrayBuffer): Promise<ProcessedTiff> {
-  const raster = decodeTiff(buffer);
+export async function processTiff(buffer: ArrayBuffer, options: TiffProcessOptions = {}): Promise<ProcessedTiff> {
+  const raster = decodeTiff(buffer, options);
   return {
     width: raster.width,
     height: raster.height,
@@ -172,12 +213,12 @@ export async function processTiff(buffer: ArrayBuffer): Promise<ProcessedTiff> {
   };
 }
 
-export async function decodeTiffFile(file: File) {
-  return decodeTiff(await file.arrayBuffer());
+export async function decodeTiffFile(file: File, options: TiffProcessOptions = {}) {
+  return decodeTiff(await file.arrayBuffer(), options);
 }
 
-export async function decodeTiffDataUrl(dataUrl: string) {
+export async function decodeTiffDataUrl(dataUrl: string, options: TiffProcessOptions = {}) {
   const response = await fetch(dataUrl);
   if (!response.ok) throw new Error("TIFF_DATA_UNAVAILABLE");
-  return decodeTiff(await response.arrayBuffer());
+  return decodeTiff(await response.arrayBuffer(), options);
 }

@@ -11,6 +11,7 @@ export type CadProjectData = {
   fileName?: string;
   processing?: import("@/types/vector").ProcessingSettings;
   imageQuality?: import("@/types/vector").ImageQuality;
+  tiffOptimizationEnabled?: boolean;
   imageAnalysis?: import("@/lib/image-processing/image-quality-analyzer").ImageQualityAnalysis;
   lineProcessingMode?: import("@/types/vector").LineProcessingMode;
   textDetectionEnabled?: boolean;
