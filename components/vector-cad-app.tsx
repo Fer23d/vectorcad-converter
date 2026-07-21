@@ -231,6 +231,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setSourceFormat("raster");
       setSourceImageDataUrl(saved?.sourceImageDataUrl || "");
       setSourceOriginalDataUrl(saved?.sourceOriginalDataUrl || "");
+      setProcessedImage(saved?.processedImageDataUrl || "");
       setFileName(saved?.fileName || "");
       setProcessing(saved?.processing || defaultProcessing);
       setImageQuality(saved?.imageQuality || "enhanced");
@@ -256,6 +257,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
 
     setSourceImageDataUrl(saved.sourceImageDataUrl);
     setSourceOriginalDataUrl(saved.sourceOriginalDataUrl || "");
+    setProcessedImage(saved.processedImageDataUrl || "");
     setSourceFormat(saved.sourceFormat || "raster");
     setSourceRaster(null);
     setFileName(saved.fileName || "");
@@ -299,6 +301,20 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   }, [draftClearSignal, initialData, restoredDraft]);
 
   useEffect(() => {
+    if (!processedImage) return;
+    let cancelled = false;
+    const image = new Image();
+    image.onload = () => {
+      if (!cancelled) setManualProcessedImage(image);
+    };
+    image.onerror = () => {
+      if (!cancelled) setManualProcessedImage(null);
+    };
+    image.src = processedImage;
+    return () => { cancelled = true; };
+  }, [processedImage]);
+
+  useEffect(() => {
     const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
     if (!saved?.sourceImageDataUrl || saved.sourceFormat !== "tiff" || saved.sourceOriginalDataUrl) return;
     let cancelled = false;
@@ -326,6 +342,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       schemaVersion: 1,
       sourceImageDataUrl,
       sourceOriginalDataUrl: sourceFormat === "tiff" ? sourceOriginalDataUrl : undefined,
+      processedImageDataUrl: processedImage || undefined,
       sourceFormat,
       fileName,
       processing,
@@ -353,7 +370,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -823,6 +840,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       editorMode: "cad3d",
       schemaVersion: 1,
       sourceImageDataUrl,
+      sourceOriginalDataUrl: sourceFormat === "tiff" ? sourceOriginalDataUrl : undefined,
+      sourceFormat,
+      processedImageDataUrl: processedImage || undefined,
       fileName,
       processing,
       imageQuality,

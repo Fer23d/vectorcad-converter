@@ -9,6 +9,17 @@ export type LocalProjectDraft = {
 
 const pendingDraftTimers = new Map<string, number>();
 const LOCAL_DRAFT_DELAY_MS = 60_000;
+const LARGE_DATA_URL_LENGTH = 1_000_000;
+
+function compactDraftData(data: CadProjectData): CadProjectData {
+  const compacted = { ...data };
+  const imageKeys: Array<"sourceImageDataUrl" | "sourceOriginalDataUrl" | "processedImageDataUrl"> = ["sourceImageDataUrl", "sourceOriginalDataUrl", "processedImageDataUrl"];
+  for (const key of imageKeys) {
+    const value = compacted[key];
+    if (typeof value === "string" && value.startsWith("data:image") && value.length > LARGE_DATA_URL_LENGTH) compacted[key] = undefined;
+  }
+  return compacted;
+}
 
 export function localProjectDraftKey(userId: string) {
   return `currentProject-${userId}`;
@@ -94,7 +105,7 @@ export function useLocalProjectDraft({ userId, projectId, hasInitialData, clearS
     setLocalDraftDirty(true);
     timer.current = window.setTimeout(() => {
       try {
-        const draft: LocalProjectDraft = { projectId: projectId || null, data, updatedAt: new Date().toISOString() };
+        const draft: LocalProjectDraft = { projectId: projectId || null, data: compactDraftData(data), updatedAt: new Date().toISOString() };
         window.localStorage.setItem(key, JSON.stringify(draft));
         pendingDraftTimers.delete(key);
         setLocalDraftDirty(false);

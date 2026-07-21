@@ -12,6 +12,7 @@ import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { cancelLocalProjectDraftTimer, clearLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
+import { persistProjectImagesToStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
@@ -101,6 +102,7 @@ export function SaasDashboard() {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
+  const [isUploading, setIsUploading] = useState(false);
   const [draftClearSignal, setDraftClearSignal] = useState("");
   const latestProjectData = useRef<CadProjectData | null>(null);
   const editorProjectId = useRef<string | null>(null);
@@ -363,15 +365,25 @@ export function SaasDashboard() {
     cancelLocalProjectDraftTimer(user.id);
     savingProject.current = true;
     setProjectSaveState("saving");
+    setIsUploading(true);
     const updatedAt = new Date().toISOString();
-    const data = latestProjectData.current;
-    const { error } = await supabase
-      .from("projects")
-      .update({ data, updated_at: updatedAt })
-      .eq("id", activeProject.id)
-      .eq("user_id", user.id);
+    let data: CadProjectData;
+    let error: { message: string } | null = null;
+    try {
+      data = await persistProjectImagesToStorage(activeProject.id, latestProjectData.current);
+      const result = await supabase
+        .from("projects")
+        .update({ data, updated_at: updatedAt })
+        .eq("id", activeProject.id)
+        .eq("user_id", user.id);
+      error = result.error;
+    } catch (saveError) {
+      data = latestProjectData.current;
+      error = { message: saveError instanceof Error ? saveError.message : "Não foi possível salvar as imagens." };
+    }
 
     savingProject.current = false;
+    setIsUploading(false);
     if (error) {
       setProjectSaveState("error");
       setStatus(`Erro ao salvar projeto: ${error.message}`);
@@ -402,11 +414,23 @@ export function SaasDashboard() {
 
     // If the user started from the standalone editor, create a project automatically instead of blocking the new tab.
     const name = data.fileName?.replace(/\.[^.]+$/, "").trim() || `Projeto ${projects.length + 1}`;
+    const createdProjectId = crypto.randomUUID();
+    setIsUploading(true);
+    let persistedData: CadProjectData;
+    try {
+      persistedData = await persistProjectImagesToStorage(createdProjectId, data);
+    } catch (storageError) {
+      setIsUploading(false);
+      setStatus(`Erro ao enviar imagem: ${storageError instanceof Error ? storageError.message : "falha no Storage"}`);
+      setToastMessage("Erro ao enviar imagem");
+      return null;
+    }
     const { data: created, error } = await supabase
       .from("projects")
-      .insert([{ user_id: user.id, name, type: "2d", data }])
+      .insert([{ id: createdProjectId, user_id: user.id, name, type: "2d", data: persistedData }])
       .select("*")
       .single();
+    setIsUploading(false);
 
     if (error || !created) {
       setStatus(`Erro ao salvar projeto: ${error?.message || "não foi possível criar o projeto"}`);
@@ -420,7 +444,7 @@ export function SaasDashboard() {
     setDraftClearSignal(new Date().toISOString());
     editorProjectId.current = savedProject.id;
     editorCallbackSeen.current = savedProject.id;
-    latestProjectData.current = data;
+    latestProjectData.current = persistedData;
     setProjectSaveState("saved");
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
@@ -749,7 +773,7 @@ export function SaasDashboard() {
             sessão protegida
           </div>}
           {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
-          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving"} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{projectSaveState === "saving" ? "Salvando..." : "Salvar projeto"}</span><span className="sm:hidden">{projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
+          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving" || isUploading} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{isUploading ? "Enviando imagem..." : projectSaveState === "saving" ? "Salvando..." : "Salvar projeto"}</span><span className="sm:hidden">{isUploading ? "..." : projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
           <button
             type="button"
             onClick={() => setHeaderCollapsed((value) => !value)}
