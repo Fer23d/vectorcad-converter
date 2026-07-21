@@ -15,7 +15,7 @@ import { decodeTiffDataUrl, isTiffFile, processTiff, rasterToPngDataUrl, type Ti
 import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
-import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
+import { scaleDocument, simplifyPath, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
 import { lineIntelligenceEngine, type LineIntelligenceMetrics } from "@/lib/vector/line-intelligence";
 import { generateSvg } from "@/lib/exporters/svg";
@@ -202,6 +202,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [eraserSize, setEraserSize] = useState(20);
   const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
   const [upgradeModal, setUpgradeModal] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const hydrating = useRef(true);
   const skipLocalSave = useRef(true);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
@@ -283,6 +284,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (saved.sourceFormat === "tiff" && !saved.sourceOriginalDataUrl) return;
 
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       setSourceRaster(null);
       setSource(image);
@@ -304,6 +306,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!processedImage) return;
     let cancelled = false;
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       if (!cancelled) setManualProcessedImage(image);
     };
@@ -433,6 +436,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const pngDataUrl = processedTiff.previewPng;
         const image = await new Promise<HTMLImageElement>((resolve, reject) => {
           const preview = new Image();
+          preview.crossOrigin = "anonymous";
           preview.onload = () => resolve(preview);
           preview.onerror = () => reject(new Error("TIFF_PNG_PREVIEW_FAILED"));
           preview.src = pngDataUrl;
@@ -461,6 +465,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setManualProcessedImage(null);
     setProcessedImage("");
     const url = URL.createObjectURL(file), image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       const reader = new FileReader();
       reader.onload = () => setSourceImageDataUrl(String(reader.result || ""));
@@ -510,6 +515,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.imageDataUrl) throw new Error(result.error || "AI_ENHANCE_SERVER_FAILED");
         const enhancedImage = new Image();
+        enhancedImage.crossOrigin = "anonymous";
         enhancedImage.onload = () => {
           if (cancelled) return;
           setServerEnhancedDataUrl(result.imageDataUrl);
@@ -578,7 +584,14 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     pc.getContext("2d")!.putImageData(result.image, 0, 0);
     setProcessedPreview(pc.toDataURL("image/png"));
-    const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
+    // TIFF optimization intentionally uses a lighter tracing profile. The
+    // bitmap is already binarized by processPixels; increasing simplification,
+    // minimum fragment area and disabling smoothing prevents high-resolution
+    // scans from producing millions of tiny paths during export.
+    const traceSettings: VectorSettings = sourceFormat === "tiff" && tiffOptimizationEnabled
+      ? { ...vector, simplification: Math.max(vector.simplification, 3), minArea: Math.max(vector.minArea, 8), smoothIterations: 0 }
+      : vector;
+    const rawDocument = vectorizeBitmap(bitmap, w, h, traceSettings);
     const detectedLines = lineIntelligenceEngine.analyze(rawDocument.paths, w, h);
     const lineSelection = lineIntelligenceEngine.selectPaths(rawDocument.paths, detectedLines, lineProcessingMode, w, h);
     const intelligentPaths = lineSelection.paths;
@@ -591,7 +604,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : enhanceForCad(sourceImage, fallbackQuality);
         const fallbackResult = processPixels(fallbackSource, processing);
         const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
-        const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, vector);
+        const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, traceSettings);
         const fallbackLines = lineIntelligenceEngine.analyze(fallbackRaw.paths, w, h);
         const fallbackSelection = lineIntelligenceEngine.selectPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode, w, h);
         const fallbackPaths = fallbackSelection.paths;
@@ -720,6 +733,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setProcessedImage(dataUrl);
     setProcessedPreview(dataUrl);
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => setManualProcessedImage(image);
     image.src = dataUrl;
     setMessage("Área apagada. A vetorização foi atualizada com a imagem tratada.");
@@ -727,19 +741,40 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const handleEraserPointerLeave = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) handleEraserPointerUp(event);
   };
+  const prepareExportDocument = (document: VectorDocument) => {
+    if (sourceFormat !== "tiff" || !tiffOptimizationEnabled) return document;
+    const tolerance = Math.max(2, vector.simplification * 1.8);
+    const paths = document.paths
+      .map(path => ({ ...path, points: simplifyPath(path.points, tolerance) }))
+      .filter(path => path.points.length >= (path.closed ? 3 : 2));
+    return { ...document, paths };
+  };
   const exportFile = async (kind: "svg" | "dxf") => {
-    if (!finalDoc) return setMessage("Envie e vetorize uma imagem antes de exportar.");
-    if (kind === "dxf") {
-      const allowed = await consumeUsage("export_dxf");
-      if (!allowed) return;
-    } else {
-      const allowed = await consumeUsage("export_svg");
-      if (!allowed) return;
+    if (!finalDoc || isExporting) {
+      if (!finalDoc) setMessage("Envie e vetorize uma imagem antes de exportar.");
+      return;
     }
-    if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
-    const smartTexts = kind === "dxf" && exportSmartTexts ? (aiAnalysis?.texts || []) : [];
-    download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc, smartTexts), kind === "svg" ? "image/svg+xml" : "application/dxf");
-    setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
+    setIsExporting(true);
+    setMessage(`Preparando exportação ${kind.toUpperCase()}...`);
+    try {
+      const allowed = await consumeUsage(kind === "dxf" ? "export_dxf" : "export_svg");
+      if (!allowed) return;
+      await new Promise<void>(resolve => window.setTimeout(resolve, 50));
+      const exportDoc = prepareExportDocument(finalDoc);
+      if (kind === "dxf" && countDxfEntities(exportDoc) === 0) {
+        setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
+        return;
+      }
+      const smartTexts = kind === "dxf" && exportSmartTexts ? (aiAnalysis?.texts || []) : [];
+      const content = kind === "svg" ? generateSvg(exportDoc) : generateDxf(exportDoc, smartTexts);
+      download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, content, kind === "svg" ? "image/svg+xml" : "application/dxf");
+      setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
+    } catch (error) {
+      console.error("[vetorcad][export] failed", { kind, reason: error instanceof Error ? error.message : "EXPORT_FAILED" });
+      setMessage(`Não foi possível exportar ${kind.toUpperCase()}. Reduza a complexidade ou tente CAD Clean.`);
+    } finally {
+      setIsExporting(false);
+    }
   };
   const exportPng = async () => {
     const c = processedCanvas.current; if (!c) return;
@@ -1112,7 +1147,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
         <div className="border-t border-[#26312c] bg-[#101613] px-4 py-3">
           <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4"><Stat label="Linhas" value={pathCount} /><Stat label="Objetos detectados" value={aiAnalysis?.elements?.length || 0} /><Stat label="Redução de ruído" value={`${cleanupStats.reductionPercent}%`} /><Stat label="Confiança média" value={aiAnalysis ? `${Math.round(aiAnalysis.confidence * 100)}%` : "Informação não disponível"} /></div>
-          <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => exportFile("svg")} className="rounded-lg bg-white px-3 py-2 text-[10px] font-black text-[#111713]">Exportar SVG</button><button type="button" onClick={() => exportFile("dxf")} className="rounded-lg bg-[#b7f34a] px-3 py-2 text-[10px] font-black text-[#0a120c]">Exportar DXF</button><span className="self-center text-[9px] text-[#829087]">Hover para inspecionar · clique para selecionar</span></div>
+          <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => exportFile("svg")} disabled={isExporting} className="rounded-lg bg-white px-3 py-2 text-[10px] font-black text-[#111713] disabled:cursor-wait disabled:opacity-60">{isExporting ? "Exportando..." : "Exportar SVG"}</button><button type="button" onClick={() => exportFile("dxf")} disabled={isExporting} className="rounded-lg bg-[#b7f34a] px-3 py-2 text-[10px] font-black text-[#0a120c] disabled:cursor-wait disabled:opacity-60">{isExporting ? "Exportando..." : "Exportar DXF"}</button><span className="self-center text-[9px] text-[#829087]">Hover para inspecionar · clique para selecionar</span></div>
           {selectedPreviewPath && <div className="mt-2 rounded-lg border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Objeto selecionado</b><br />Tipo: {selectedPreviewPath.path.closed ? "Curva/contorno fechado" : "Linha/polilinha"}<br />Layer: {selectedPreviewPath.path.layer}<br />Pontos: {selectedPreviewPath.path.points.length}<br />Dimensão: Informação não disponível<button type="button" onClick={() => setSelectedPreviewPath(null)} className="ml-3 text-[#b7f34a]">Fechar</button></div>}
         </div>
       </div>
@@ -1126,7 +1161,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         </Section>
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
-        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
+        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c] disabled:cursor-wait disabled:opacity-60"><Download size={15} /> {isExporting ? "Exportando..." : "Exportar DXF"}</button><button onClick={() => exportFile("svg")} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713] disabled:cursor-wait disabled:opacity-60"><Download size={15} /> {isExporting ? "Exportando..." : "Exportar SVG"}</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
         {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button><button type="button" onClick={() => void open3dInNewTab()} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button></div>}</div>}
         {show3d && <div className="mt-5"><SvgTo3DCadViewer svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
