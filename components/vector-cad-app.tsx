@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, ChevronDown, ChevronUp, Crosshair, Download, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
@@ -150,6 +150,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
   const [processedPreview, setProcessedPreview] = useState("");
+  const [processedImage, setProcessedImage] = useState("");
+  const [manualProcessedImage, setManualProcessedImage] = useState<HTMLImageElement | null>(null);
   const [aiEnhancedPreview, setAiEnhancedPreview] = useState("");
   const [sourceOriginalDataUrl, setSourceOriginalDataUrl] = useState(initialData?.sourceOriginalDataUrl || "");
   const [fileName, setFileName] = useState(initialData?.fileName || "");
@@ -196,11 +198,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const [show3d, setShow3d] = useState(initialData?.editorMode === "cad3d");
   const [show3dOptions, setShow3dOptions] = useState(false);
+  const [isEraserMode, setIsEraserMode] = useState(false);
+  const [eraserSize, setEraserSize] = useState(20);
   const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
   const [upgradeModal, setUpgradeModal] = useState("");
   const hydrating = useRef(true);
   const skipLocalSave = useRef(true);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
+  const eraserDrawing = useRef(false);
+  const eraserLastPoint = useRef<{ x: number; y: number } | null>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const controlsSize = useRef(280), cadSize = useRef(270);
@@ -397,6 +403,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       const allowed = await consumeUsage("vectorize");
       if (!allowed) return;
       try {
+        setManualProcessedImage(null);
+        setProcessedImage("");
         setMessage("Convertendo TIFF para um formato processável...");
         const processedTiff = await processTiff(await file.arrayBuffer(), { optimizeForVectorization: tiffOptimizationEnabled });
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -433,6 +441,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 30 MB.");
     const allowed = await consumeUsage("vectorize");
     if (!allowed) return;
+    setManualProcessedImage(null);
+    setProcessedImage("");
     const url = URL.createObjectURL(file), image = new Image();
     image.onload = () => {
       const reader = new FileReader();
@@ -505,8 +515,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!source && !sourceRaster) return;
     const usingServerEnhance = isAiEnhanceQuality(imageQuality);
     if (usingServerEnhance && !serverEnhancedImage && !serverEnhanceFailed) return;
-    const activeSource = usingServerEnhance && serverEnhancedImage ? serverEnhancedImage : source;
-    const activeRaster = usingServerEnhance && serverEnhancedImage ? null : sourceRaster;
+    const activeSource = manualProcessedImage || (usingServerEnhance && serverEnhancedImage ? serverEnhancedImage : source);
+    const activeRaster = manualProcessedImage ? null : usingServerEnhance && serverEnhancedImage ? null : sourceRaster;
     if (!activeSource && !activeRaster) return;
     const sourceWidth = activeRaster?.width || activeSource?.width || 0;
     const sourceHeight = activeRaster?.height || activeSource?.height || 0;
@@ -596,7 +606,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [detectedTexts, imageQuality, lineProcessingMode, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, vector]);
+  }, [detectedTexts, imageQuality, lineProcessingMode, manualProcessedImage, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, vector]);
 
   useEffect(() => {
     if (!source && !sourceRaster) return;
@@ -643,6 +653,63 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
   const hasSource = Boolean(source || sourceRaster);
   const updateWidth = (v: number) => { setRealWidth(v); if (locked && sourceWidth && sourceHeight) setRealHeight(Number((v * sourceHeight / sourceWidth).toFixed(2))); };
   const updateHeight = (v: number) => { setRealHeight(v); if (locked && sourceWidth && sourceHeight) setRealWidth(Number((v * sourceWidth / sourceHeight).toFixed(2))); };
+  const getCanvasPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) * (canvas.width / Math.max(rect.width, 1)),
+      y: (event.clientY - rect.top) * (canvas.height / Math.max(rect.height, 1)),
+    };
+  };
+  const handleEraserPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isEraserMode || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    eraserDrawing.current = true;
+    eraserLastPoint.current = null;
+    handleEraserPointerMove(event);
+  };
+  const handleEraserPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isEraserMode || !eraserDrawing.current) return;
+    const point = getCanvasPoint(event);
+    const context = event.currentTarget.getContext("2d");
+    if (!context) return;
+    context.save();
+    // The processed canvas uses a white background for reliable thresholding.
+    // Painting white avoids transparent pixels being interpreted as dark geometry.
+    context.globalCompositeOperation = "source-over";
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = eraserSize;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.beginPath();
+    if (eraserLastPoint.current) {
+      context.moveTo(eraserLastPoint.current.x, eraserLastPoint.current.y);
+      context.lineTo(point.x, point.y);
+    } else {
+      context.moveTo(point.x, point.y);
+      context.lineTo(point.x + 0.01, point.y + 0.01);
+    }
+    context.stroke();
+    context.restore();
+    eraserLastPoint.current = point;
+  };
+  const handleEraserPointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!eraserDrawing.current) return;
+    eraserDrawing.current = false;
+    eraserLastPoint.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const dataUrl = event.currentTarget.toDataURL("image/png");
+    setProcessedImage(dataUrl);
+    setProcessedPreview(dataUrl);
+    const image = new Image();
+    image.onload = () => setManualProcessedImage(image);
+    image.src = dataUrl;
+    setMessage("Área apagada. A vetorização foi atualizada com a imagem tratada.");
+  };
+  const handleEraserPointerLeave = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) handleEraserPointerUp(event);
+  };
   const exportFile = async (kind: "svg" | "dxf") => {
     if (!finalDoc) return setMessage("Envie e vetorize uma imagem antes de exportar.");
     if (kind === "dxf") {
@@ -664,7 +731,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     const a = document.createElement("a"); a.href = c.toDataURL("image/png"); a.download = "vectorcad-preview.png"; a.click();
   };
   const handleDownloadImage = () => {
-    const imageDataUrl = aiEnhancedPreview || processedPreview;
+    const imageDataUrl = aiEnhancedPreview || processedImage || processedPreview;
     if (!imageDataUrl) {
       setMessage("Processe uma imagem antes de baixar a imagem tratada.");
       return;
@@ -1009,13 +1076,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       <div className="preview-panel flex min-h-[600px] min-w-0 flex-col overflow-hidden">
         <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-3">
           <div className="flex gap-1 rounded-lg bg-[#151c19] p-1">{(["original", "processed", "vector"] as const).map(v => <button key={v} onClick={() => setActiveView(v)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase ${activeView === v ? "bg-[#334039] text-white" : "text-[#7f8e86]"}`}>{v === "original" ? "Original" : v === "processed" ? "Processada" : "Vetor"}</button>)}</div>
-          <div className="flex items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button></div>
+          <div className="flex flex-wrap items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button><button type="button" title="Borracha" onClick={() => setIsEraserMode(value => !value)} className={`flex items-center gap-1 rounded border px-2 py-1.5 text-[9px] font-bold ${isEraserMode ? "border-[#b7f34a] bg-[#b7f34a] text-[#0a120c]" : "border-[#34413b] text-[#aab8b0]"}`}><Eraser size={13} /> Borracha</button>{isEraserMode && <label className="flex items-center gap-1 text-[9px] text-[#aab8b0]" title="Tamanho da borracha"><input type="range" min="1" max="100" value={eraserSize} onChange={event => setEraserSize(Number(event.target.value))} className="w-20 accent-[#b7f34a]" />{eraserSize}px</label>}</div>
         </div>
           {activeView === "vector" && <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px]"><button type="button" onClick={() => setShowPreviewContours(value => !value)} className={`rounded border px-2 py-1 ${showPreviewContours ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Contours</button><button type="button" onClick={() => setShowPreviewLayers(value => !value)} className={`rounded border px-2 py-1 ${showPreviewLayers ? "border-[#54a9ff] text-[#54a9ff]" : "border-[#34413b] text-[#7f8e86]"}`}>Layers</button><span className="rounded border border-[#34413b] px-2 py-1 text-[#aab8b0]">Scale: {unit}</span><button type="button" onClick={() => setShowAiOverlay(value => !value)} className={`rounded border px-2 py-1 ${showAiOverlay ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Overlay inteligente</button><button type="button" onClick={() => setShowPreviewTexts(value => !value)} className={`rounded border px-2 py-1 ${showPreviewTexts ? "border-[#ff8a3d] text-[#ff8a3d]" : "border-[#34413b] text-[#7f8e86]"}`}>Textos</button></div>}
-        <div ref={previewViewport} onPointerDown={viewer.onPointerDown} onPointerMove={viewer.onPointerMove} onPointerUp={viewer.onPointerUp} onPointerCancel={viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex flex-1 items-center justify-center overflow-hidden p-6 ${viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
+        <div ref={previewViewport} onPointerDown={isEraserMode ? undefined : viewer.onPointerDown} onPointerMove={isEraserMode ? undefined : viewer.onPointerMove} onPointerUp={isEraserMode ? undefined : viewer.onPointerUp} onPointerCancel={isEraserMode ? undefined : viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex flex-1 items-center justify-center overflow-hidden p-6 ${isEraserMode ? "cursor-crosshair" : viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
           <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
-            <canvas ref={processedCanvas} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full`} />
+            <canvas ref={processedCanvas} onPointerDown={isEraserMode ? handleEraserPointerDown : undefined} onPointerMove={isEraserMode ? handleEraserPointerMove : undefined} onPointerUp={isEraserMode ? handleEraserPointerUp : undefined} onPointerCancel={isEraserMode ? handleEraserPointerUp : undefined} onPointerLeave={isEraserMode ? handleEraserPointerLeave : undefined} style={{ touchAction: isEraserMode ? "none" : undefined }} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full ${isEraserMode ? "cursor-crosshair" : ""}`} />
             {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
             {activeView === "vector" && <VectorInspectionOverlay doc={doc} showContours={showPreviewContours} showLayers={showPreviewLayers} onSelect={(path, index) => setSelectedPreviewPath({ path, index })} />}
             {activeView === "vector" && showPreviewTexts && <div className="pointer-events-none absolute inset-0">{detectedTexts.map((text, index) => <button key={`${text.text}-${index}`} type="button" className="pointer-events-auto absolute border border-[#ff8a3d] bg-[#ff8a3d]/10 text-[8px] text-[#c95d27]" style={{ left: text.x, top: text.y, width: Math.max(8, text.width), height: Math.max(8, text.height) }} title={`${text.text} · confiança ${Math.round(text.confidence * 100)}%`}><span className="absolute left-0 top-full whitespace-nowrap bg-white px-1">{text.text}</span></button>)}</div>}
