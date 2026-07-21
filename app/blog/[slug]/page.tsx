@@ -21,6 +21,19 @@ export async function generateMetadata({ params }: ArticlePageProps): Promise<Me
     description: article.metaDescription || article.description,
     keywords: article.keywords,
     alternates: { canonical: `https://vetorcad.com.br/blog/${article.slug}` },
+    openGraph: {
+      title: article.metaTitle || article.title,
+      description: article.metaDescription || article.description,
+      url: `https://vetorcad.com.br/blog/${article.slug}`,
+      type: "article",
+      publishedTime: article.date,
+      siteName: "VetorCAD",
+    },
+    twitter: {
+      card: "summary",
+      title: article.metaTitle || article.title,
+      description: article.metaDescription || article.description,
+    },
   };
 }
 
