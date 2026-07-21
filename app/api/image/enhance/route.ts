@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MAX_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_FILE_BYTES = 30 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 100_000_000;
 const MAX_OUTPUT_PIXELS = 16_000_000;
 const MAX_OUTPUT_DIMENSION = 4_000;
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const mode: EnhanceMode = requestedMode === "2x" || requestedMode === "4x" ? requestedMode : "3x";
 
     if (!(file instanceof File)) return jsonError("Imagem não enviada.", 400);
-    if (file.size <= 0 || file.size > MAX_FILE_BYTES) return jsonError("A imagem excede o limite seguro de 12 MB.", 413);
+    if (file.size <= 0 || file.size > MAX_FILE_BYTES) return jsonError("A imagem excede o limite seguro de 30 MB.", 413);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const input = sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" });

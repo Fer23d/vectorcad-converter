@@ -23,7 +23,7 @@ import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
-const MAX_FILE = 12 * 1024 * 1024;
+const MAX_FILE = 30 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/x-tiff"];
 const CONTROLS_MIN_WIDTH = 260;
 const CAD_MIN_WIDTH = 260;
@@ -393,7 +393,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setAiAnalysis(null);
     setAiStatus("");
     if (file && isTiffFile(file)) {
-      if (!file || file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
+      if (!file || file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 30 MB.");
       const allowed = await consumeUsage("vectorize");
       if (!allowed) return;
       try {
@@ -430,7 +430,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     }
     if (!file) return;
     if (!ACCEPTED.includes(file.type)) return setMessage("Formato inválido. Envie PNG, JPG, JPEG, WEBP, TIF ou TIFF.");
-    if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 12 MB.");
+    if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 30 MB.");
     const allowed = await consumeUsage("vectorize");
     if (!allowed) return;
     const url = URL.createObjectURL(file), image = new Image();
@@ -793,7 +793,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       <h1 className="mx-auto max-w-3xl text-4xl font-black tracking-[-.045em] text-white md:text-6xl">Transforme imagens em <span className="text-[#b7f34a]">vetores para CAD</span></h1>
       <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#9faca6] md:text-base">Converta PNG, JPG e TIFF em SVG e DXF editável para AutoCAD, corte laser, CNC e projetos técnicos.</p>
       <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }} onClick={() => input.current?.click()} className={`mx-auto mt-10 max-w-3xl cursor-pointer rounded-2xl border border-dashed p-12 transition md:p-16 ${dragging ? "border-[#b7f34a] bg-[#17251a]" : "border-[#425148] bg-[#111714]/80 hover:border-[#829b83]"}`}>
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#b7f34a] text-[#08110b]"><Upload size={26} /></div><h2 className="mt-5 text-lg font-bold">Arraste sua imagem para cá</h2><p className="mt-2 text-xs text-[#829087]">PNG, JPG, JPEG, WEBP, TIF ou TIFF · Máximo 12 MB</p><button className="mt-6 rounded-lg bg-white px-5 py-2.5 text-xs font-black text-[#101512]">Enviar imagem</button>
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#b7f34a] text-[#08110b]"><Upload size={26} /></div><h2 className="mt-5 text-lg font-bold">Arraste sua imagem para cá</h2><p className="mt-2 text-xs text-[#829087]">PNG, JPG, JPEG, WEBP, TIF ou TIFF · Máximo 30 MB</p><button className="mt-6 rounded-lg bg-white px-5 py-2.5 text-xs font-black text-[#101512]">Enviar imagem</button>
       </div>
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
