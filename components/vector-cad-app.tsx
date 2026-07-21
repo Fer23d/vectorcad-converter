@@ -663,6 +663,20 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!allowed) return;
     const a = document.createElement("a"); a.href = c.toDataURL("image/png"); a.download = "vectorcad-preview.png"; a.click();
   };
+  const handleDownloadImage = () => {
+    const imageDataUrl = aiEnhancedPreview || processedPreview;
+    if (!imageDataUrl) {
+      setMessage("Processe uma imagem antes de baixar a imagem tratada.");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = imageDataUrl;
+    link.download = "vetorcad-imagem-melhorada.png";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setMessage("Imagem tratada baixada com sucesso.");
+  };
   const generate3d = async () => {
     if (!finalDoc || !svg) return setMessage("Vetorize uma imagem antes de gerar o modelo 3D.");
     const allowed = await consumeUsage("export3d");
@@ -1025,7 +1039,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         </Section>
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
-        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
+        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
         {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button><button type="button" onClick={() => void open3dInNewTab()} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button></div>}</div>}
         {show3d && <div className="mt-5"><SvgTo3DCadViewer svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
