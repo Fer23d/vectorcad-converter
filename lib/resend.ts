@@ -202,3 +202,16 @@ export async function sendDailyLimitReachedEmail({ to, name, used, limit }: { to
     text: `Você atingiu o limite diário do plano FREE no vetorcad: ${used}/${limit} usos hoje.`,
   });
 }
+
+export async function sendContactEmail({ name, email, message }: { name: string; email: string; message: string }) {
+  const safeName = escapeHtml(name);
+  const safeEmail = escapeHtml(email);
+  const safeMessage = escapeHtml(message).replace(/\n/g, "<br>");
+
+  return sendVectorCadEmail({
+    to: "contato@vetorcad.com.br",
+    subject: "Novo contato pelo VetorCAD",
+    html: `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#050807;color:#edf5f0;font-family:Arial,Helvetica,sans-serif;padding:32px 16px;"><table width="100%" role="presentation" style="max-width:620px;margin:auto;border:1px solid #26312c;background:#101613;border-radius:20px;padding:32px;"><tr><td><p style="color:#b7f34a;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Novo contato pelo VetorCAD</p><h1 style="font-size:28px;margin:0 0 24px;">Mensagem recebida</h1><p><strong>Nome:</strong><br>${safeName}</p><p><strong>Email:</strong><br>${safeEmail}</p><p><strong>Mensagem:</strong><br>${safeMessage}</p><hr style="border:0;border-top:1px solid #26312c;margin:28px 0;"><p style="color:#8d9a93;font-size:12px;">Enviado pelo formulário de contato do vetorcad.com.br.</p></td></tr></table></body></html>`,
+    text: `Novo contato pelo VetorCAD\n\nNome: ${name}\nEmail: ${email}\nMensagem:\n${message}`,
+  });
+}
