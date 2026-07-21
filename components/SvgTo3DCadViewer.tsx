@@ -1,17 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Download, RotateCcw, Sparkles } from "lucide-react";
+import { Box, Camera, Download, Grid3X3, Maximize2, RotateCcw, Sparkles } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import {
+  canExportViewerResolution,
+  getViewerExportResolution,
+  getViewerPixelRatio,
+  sanitizeViewerFileName,
+  VIEWER_QUALITY_PROFILES,
+  type ViewerExportPreset,
+  type ViewerQualityMode,
+} from "@/lib/three-viewer-utils";
 
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
 type ModelStyle = (typeof styles)[number];
-type CameraView = "front" | "side" | "top" | "iso" | "perspective";
+type CameraView = "front" | "right" | "left" | "side" | "top" | "iso" | "perspective";
+type CameraMode = "orthographic" | "perspective";
 type Cad2DView = "front" | "side" | "top";
 
 type SvgTo3DCadViewerProps = {
@@ -29,11 +39,15 @@ type BuildOptions = {
 
 type ThreeState = {
   scene: THREE.Scene;
-  camera: THREE.OrthographicCamera;
+  camera: THREE.OrthographicCamera | THREE.PerspectiveCamera;
+  orthoCamera: THREE.OrthographicCamera;
+  perspectiveCamera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   controls: OrbitControls;
   model: THREE.Group;
   measurementGroup: THREE.Group;
+  grid: THREE.GridHelper;
+  axes: THREE.AxesHelper;
 };
 
 type CameraAnimation = {
@@ -85,6 +99,8 @@ const styleLabels: Record<ModelStyle, string> = {
 
 const cameraViews: Record<CameraView, THREE.Vector3> = {
   front: new THREE.Vector3(0, 0, 200),
+  right: new THREE.Vector3(200, 0, 0),
+  left: new THREE.Vector3(-200, 0, 0),
   side: new THREE.Vector3(200, 0, 0),
   top: new THREE.Vector3(0, 200, 0),
   iso: new THREE.Vector3(150, 150, 150),
@@ -104,6 +120,77 @@ function fitOrthographicCamera(camera: THREE.OrthographicCamera, width: number, 
   camera.bottom = -size / 2;
   camera.zoom = 1;
   camera.updateProjectionMatrix();
+}
+
+function updateCameraForViewport(camera: THREE.OrthographicCamera | THREE.PerspectiveCamera, width: number, height: number) {
+  const safeWidth = Math.max(width, 1);
+  const safeHeight = Math.max(height, 1);
+  if (camera instanceof THREE.OrthographicCamera) {
+    const currentHeight = Math.max(Math.abs(camera.top - camera.bottom), 1);
+    const aspect = safeWidth / safeHeight;
+    const centerY = (camera.top + camera.bottom) / 2;
+    camera.left = -currentHeight * aspect / 2;
+    camera.right = currentHeight * aspect / 2;
+    camera.top = centerY + currentHeight / 2;
+    camera.bottom = centerY - currentHeight / 2;
+  } else {
+    camera.aspect = safeWidth / safeHeight;
+  }
+  camera.updateProjectionMatrix();
+}
+
+function setCameraClipping(camera: THREE.OrthographicCamera | THREE.PerspectiveCamera, radius: number) {
+  const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : 10;
+  camera.near = Math.max(safeRadius / 1000, 0.01);
+  camera.far = Math.max(safeRadius * 1000, 1000);
+  camera.updateProjectionMatrix();
+}
+
+function configureOrbitControls(camera: THREE.OrthographicCamera | THREE.PerspectiveCamera, element: HTMLCanvasElement) {
+  const controls = new OrbitControls(camera, element);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enableZoom = true;
+  controls.zoomSpeed = 0.75;
+  controls.rotateSpeed = 0.72;
+  controls.panSpeed = 0.8;
+  controls.screenSpacePanning = true;
+  controls.minDistance = 0.1;
+  controls.maxDistance = 1_000_000;
+  controls.minZoom = 0.35;
+  controls.maxZoom = 8;
+  return controls;
+}
+
+function getSafeDirection(camera: THREE.Camera, target: THREE.Vector3) {
+  const direction = camera.position.clone().sub(target);
+  return direction.lengthSq() > 0 ? direction.normalize() : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
+}
+
+function getVisibleBounds(root: THREE.Object3D) {
+  const bounds = new THREE.Box3();
+  root.updateMatrixWorld(true);
+  root.traverse((object) => {
+    if (!object.visible) return;
+    if (object instanceof THREE.Mesh || object instanceof THREE.Line) bounds.expandByObject(object);
+  });
+  return bounds;
+}
+
+function fitCameraToSphere(
+  camera: THREE.OrthographicCamera | THREE.PerspectiveCamera,
+  width: number,
+  height: number,
+  sphere: THREE.Sphere,
+) {
+  const radius = Number.isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 10;
+  if (camera instanceof THREE.OrthographicCamera) {
+    fitOrthographicCamera(camera, width, height, radius);
+  } else {
+    camera.aspect = Math.max(width, 1) / Math.max(height, 1);
+    camera.fov = Math.min(Math.max(camera.fov, 25), 65);
+  }
+  setCameraClipping(camera, radius);
 }
 
 function uniqueProjectedPoints(model: THREE.Group, view: Cad2DView) {
@@ -562,6 +649,14 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const [enhanced, setEnhanced] = useState(false);
   const [imageQuality, setImageQuality] = useState<ImageQuality>("best");
   const imageQualityRef = useRef<ImageQuality>("best");
+  const [renderQuality, setRenderQuality] = useState<ViewerQualityMode>("balanced");
+  const renderQualityRef = useRef<ViewerQualityMode>("balanced");
+  const [cameraMode, setCameraMode] = useState<CameraMode>("orthographic");
+  const cameraModeRef = useRef<CameraMode>("orthographic");
+  const [showGrid, setShowGrid] = useState(true);
+  const [showAxes, setShowAxes] = useState(true);
+  const [exportPreset, setExportPreset] = useState<ViewerExportPreset>("screen");
+  const [exporting, setExporting] = useState(false);
   const [aiClean, setAiClean] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<ModelStyle>("cad_clean");
   const [appliedStyle, setAppliedStyle] = useState<ModelStyle>("cad_clean");
@@ -634,7 +729,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const getModelFocus = useCallback(() => {
     const current = state.current;
     if (!current) return null;
-    const box = new THREE.Box3().setFromObject(current.model);
+    const box = getVisibleBounds(current.model);
+    if (box.isEmpty()) return null;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius, 10);
     return { center: sphere.center, radius };
@@ -661,11 +757,10 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     if (!current || !focus) return;
     const radius = focus.radius;
 
-    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, radius);
+    fitCameraToSphere(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, new THREE.Sphere(focus.center, radius));
     current.controls.target.copy(focus.center);
-    current.camera.near = Math.max(radius / 1000, 0.01);
-    current.camera.far = radius * 1000;
     current.camera.position.copy(focus.center.clone().add(new THREE.Vector3(radius * 0.85, -radius * 1.1, radius * 1.15)));
+    setCameraClipping(current.camera, radius);
     current.camera.updateProjectionMatrix();
     current.controls.update();
   }, [getModelFocus]);
@@ -681,11 +776,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       ? target.clone().add(new THREE.Vector3(focus.radius * 0.9, -focus.radius * 1.15, focus.radius * 1.1))
       : target.clone().add(base.multiplyScalar(distanceScale));
 
-    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, focus.radius);
-    current.controls.enableRotate = viewType === "iso" || viewType === "perspective";
-    current.camera.near = Math.max(focus.radius / 1000, 0.01);
-    current.camera.far = Math.max(focus.radius * 1000, 1000);
-    current.camera.updateProjectionMatrix();
+    fitCameraToSphere(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, new THREE.Sphere(focus.center, focus.radius));
+    current.controls.enableRotate = true;
+    setCameraClipping(current.camera, focus.radius);
     animateCameraTo(toPosition, target, viewType === "perspective" ? 900 : 750);
     setMessage(`Vista ${viewType} aplicada com transicao suave.`);
   }, [animateCameraTo, getModelFocus]);
@@ -694,15 +787,12 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const current = state.current;
     const focus = getModelFocus();
     if (!current || !focus) return;
-    const direction = current.camera.position.clone().sub(current.controls.target).normalize();
-    const safeDirection = direction.lengthSq() > 0 ? direction : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
+    const safeDirection = getSafeDirection(current.camera, current.controls.target);
     const distance = Math.max(focus.radius * 4, 100);
-    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, focus.radius);
-    current.camera.near = Math.max(focus.radius / 1000, 0.01);
-    current.camera.far = Math.max(distance * 10, 1000);
-    current.camera.updateProjectionMatrix();
+    fitCameraToSphere(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, new THREE.Sphere(focus.center, focus.radius));
+    setCameraClipping(current.camera, distance);
     animateCameraTo(focus.center.clone().add(safeDirection.multiplyScalar(distance)), focus.center.clone(), 850);
-    setMessage("Auto Fit View aplicado ao modelo.");
+    setMessage("Projeto enquadrado automaticamente.");
   }, [animateCameraTo, getModelFocus]);
 
   const focusObject = useCallback((object: THREE.Object3D) => {
@@ -711,15 +801,38 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const box = new THREE.Box3().setFromObject(object);
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     if (!Number.isFinite(sphere.radius) || sphere.radius <= 0) return;
-    const direction = current.camera.position.clone().sub(current.controls.target).normalize();
-    const safeDirection = direction.lengthSq() > 0 ? direction : new THREE.Vector3(0.7, -0.8, 0.9).normalize();
+    const safeDirection = getSafeDirection(current.camera, current.controls.target);
     const distance = Math.max(sphere.radius * 3.8, 40);
-    fitOrthographicCamera(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, sphere.radius);
-    current.camera.near = Math.max(sphere.radius / 1000, 0.01);
-    current.camera.far = Math.max(distance * 10, 1000);
-    current.camera.updateProjectionMatrix();
+    fitCameraToSphere(current.camera, current.renderer.domElement.clientWidth, current.renderer.domElement.clientHeight, sphere);
+    setCameraClipping(current.camera, distance);
     animateCameraTo(sphere.center.clone().add(safeDirection.multiplyScalar(distance)), sphere.center.clone(), 650);
   }, [animateCameraTo]);
+
+  const switchCameraMode = useCallback((mode: CameraMode) => {
+    const current = state.current;
+    if (!current || cameraModeRef.current === mode) return;
+    const target = current.controls.target.clone();
+    const direction = getSafeDirection(current.camera, target);
+    const focus = getModelFocus();
+    const distance = Math.max(current.camera.position.distanceTo(target), (focus?.radius || 25) * 4);
+    const nextCamera = mode === "orthographic" ? current.orthoCamera : current.perspectiveCamera;
+    const width = current.renderer.domElement.clientWidth;
+    const height = current.renderer.domElement.clientHeight;
+
+    current.controls.dispose();
+    nextCamera.position.copy(target.clone().add(direction.multiplyScalar(distance)));
+    fitCameraToSphere(nextCamera, width, height, new THREE.Sphere(target, focus?.radius || 10));
+    setCameraClipping(nextCamera, distance);
+    const nextControls = configureOrbitControls(nextCamera, current.renderer.domElement);
+    nextControls.target.copy(target);
+    nextControls.addEventListener("change", () => renderRequest.current?.());
+    current.camera = nextCamera;
+    current.controls = nextControls;
+    cameraModeRef.current = mode;
+    setCameraMode(mode);
+    renderRequest.current?.();
+    setMessage(mode === "orthographic" ? "Câmera ortográfica ativada." : "Câmera em perspectiva ativada.");
+  }, [getModelFocus]);
 
   const selectObject = useCallback((object: THREE.Object3D | null, center = false) => {
     clearSelection();
@@ -821,12 +934,18 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const grid = new THREE.GridHelper(420, 42, 0xb8c2bd, 0xd4dbd7);
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -height / 2 - 0.1;
+    grid.name = "technical-grid";
     scene.add(grid);
 
+    const axes = new THREE.AxesHelper(120);
+    axes.name = "technical-axes";
+    axes.position.z = -height / 2 - 0.04;
+    scene.add(axes);
+
     const camera = new THREE.OrthographicCamera(-120, 120, 120, -120, 0.1, 100000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-    const initialUltra = imageQualityRef.current === "ultra";
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio * (initialUltra ? 1.25 : 1), initialUltra ? 2 : 1.5));
+    const perspectiveCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 100000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(getViewerPixelRatio(renderQualityRef.current, window.devicePixelRatio));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -834,16 +953,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     host.replaceChildren(renderer.domElement);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.enableZoom = true;
-    controls.zoomSpeed = 0.75;
-    controls.rotateSpeed = 0.72;
-    controls.panSpeed = 0.8;
-    controls.screenSpacePanning = true;
-    controls.minZoom = 0.35;
-    controls.maxZoom = 8;
+    const controls = configureOrbitControls(camera, renderer.domElement);
 
     const geometryStageTimer = window.setTimeout(() => {
       if (!disposed) setLoadingStage("Carregando geometria...");
@@ -854,11 +964,15 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     } catch {
       model = new THREE.Group();
     }
+    const modelBox = new THREE.Box3().setFromObject(model);
+    const modelSize = modelBox.isEmpty() ? 420 : Math.max(modelBox.getSize(new THREE.Vector3()).length() * 1.8, 420);
+    grid.scale.setScalar(modelSize / 420);
+    axes.scale.setScalar(Math.max(modelSize / 420, 1));
     const measurementGroup = new THREE.Group();
     measurementGroup.name = "Medições";
     scene.add(model);
     scene.add(measurementGroup);
-    state.current = { scene, camera, renderer, controls, model, measurementGroup };
+    state.current = { scene, camera, orthoCamera: camera, perspectiveCamera, renderer, controls, model, measurementGroup, grid, axes };
 
     const raycaster = new THREE.Raycaster();
     let pointerStart: { x: number; y: number } | null = null;
@@ -893,8 +1007,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       const width = Math.max(host.clientWidth, 1);
       const viewHeight = Math.max(host.clientHeight, 1);
       renderer.setSize(width, viewHeight, false);
-      const focus = getModelFocus();
-      fitOrthographicCamera(camera, width, viewHeight, focus?.radius || 80);
+      updateCameraForViewport(state.current?.camera || camera, width, viewHeight);
       renderRequest.current?.();
     };
 
@@ -944,7 +1057,8 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
 
     const mesh = model.children[0] as THREE.Mesh | undefined;
     const count = mesh?.geometry.getAttribute("position")?.count || 0;
-    renderer.shadowMap.enabled = count > 0 && count <= (imageQualityRef.current === "ultra" ? 250000 : 150000);
+    const qualityProfile = VIEWER_QUALITY_PROFILES[renderQualityRef.current];
+    renderer.shadowMap.enabled = qualityProfile.shadows && count > 0 && count <= qualityProfile.maxShadowVertices;
     const statusMessage = mesh
       ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
       : "Nenhuma forma fechada foi encontrada no SVG para extrusao.";
@@ -987,7 +1101,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       renderLoopActive = false;
       cameraAnimation.current = null;
       observer.disconnect();
-      controls.dispose();
+      state.current?.controls.dispose();
       disposeObject(model);
       disposeObject(measurementGroup);
       measurementPoints.current = [];
@@ -997,6 +1111,10 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       grid.geometry.dispose();
       const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
       gridMaterials.forEach((material) => material.dispose());
+      axes.geometry.dispose();
+      const axesMaterials = Array.isArray(axes.material) ? axes.material : [axes.material];
+      axesMaterials.forEach((material) => material.dispose());
+      renderer.forceContextLoss?.();
       renderer.dispose();
       host.replaceChildren();
       state.current = null;
@@ -1021,13 +1139,75 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const position = mesh instanceof THREE.Mesh ? mesh.geometry.getAttribute("position") : null;
     const vertexCount = position?.count || 0;
     const ultra = imageQuality === "ultra";
-    current.renderer.setPixelRatio(Math.min(window.devicePixelRatio * (ultra ? 1.25 : 1), ultra ? 2 : 1.5));
-    current.renderer.shadowMap.enabled = vertexCount > 0 && vertexCount <= (ultra ? 250000 : 150000);
+    const profile = VIEWER_QUALITY_PROFILES[renderQualityRef.current];
+    current.renderer.setPixelRatio(getViewerPixelRatio(renderQualityRef.current, window.devicePixelRatio));
+    current.renderer.shadowMap.enabled = profile.shadows && vertexCount > 0 && vertexCount <= profile.maxShadowVertices;
     current.renderer.toneMappingExposure = ultra ? 1.12 : 1.08;
-    current.renderer.setSize(Math.max(mount.current?.clientWidth || 1, 1), Math.max(mount.current?.clientHeight || 1, 1), false);
+    const width = Math.max(mount.current?.clientWidth || 1, 1);
+    const height = Math.max(mount.current?.clientHeight || 1, 1);
+    current.renderer.setSize(width, height, false);
+    updateCameraForViewport(current.camera, width, height);
     renderRequest.current?.();
     setMessage(ultra ? "Qualidade Ultra aplicada sem reiniciar o modelo." : "Melhor imagem aplicada.");
   }, [imageQuality]);
+
+  useEffect(() => {
+    renderQualityRef.current = renderQuality;
+    const current = state.current;
+    if (!current) return;
+    const profile = VIEWER_QUALITY_PROFILES[renderQuality];
+    const mesh = current.model.children[0];
+    const vertexCount = mesh instanceof THREE.Mesh ? mesh.geometry.getAttribute("position")?.count || 0 : 0;
+    current.renderer.setPixelRatio(getViewerPixelRatio(renderQuality, window.devicePixelRatio));
+    current.renderer.shadowMap.enabled = profile.shadows && vertexCount > 0 && vertexCount <= profile.maxShadowVertices;
+    current.renderer.shadowMap.needsUpdate = true;
+    renderRequest.current?.();
+    setMessage(`${profile.label}: ${profile.description}`);
+  }, [renderQuality]);
+
+  useEffect(() => {
+    const current = state.current;
+    if (!current) return;
+    current.grid.visible = showGrid;
+    current.axes.visible = showAxes;
+    renderRequest.current?.();
+  }, [showAxes, showGrid]);
+
+  const exportPng = useCallback(async () => {
+    const current = state.current;
+    if (!current || !hasGeometry || exporting) return;
+    const viewport = current.renderer.getSize(new THREE.Vector2());
+    const resolution = getViewerExportResolution(exportPreset, viewport.x, viewport.y);
+    const maxRenderbufferSize = Number(current.renderer.getContext().getParameter(current.renderer.getContext().MAX_RENDERBUFFER_SIZE) || 0);
+    if (!canExportViewerResolution(resolution.width, resolution.height, maxRenderbufferSize)) {
+      setMessage("Esta resolução excede o limite de memória gráfica deste dispositivo.");
+      return;
+    }
+
+    setExporting(true);
+    setMessage("Preparando imagem PNG...");
+    const previousSize = viewport.clone();
+    const previousPixelRatio = current.renderer.getPixelRatio();
+    try {
+      current.renderer.setPixelRatio(1);
+      current.renderer.setSize(resolution.width, resolution.height, false);
+      current.renderer.render(current.scene, current.camera);
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        current.renderer.domElement.toBlob((value) => value ? resolve(value) : reject(new Error("PNG_CAPTURE_FAILED")), "image/png");
+      });
+      const date = new Date().toISOString().slice(0, 10);
+      saveBlob(`${sanitizeViewerFileName(fileName)}-${date}.png`, blob);
+      setMessage(`Imagem PNG ${resolution.width}x${resolution.height} exportada com sucesso.`);
+    } catch {
+      setMessage("Não foi possível exportar a imagem PNG. Tente uma resolução menor.");
+    } finally {
+      current.renderer.setPixelRatio(previousPixelRatio);
+      current.renderer.setSize(previousSize.x, previousSize.y, false);
+      updateCameraForViewport(current.camera, previousSize.x, previousSize.y);
+      renderRequest.current?.();
+      setExporting(false);
+    }
+  }, [exportPreset, exporting, fileName, hasGeometry]);
 
   const improveModel = () => {
     setEnhanced(true);
@@ -1087,7 +1267,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
         <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#eef6f0]"><Box size={14} /> SvgTo3DCadViewer</h3>
         <p className="mt-1 text-[10px] text-[#87978f]">Extrusao CAD em mm a partir do SVG vetorizado.</p>
       </div>
-      <button type="button" onClick={() => setCameraView("perspective")} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce]"><RotateCcw size={12} /> Resetar câmera</button>
+      <button type="button" onClick={resetCamera} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px] text-[#c8d4ce] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><RotateCcw size={12} /> Resetar câmera</button>
     </div>
 
     <label className="range-row mb-3 text-xs text-[#aab8b1]">
@@ -1116,15 +1296,35 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       <p className="mt-2 text-[10px] leading-4 text-[#718078]">Ultra aumenta a resolução e o acabamento visual. Pode consumir mais GPU em modelos grandes.</p>
     </fieldset>
 
+    <div className="mb-3 grid gap-2 rounded-lg border border-[#26332e] bg-[#0d1411] p-3 md:grid-cols-2">
+      <fieldset>
+        <legend className="text-[10px] font-black uppercase tracking-[.14em] text-[#b7f34a]">Qualidade do visualizador</legend>
+        <div className="mt-2 grid gap-1.5">
+          {(Object.entries(VIEWER_QUALITY_PROFILES) as Array<[ViewerQualityMode, (typeof VIEWER_QUALITY_PROFILES)[ViewerQualityMode]]>).map(([mode, profile]) => <label key={mode} title={profile.description} className={`flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] transition ${renderQuality === mode ? "border-[#b7f34a] bg-[#1b281d] text-[#eef6f0]" : "border-[#34413b] text-[#9aa9a1] hover:border-[#667a6c]"}`}>
+            <input type="radio" name="viewer-quality" value={mode} checked={renderQuality === mode} onChange={() => setRenderQuality(mode)} />
+            <span>{profile.label}</span>
+          </label>)}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="text-[10px] font-black uppercase tracking-[.14em] text-[#b7f34a]">Câmera</legend>
+        <div className="mt-2 flex gap-1.5">
+          <button type="button" onClick={() => switchCameraMode("orthographic")} aria-pressed={cameraMode === "orthographic"} className={`flex flex-1 items-center justify-center gap-1 rounded-md border px-2 py-2 text-[10px] transition ${cameraMode === "orthographic" ? "border-[#b7f34a] bg-[#1b281d] text-[#b7f34a]" : "border-[#34413b] text-[#9aa9a1] hover:border-[#667a6c]"}`}><Camera size={12} /> Ortográfica</button>
+          <button type="button" onClick={() => switchCameraMode("perspective")} aria-pressed={cameraMode === "perspective"} className={`flex flex-1 items-center justify-center gap-1 rounded-md border px-2 py-2 text-[10px] transition ${cameraMode === "perspective" ? "border-[#b7f34a] bg-[#1b281d] text-[#b7f34a]" : "border-[#34413b] text-[#9aa9a1] hover:border-[#667a6c]"}`}><Camera size={12} /> Perspectiva</button>
+        </div>
+      </fieldset>
+    </div>
+
     <div className="relative">
       <div ref={mount} className="three-viewport min-h-[300px] overflow-hidden rounded-lg border border-[#24332d]" />
       <div className="absolute left-2 top-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/80 p-1 backdrop-blur">
         <button type="button" onClick={() => setCameraView("front")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Frontal</button>
         <button type="button" onClick={() => setCameraView("top")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Superior</button>
-        <button type="button" onClick={() => setCameraView("side")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Lateral</button>
+        <button type="button" onClick={() => setCameraView("right")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Direita</button>
+        <button type="button" onClick={() => setCameraView("left")} className="rounded bg-[#18231d] px-2 py-1.5 text-[9px] font-black text-[#dce8e1] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Esquerda</button>
         <button type="button" onClick={() => setCameraView("iso")} className="rounded bg-[#243522] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Iso</button>
         <button type="button" onClick={() => setCameraView("perspective")} className="rounded bg-[#eef5f1] px-2 py-1.5 text-[9px] font-black text-[#111713] transition hover:bg-white">Resetar</button>
-        <button type="button" onClick={autoFitView} className="rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]">Auto Fit</button>
+        <button type="button" onClick={autoFitView} className="flex items-center gap-1 rounded border border-[#b7f34a]/60 bg-[#162219] px-2 py-1.5 text-[9px] font-black text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#09120d]"><Maximize2 size={11} /> Enquadrar projeto</button>
       </div>
       <div className="absolute bottom-2 left-2 z-10 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-lg border border-[#26332e] bg-[#08100d]/85 p-1 backdrop-blur" aria-label="Ferramentas de medição 3D">
         <button type="button" onClick={() => chooseTool("select")} className={`rounded px-2 py-1.5 text-[9px] font-black transition ${activeTool === "select" ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#18231d] text-[#dce8e1] hover:bg-[#26332e]"}`}>Selecionar</button>
@@ -1145,6 +1345,27 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
           </div>)}
         </dl>
       </aside>}
+    </div>
+
+    <div className="mt-3 grid gap-2 rounded-xl border border-[#2b3832] bg-[#0d1411] p-3 md:grid-cols-[1fr_auto] md:items-end">
+      <div>
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[.16em] text-[#b7f34a]">Cena técnica</div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setShowGrid((value) => !value)} aria-pressed={showGrid} className={`flex items-center gap-1 rounded-md border px-2 py-1.5 text-[10px] transition ${showGrid ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#9aa9a1]"}`}><Grid3X3 size={12} /> Grade</button>
+          <button type="button" onClick={() => setShowAxes((value) => !value)} aria-pressed={showAxes} className={`rounded-md border px-2 py-1.5 text-[10px] transition ${showAxes ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#9aa9a1]"}`}>Eixos X/Y/Z</button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-[10px] text-[#9aa9a1]">Exportar PNG
+          <select value={exportPreset} onChange={(event) => setExportPreset(event.target.value as ViewerExportPreset)} className="mt-1 block min-w-32 text-xs">
+            <option value="screen">Resolução da tela</option>
+            <option value="1920x1080">1920 × 1080</option>
+            <option value="2560x1440">2560 × 1440</option>
+            <option value="3840x2160">3840 × 2160</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => void exportPng()} disabled={exporting || !hasGeometry} className="flex items-center gap-1 rounded-lg bg-[#b7f34a] px-3 py-2 text-[10px] font-black text-[#0a120c] transition hover:bg-[#d1ff85] disabled:cursor-not-allowed disabled:opacity-40"><Download size={13} /> {exporting ? "Exportando..." : "Exportar PNG"}</button>
+      </div>
     </div>
 
     {measurements.length > 0 && <section className="mt-3 rounded-xl border border-[#2b3832] bg-[#0d1411] p-3" aria-label="Medições">

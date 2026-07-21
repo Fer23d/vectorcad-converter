@@ -16,6 +16,7 @@ import { createDirectTextCandidates, protectTextRegions } from "@/lib/text-detec
 import { classifyDetectedText, consolidateAiTexts, mergeAiAnalyses, RealVisionProvider, runVectorCadAi } from "@/lib/ai/vectorcad-ai";
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { DimensionRecognitionEngine } from "@/lib/ai/dimension-recognition";
+import { canExportViewerResolution, getViewerExportResolution, getViewerPixelRatio, sanitizeViewerFileName, VIEWER_QUALITY_PROFILES } from "@/lib/three-viewer-utils";
 import { inspectSupabaseConfig } from "@/lib/supabase/client";
 import { canUseFeature, daily3dLimitForPlan, dailyUsageLimitForPlan, isPremiumCompany, planAllowsDxf, resolveUserPlan, shouldShowAds, userHasPremiumAccess } from "@/lib/access-control";
 import type { CadProjectData } from "@/types/project";
@@ -52,6 +53,26 @@ const doc: VectorDocument = {
 const settings: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 1, smoothIterations: 1, closePaths: true, joinDistance: 2 };
 
 describe("vetorcad pipeline", () => {
+  it("limits viewer pixel ratio by quality mode", () => {
+    expect(getViewerPixelRatio("performance", 3)).toBe(1);
+    expect(getViewerPixelRatio("balanced", 3)).toBe(1.5);
+    expect(getViewerPixelRatio("high", 3)).toBe(2);
+    expect(VIEWER_QUALITY_PROFILES.balanced.shadows).toBe(true);
+  });
+
+  it("calculates viewer export presets and rejects unsafe resolutions", () => {
+    expect(getViewerExportResolution("screen", 801.4, 500.7)).toEqual({ width: 801, height: 501 });
+    expect(getViewerExportResolution("3840x2160", 10, 10)).toEqual({ width: 3840, height: 2160 });
+    expect(canExportViewerResolution(3840, 2160, 8192)).toBe(true);
+    expect(canExportViewerResolution(10000, 10000, 8192)).toBe(false);
+    expect(canExportViewerResolution(5000, 4000, 8192)).toBe(false);
+  });
+
+  it("sanitizes the 3D export filename", () => {
+    expect(sanitizeViewerFileName("Planta São Paulo.tiff")).toBe("planta-sao-paulo");
+    expect(sanitizeViewerFileName("***")).toBe("vetorcad-projeto-3d");
+  });
+
   it("enhances a raster to the requested 3K working resolution", () => {
     const input = new ImageData(new Uint8ClampedArray([255, 255, 255, 255, 0, 0, 0, 255]), 2, 1);
     const result = processAiEnhance(input, "ai-enhance-3k");
