@@ -144,8 +144,7 @@ function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { 
   </svg>;
 }
 
-export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
-  void onPrepare3dProject;
+export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
@@ -254,7 +253,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       setShow3d(saved?.editorMode === "cad3d");
       hydrating.current = false;
       return;
-    }
+      }
 
     setSourceImageDataUrl(saved.sourceImageDataUrl);
     setSourceOriginalDataUrl(saved.sourceOriginalDataUrl || "");
@@ -366,7 +365,6 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       locked,
       activeView,
     };
-    void data;
     if (skipLocalSave.current) {
       skipLocalSave.current = false;
       onProjectChange?.(data);
@@ -837,57 +835,6 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     const feedback: AiFeedback = { elementKey: `ai-element:${element.id}`, status, createdAt: new Date().toISOString() };
     setAiFeedback(current => [...current.filter(item => item.elementKey !== feedback.elementKey), feedback]);
   };
-  const open3dInNewTab = () => {
-    if (!finalDoc || !svg) {
-      setMessage("Vetorize uma imagem antes de abrir o visualizador 3D.");
-      return;
-    }
-
-    const data: CadProjectData = {
-      notes: "",
-      editorMode: "cad3d",
-      schemaVersion: 1,
-      sourceImageDataUrl,
-      sourceOriginalDataUrl: sourceFormat === "tiff" ? sourceOriginalDataUrl : undefined,
-      sourceFormat,
-      processedImageDataUrl: processedImage || undefined,
-      fileName,
-      processing,
-      imageQuality,
-      textDetectionEnabled,
-      detectedTexts,
-      vector,
-      document: doc,
-      unit,
-      realWidth,
-      realHeight,
-      locked,
-      activeView,
-    };
-    if (!projectId) setMessage("Salvando projeto para abrir visualização 3D...");
-    void data;
-    if (!projectId) {
-      console.info("[vetorcad][3D] project id unavailable", { hasProjectId: false });
-      setMessage("Salve o projeto antes de abrir o visualizador em nova guia.");
-      return;
-    }
-
-    const viewerUrl = `/projetos/${encodeURIComponent(projectId)}/3d`;
-    console.info("[vetorcad][3D] opening new tab", { pathname: viewerUrl, hasProjectId: true });
-    try {
-      const newTab = window.open(viewerUrl, "_blank", "noopener,noreferrer");
-      console.info("[vetorcad][3D] window.open result", { opened: Boolean(newTab) });
-      if (!newTab) {
-        setMessage("O navegador bloqueou a nova guia. Permita pop-ups para o vetorcad.");
-        return;
-      }
-    } catch (error) {
-      console.error("[vetorcad][3D] redirect failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
-      setMessage("Não foi possível abrir o visualizador 3D em uma nova guia.");
-      return;
-    }
-    setShow3dOptions(false);
-  };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
@@ -1135,7 +1082,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
         <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
-        {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button><button type="button" onClick={() => void open3dInNewTab()} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button></div>}</div>}
+        {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button>{projectId ? <a href={`/projetos/${encodeURIComponent(projectId)}/3d`} target="_blank" rel="noopener noreferrer" className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</a> : <button type="button" onClick={() => setMessage("Por favor, salve o projeto antes de abrir o visualizador 3D.")} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button>}</div>}</div>}
         {show3d && <div className="mt-5"><SvgTo3DCadViewer svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
     </section>}
