@@ -145,6 +145,7 @@ function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { 
 }
 
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPrepare3dProject, projectId, userId, draftClearSignal }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; onPrepare3dProject?: (data: CadProjectData) => Promise<string | null>; projectId?: string | null; userId?: string | null; draftClearSignal?: string }) {
+  void onPrepare3dProject;
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
@@ -365,6 +366,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       locked,
       activeView,
     };
+    void data;
     if (skipLocalSave.current) {
       skipLocalSave.current = false;
       onProjectChange?.(data);
@@ -835,7 +837,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     const feedback: AiFeedback = { elementKey: `ai-element:${element.id}`, status, createdAt: new Date().toISOString() };
     setAiFeedback(current => [...current.filter(item => item.elementKey !== feedback.elementKey), feedback]);
   };
-  const open3dInNewTab = async () => {
+  const open3dInNewTab = () => {
     if (!finalDoc || !svg) {
       setMessage("Vetorize uma imagem antes de abrir o visualizador 3D.");
       return;
@@ -863,15 +865,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
       activeView,
     };
     if (!projectId) setMessage("Salvando projeto para abrir visualização 3D...");
-    const savedProjectId = projectId || await onPrepare3dProject?.(data);
-    if (!savedProjectId) {
+    void data;
+    if (!projectId) {
       console.info("[vetorcad][3D] project id unavailable", { hasProjectId: false });
       setMessage("Salve o projeto antes de abrir o visualizador em nova guia.");
       return;
     }
 
-    const viewerUrl = `/projetos/${encodeURIComponent(savedProjectId)}/3d`;
-    console.info("[vetorcad][3D] opening new tab", { pathname: viewerUrl, hasProjectId: Boolean(savedProjectId) });
+    const viewerUrl = `/projetos/${encodeURIComponent(projectId)}/3d`;
+    console.info("[vetorcad][3D] opening new tab", { pathname: viewerUrl, hasProjectId: true });
     try {
       const newTab = window.open(viewerUrl, "_blank", "noopener,noreferrer");
       console.info("[vetorcad][3D] window.open result", { opened: Boolean(newTab) });
