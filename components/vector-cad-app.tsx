@@ -283,6 +283,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (saved.sourceFormat === "tiff" && !saved.sourceOriginalDataUrl) return;
 
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       setSourceRaster(null);
       setSource(image);
@@ -304,6 +305,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     if (!processedImage) return;
     let cancelled = false;
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       if (!cancelled) setManualProcessedImage(image);
     };
@@ -433,6 +435,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const pngDataUrl = processedTiff.previewPng;
         const image = await new Promise<HTMLImageElement>((resolve, reject) => {
           const preview = new Image();
+          preview.crossOrigin = "anonymous";
           preview.onload = () => resolve(preview);
           preview.onerror = () => reject(new Error("TIFF_PNG_PREVIEW_FAILED"));
           preview.src = pngDataUrl;
@@ -461,6 +464,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setManualProcessedImage(null);
     setProcessedImage("");
     const url = URL.createObjectURL(file), image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => {
       const reader = new FileReader();
       reader.onload = () => setSourceImageDataUrl(String(reader.result || ""));
@@ -510,6 +514,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.imageDataUrl) throw new Error(result.error || "AI_ENHANCE_SERVER_FAILED");
         const enhancedImage = new Image();
+        enhancedImage.crossOrigin = "anonymous";
         enhancedImage.onload = () => {
           if (cancelled) return;
           setServerEnhancedDataUrl(result.imageDataUrl);
@@ -720,6 +725,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, onPr
     setProcessedImage(dataUrl);
     setProcessedPreview(dataUrl);
     const image = new Image();
+    image.crossOrigin = "anonymous";
     image.onload = () => setManualProcessedImage(image);
     image.src = dataUrl;
     setMessage("Área apagada. A vetorização foi atualizada com a imagem tratada.");
