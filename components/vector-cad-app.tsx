@@ -18,8 +18,14 @@ import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
 import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
 import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
 import { lineIntelligenceEngine, type LineIntelligenceMetrics } from "@/lib/vector/line-intelligence";
+import { recognizeDocumentGeometry } from "@/lib/geometry-recognition/recognition-engine";
+import { recognizeDocumentArchitecture } from "@/lib/architecture-recognition/architecture-engine";
+import { createDocumentTopology, createProjectScale } from "@/lib/architecture-recognition/topology-engine";
+import { createDocumentBimModel } from "@/lib/bim-recognition/bim-engine";
+import { skeletonizeBitmap } from "@/lib/vectorize/skeleton";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
+import { getCadEntityExportPlan } from "@/lib/exporters/cad-entity-utils";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
@@ -30,7 +36,7 @@ const CAD_MIN_WIDTH = 260;
 const PREVIEW_MIN_WIDTH = 300;
 const RESIZER_TOTAL_WIDTH = 16;
 const defaultProcessing: ProcessingSettings = { brightness: 0, contrast: 125, threshold: 160, adaptiveThreshold: false, blurRadius: 1, morphologyRadius: 1, openingRadius: 0, minComponentArea: 8, invert: false, removeNoise: true, smooth: true, edgeDetect: false };
-const defaultVector: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 12, smoothIterations: 1, closePaths: true, joinDistance: 2 };
+const defaultVector: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 12, smoothIterations: 1, closePaths: true, joinDistance: 2, recognitionProfile: "default" };
 const presets: Record<string, { processing: Partial<ProcessingSettings>; vector: Partial<VectorSettings> }> = {
   fidelity: { processing: { blurRadius: 0, morphologyRadius: 0, openingRadius: 0, minComponentArea: 2 }, vector: { outputMode: "pixel", simplification: .35, smoothIterations: 0, joinDistance: 1 } },
   cnc: { processing: { blurRadius: 1, morphologyRadius: 2, openingRadius: 0, minComponentArea: 20 }, vector: { outputMode: "cad", simplification: 2.5, smoothIterations: 1, joinDistance: 4, closePaths: true } },
@@ -623,12 +629,23 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
       return;
     }
+    const recognizedGeometry = recognizeDocumentGeometry(cleanup.document, vector.recognitionProfile || "default");
+    const skeleton = skeletonizeBitmap(bitmap, w, h);
+    const recognizedArchitecture = recognizeDocumentArchitecture(recognizedGeometry.document, { skeleton });
+    const projectScale = createProjectScale({ pixelWidth: w, pixelHeight: h, projectWidth: realWidth, projectHeight: realHeight, unit });
+    const topology = createDocumentTopology(recognizedArchitecture.document, projectScale);
+    const bim = createDocumentBimModel(topology.document);
+    cleanup.document = bim.document;
+    console.info("[vetorcad][geometry-recognition] completed", recognizedGeometry.diagnostics);
+    console.info("[vetorcad][architecture-recognition] completed", recognizedArchitecture.diagnostics);
+    console.info("[vetorcad][architecture-topology] completed", { nodes: topology.graph.nodes.length, connections: topology.graph.connections.length, openings: topology.graph.openings.length });
+    console.info("[vetorcad][bim-recognition] completed", { walls: bim.bimModel.walls.length, doors: bim.bimModel.doors.length, windows: bim.bimModel.windows.length, spaces: bim.bimModel.spaces.length, unconfirmed: bim.bimModel.unconfirmedCandidateIds.length });
     setLineMetrics(lineIntelligenceEngine.metrics(detectedLines, intelligentPaths, lineSelection.unified));
     setCleanupStats({ beforePaths: cleanup.beforePaths, afterPaths: cleanup.afterPaths, beforePoints: cleanup.beforePoints, afterPoints: cleanup.afterPoints, reductionPercent: cleanup.reductionPercent });
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
-  }, [detectedTexts, imageQuality, lineProcessingMode, manualProcessedImage, processing, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, vector]);
+  }, [detectedTexts, imageQuality, lineProcessingMode, manualProcessedImage, processing, realHeight, realWidth, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, unit, vector]);
 
   useEffect(() => {
     if (!source && !sourceRaster) return;
@@ -749,6 +766,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     }
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
     const smartTexts = kind === "dxf" && exportSmartTexts ? (aiAnalysis?.texts || []) : [];
+    const exportPlan = getCadEntityExportPlan(finalDoc);
+    console.info(`[vetorcad][export] using ${exportPlan.source === "entities" ? "entities" : "legacy paths"}`, { format: kind, entityCount: exportPlan.entities.length, pathCount: finalDoc.paths.length });
     download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc, smartTexts), kind === "svg" ? "image/svg+xml" : "application/dxf");
     setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
   };
