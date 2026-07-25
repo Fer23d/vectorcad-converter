@@ -6,10 +6,11 @@ import { AlertCircle, ArrowLeft, Box, LoaderCircle } from "lucide-react";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { generateSvg } from "@/lib/exporters/svg";
-import { scaleDocument } from "@/lib/vectorize/contours";
+import { prepareThreeViewerDocument } from "@/lib/three-viewer-document";
 import type { CadProject, CadProjectData } from "@/types/project";
+import type { Unit, VectorDocument } from "@/types/vector";
 
-type ViewerState = { project: CadProject; svg: string; unit: string; fileName?: string };
+type ViewerState = { project: CadProject; document: VectorDocument; svg: string; unit: Unit; fileName?: string };
 
 export function ProtectedProject3DViewer() {
   const router = useRouter();
@@ -72,15 +73,28 @@ export function ProtectedProject3DViewer() {
         console.info("[vetorcad][3D] document check", {
           hasDocument: Boolean(document),
           hasDocumentPaths: Boolean(document?.paths?.length),
+          hasDocumentEntities: Boolean(document?.entities?.length),
+          hasCoordinateSystem: Boolean(document?.coordinateSystem),
         });
-        if (!projectData || !document || !document.paths?.length) throw new Error("VECTOR_NOT_AVAILABLE");
+        if (!projectData || !document) throw new Error("VECTOR_NOT_AVAILABLE");
 
         const width = projectData.realWidth || document.width;
         const height = projectData.realHeight || document.height;
         const unit = projectData.unit || document.unit;
-        const svg = generateSvg(scaleDocument(document, width, height, unit));
-        if (!svg) throw new Error("SVG_NOT_GENERATED");
-        setState({ project, svg, unit, fileName: projectData.fileName });
+        const prepared = prepareThreeViewerDocument(document, width, height, unit);
+        console.info("[vetorcad][3D] normalized document", {
+          hasGeometry: prepared.hasGeometry,
+          pathCount: prepared.document.paths.length,
+          entityCount: prepared.document.entities?.length || 0,
+          architectureCount: prepared.document.architectureEntities?.length || 0,
+          topologyCount: prepared.document.topology?.length || 0,
+          coordinateSystemId: prepared.document.coordinateSystem?.id || null,
+        });
+        if (!prepared.hasGeometry) throw new Error("VECTOR_NOT_AVAILABLE");
+        // Kept only for pre-CadEntity projects. Rich documents are rendered
+        // directly by SvgTo3DCadViewer to retain their CAD semantics.
+        const svg = generateSvg(prepared.document);
+        setState({ project, document: prepared.document, svg, unit, fileName: projectData.fileName });
       } catch (error) {
         if (cancelled) return;
         console.error("[vetorcad][3D] load failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
@@ -103,7 +117,7 @@ export function ProtectedProject3DViewer() {
       <button type="button" onClick={() => router.push("/dashboard")} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao projeto</button>
     </header>
     <section className="mx-auto max-w-[1600px] p-4 md:p-7">
-      {state ? <SvgTo3DCadViewer svg={state.svg} fileName={state.fileName} unit={state.unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] px-6 text-center"><div>{loading ? <LoaderCircle className="mx-auto animate-spin text-[#b7f34a]" size={28} /> : <AlertCircle className="mx-auto text-[#f0b45b]" size={28} />}<p className="mt-4 text-sm font-bold text-[#dce8e1]">{message}</p><button type="button" onClick={() => router.push("/dashboard")} className="mt-5 rounded-lg border border-[#34413b] px-4 py-2 text-xs font-bold text-[#b7f34a]">Voltar ao dashboard</button></div></div>}
+      {state ? <SvgTo3DCadViewer document={state.document} svg={state.svg} fileName={state.fileName} unit={state.unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] px-6 text-center"><div>{loading ? <LoaderCircle className="mx-auto animate-spin text-[#b7f34a]" size={28} /> : <AlertCircle className="mx-auto text-[#f0b45b]" size={28} />}<p className="mt-4 text-sm font-bold text-[#dce8e1]">{message}</p><button type="button" onClick={() => router.push("/dashboard")} className="mt-5 rounded-lg border border-[#34413b] px-4 py-2 text-xs font-bold text-[#b7f34a]">Voltar ao dashboard</button></div></div>}
     </section>
   </main>;
 }

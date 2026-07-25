@@ -8,6 +8,7 @@ import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { getCadEntities } from "@/lib/cad-geometry/legacy-adapter";
 import {
   canExportViewerResolution,
   getViewerExportResolution,
@@ -17,6 +18,8 @@ import {
   type ViewerExportPreset,
   type ViewerQualityMode,
 } from "@/lib/three-viewer-utils";
+import type { CadEntity, CadPoint } from "@/types/cad-geometry";
+import type { VectorDocument } from "@/types/vector";
 
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
 type ModelStyle = (typeof styles)[number];
@@ -25,7 +28,9 @@ type CameraMode = "orthographic" | "perspective";
 type Cad2DView = "front" | "side" | "top";
 
 type SvgTo3DCadViewerProps = {
-  svg: string;
+  svg?: string;
+  /** Preferred rich source for persisted projects opened in a separate tab. */
+  document?: VectorDocument | null;
   fileName?: string;
   unit?: string;
 };
@@ -636,7 +641,126 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   return model;
 }
 
-export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps) {
+function threePoint(point: CadPoint) {
+  return new THREE.Vector3(point.x, -point.y, 0);
+}
+
+function polygonShape(points: CadPoint[]) {
+  if (points.length < 3) return null;
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0].x, -points[0].y);
+  points.slice(1).forEach(point => shape.lineTo(point.x, -point.y));
+  shape.closePath();
+  return shape;
+}
+
+function shapeFromEntity(entity: CadEntity) {
+  switch (entity.type) {
+    case "CIRCLE": {
+      const shape = new THREE.Shape();
+      shape.absarc(entity.coordinates.center.x, -entity.coordinates.center.y, entity.coordinates.radius, 0, Math.PI * 2, false);
+      return shape;
+    }
+    case "ELLIPSE": {
+      const shape = new THREE.Shape();
+      shape.absellipse(entity.coordinates.center.x, -entity.coordinates.center.y, entity.coordinates.majorRadius, entity.coordinates.minorRadius, 0, Math.PI * 2, false, -entity.coordinates.rotation);
+      return shape;
+    }
+    case "LWPOLYLINE":
+      return entity.coordinates.closed ? polygonShape(entity.coordinates.points) : null;
+    case "POLYGON":
+      return polygonShape(entity.coordinates.points);
+    case "SPLINE":
+      return entity.coordinates.closed ? polygonShape(entity.coordinates.fitPoints) : null;
+    default:
+      return null;
+  }
+}
+
+function pointsFromEntity(entity: CadEntity) {
+  switch (entity.type) {
+    case "LINE":
+      return [entity.coordinates.start, entity.coordinates.end];
+    case "ARC": {
+      const span = entity.coordinates.endAngle - entity.coordinates.startAngle;
+      return Array.from({ length: 25 }, (_, index) => {
+        const angle = entity.coordinates.startAngle + span * index / 24;
+        return { x: entity.coordinates.center.x + Math.cos(angle) * entity.coordinates.radius, y: entity.coordinates.center.y + Math.sin(angle) * entity.coordinates.radius };
+      });
+    }
+    case "SPLINE":
+      return entity.coordinates.fitPoints;
+    case "LWPOLYLINE":
+      return entity.coordinates.closed ? [...entity.coordinates.points, entity.coordinates.points[0]].filter(Boolean) : entity.coordinates.points;
+    case "POLYGON":
+      return [...entity.coordinates.points, entity.coordinates.points[0]].filter(Boolean);
+    case "CIRCLE":
+    case "ELLIPSE":
+      return [];
+  }
+}
+
+/**
+ * Uses CadEntity directly so a saved document keeps its layers, canonical
+ * coordinates and open LINE entities when rendered in a standalone tab.
+ */
+function buildModelFromDocument(document: VectorDocument, options: BuildOptions) {
+  const model = new THREE.Group();
+  model.name = "Projeto 3D";
+  const curveSegments = options.enhanced ? 24 : 12;
+  const bevelSize = Math.max(options.depth * 0.025, 0.08);
+
+  for (const entity of getCadEntities(document)) {
+    const shape = shapeFromEntity(entity);
+    if (shape) {
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: options.depth,
+        steps: options.enhanced ? 3 : 1,
+        curveSegments,
+        bevelEnabled: options.enhanced,
+        bevelThickness: Math.min(bevelSize, options.depth * 0.2),
+        bevelSize,
+        bevelSegments: options.enhanced ? 2 : 0,
+      });
+      const mesh = new THREE.Mesh(options.enhanced ? enhanceGeometryQuality(geometry) : geometry, materialForStyle(options.style));
+      mesh.name = `${entity.type} ${entity.id}`;
+      mesh.userData = { layer: entity.layer, cadEntityId: entity.id, cadEntityType: entity.type };
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      model.add(mesh);
+      continue;
+    }
+
+    const points = pointsFromEntity(entity);
+    if (points.length < 2) continue;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points.map(threePoint)),
+      new THREE.LineBasicMaterial({ color: 0xb7f34a, transparent: true, opacity: 0.95 }),
+    );
+    line.name = `${entity.type} ${entity.id}`;
+    line.userData = { layer: entity.layer, cadEntityId: entity.id, cadEntityType: entity.type };
+    model.add(line);
+  }
+
+  const bounds = new THREE.Box3().setFromObject(model);
+  if (!bounds.isEmpty()) model.position.sub(bounds.getCenter(new THREE.Vector3()));
+  return model;
+}
+
+function modelGeometryStats(model: THREE.Group) {
+  let vertexCount = 0;
+  let renderableCount = 0;
+  model.traverse((object) => {
+    if (!(object instanceof THREE.Mesh || object instanceof THREE.Line)) return;
+    const position = object.geometry.getAttribute("position");
+    if (!position) return;
+    renderableCount += 1;
+    vertexCount += position.count;
+  });
+  return { vertexCount, renderableCount };
+}
+
+export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadViewerProps) {
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);
@@ -661,7 +785,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   const [selectedStyle, setSelectedStyle] = useState<ModelStyle>("cad_clean");
   const [appliedStyle, setAppliedStyle] = useState<ModelStyle>("cad_clean");
   const [qualityRun, setQualityRun] = useState(0);
-  const [loading, setLoading] = useState(() => Boolean(svg));
+  const [loading, setLoading] = useState(() => Boolean(svg || document));
   const [loadingStage, setLoadingStage] = useState("Preparando modelo 3D...");
   const [loadTimeMs, setLoadTimeMs] = useState<number | null>(null);
   const [hasGeometry, setHasGeometry] = useState(false);
@@ -874,7 +998,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
   useEffect(() => {
     const host = mount.current;
     if (!host) return;
-    if (!svg) {
+    if (!svg && !document) {
       const emptyTimer = window.setTimeout(() => {
         setLoading(false);
         setLoadingStage("Nenhum modelo carregado");
@@ -960,7 +1084,9 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     }, 0);
     let model: THREE.Group;
     try {
-      model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+      model = document
+        ? buildModelFromDocument(document, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" })
+        : buildModelFromSvg(svg || "", { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
     } catch {
       model = new THREE.Group();
     }
@@ -1055,16 +1181,19 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     };
     requestRender();
 
-    const mesh = model.children[0] as THREE.Mesh | undefined;
-    const count = mesh?.geometry.getAttribute("position")?.count || 0;
+    const geometryStats = modelGeometryStats(model);
+    // Retained for the existing status callback, which only needs a truthy
+    // renderable marker rather than assuming the first child is a mesh.
+    const mesh = geometryStats.renderableCount > 0 ? model.children[0] : null;
+    const count = geometryStats.vertexCount;
     const qualityProfile = VIEWER_QUALITY_PROFILES[renderQualityRef.current];
     renderer.shadowMap.enabled = qualityProfile.shadows && count > 0 && count <= qualityProfile.maxShadowVertices;
-    const statusMessage = mesh
-      ? `${aiClean ? "SVG limpo + " : ""}${enhanced ? "modelo 3D aprimorado" : "modelo 3D"} gerado com ${count.toLocaleString("pt-BR")} vertices otimizados.`
-      : "Nenhuma forma fechada foi encontrada no SVG para extrusao.";
+    const statusMessage = geometryStats.renderableCount > 0
+      ? `${document ? "documento CAD" : aiClean ? "SVG limpo" : "SVG"} ${enhanced ? "aprimorado" : "carregado"} com ${count.toLocaleString("pt-BR")} vertices em ${geometryStats.renderableCount} elemento(s).`
+      : "Nenhuma geometria CAD foi encontrada para a visualização 3D.";
     const statusTimer = window.setTimeout(() => {
       if (!disposed) {
-        setLoadingStage(mesh ? "Modelo pronto" : "Falha ao carregar modelo");
+        setLoadingStage(geometryStats.renderableCount > 0 ? "Modelo pronto" : "Falha ao carregar modelo");
         setLoadTimeMs(Math.round(performance.now() - loadStartedAt));
         setMessage(mesh ? statusMessage : "Não foi possível carregar o modelo 3D. Tente novamente.");
       }
@@ -1080,7 +1209,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     }, 0);
     const completeTimer = window.setTimeout(() => {
       if (!disposed) {
-        setHasGeometry(Boolean(mesh));
+        setHasGeometry(geometryStats.renderableCount > 0);
         setLoading(false);
       }
     }, 0);
@@ -1119,13 +1248,14 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
       host.replaceChildren();
       state.current = null;
     };
-  }, [addMeasurementPoint, aiClean, clearSelection, enhanced, getModelFocus, height, qualityRun, resetCamera, selectObject, svg]);
+  }, [addMeasurementPoint, aiClean, clearSelection, document, enhanced, getModelFocus, height, qualityRun, resetCamera, selectObject, svg]);
 
   useEffect(() => {
     const current = state.current;
-    const mesh = current?.model.children[0];
-    if (!current || !(mesh instanceof THREE.Mesh)) return;
-    apply3DStyle(mesh, appliedStyle);
+    if (!current) return;
+    current.model.traverse((object) => {
+      if (object instanceof THREE.Mesh) apply3DStyle(object, appliedStyle);
+    });
     applySceneStyle(current.scene, appliedStyle);
     renderRequest.current?.();
     setMessage(`Estilo ${styleLabels[appliedStyle]} aplicado em tempo real.`);
@@ -1135,9 +1265,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     imageQualityRef.current = imageQuality;
     const current = state.current;
     if (!current) return;
-    const mesh = current.model.children[0];
-    const position = mesh instanceof THREE.Mesh ? mesh.geometry.getAttribute("position") : null;
-    const vertexCount = position?.count || 0;
+    const vertexCount = modelGeometryStats(current.model).vertexCount;
     const ultra = imageQuality === "ultra";
     const profile = VIEWER_QUALITY_PROFILES[renderQualityRef.current];
     current.renderer.setPixelRatio(getViewerPixelRatio(renderQualityRef.current, window.devicePixelRatio));
@@ -1156,8 +1284,7 @@ export function SvgTo3DCadViewer({ svg, fileName, unit }: SvgTo3DCadViewerProps)
     const current = state.current;
     if (!current) return;
     const profile = VIEWER_QUALITY_PROFILES[renderQuality];
-    const mesh = current.model.children[0];
-    const vertexCount = mesh instanceof THREE.Mesh ? mesh.geometry.getAttribute("position")?.count || 0 : 0;
+    const vertexCount = modelGeometryStats(current.model).vertexCount;
     current.renderer.setPixelRatio(getViewerPixelRatio(renderQuality, window.devicePixelRatio));
     current.renderer.shadowMap.enabled = profile.shadows && vertexCount > 0 && vertexCount <= profile.maxShadowVertices;
     current.renderer.shadowMap.needsUpdate = true;

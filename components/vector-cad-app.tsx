@@ -7,25 +7,20 @@ import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
-import { enhanceForCad, processPixels } from "@/lib/image-processing/process";
-import { processCadCleanImage, type CadCleanMetrics } from "@/lib/image-processing/cad-clean";
+import { enhanceForCad } from "@/lib/image-processing/process";
+import type { CadCleanMetrics } from "@/lib/image-processing/cad-clean";
 import { isAiEnhanceQuality, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
 import { imageQualityAnalyzer, type ImageQualityAnalysis } from "@/lib/image-processing/image-quality-analyzer";
 import { decodeTiffDataUrl, isTiffFile, processTiff, rasterToPngDataUrl, type TiffRaster } from "@/lib/image-processing/tiff";
-import { detectText, protectTextRegions, type OcrDiagnostic } from "@/lib/text-detection/ocr";
+import { detectText, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
-import { scaleDocument, vectorizeBitmap } from "@/lib/vectorize/contours";
-import { cleanupVectorDocument } from "@/lib/vector/vector-cleanup";
-import { lineIntelligenceEngine, type LineIntelligenceMetrics } from "@/lib/vector/line-intelligence";
-import { recognizeDocumentGeometry } from "@/lib/geometry-recognition/recognition-engine";
-import { recognizeDocumentArchitecture } from "@/lib/architecture-recognition/architecture-engine";
-import { createDocumentTopology, createProjectScale } from "@/lib/architecture-recognition/topology-engine";
-import { createDocumentBimModel } from "@/lib/bim-recognition/bim-engine";
-import { skeletonizeBitmap } from "@/lib/vectorize/skeleton";
+import type { LineIntelligenceMetrics } from "@/lib/vector/line-intelligence";
+import type { CadProcessingBenchmark, CadProcessingWorkerResponse } from "@/lib/workers/protocols";
+import { scaleDocument } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
-import { getCadEntityExportPlan } from "@/lib/exporters/cad-entity-utils";
+import { routeDocumentGeometry } from "@/lib/exporters/export-entity-router";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData } from "@/types/project";
 
@@ -195,6 +190,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [serverEnhancedImage, setServerEnhancedImage] = useState<HTMLImageElement | null>(null);
   const [serverEnhanceFailed, setServerEnhanceFailed] = useState(false);
   const [lineMetrics, setLineMetrics] = useState<LineIntelligenceMetrics>({ pathsReceived: 0, detected: 0, strong: 0, medium: 0, weak: 0, kept: 0, removed: 0, unified: 0, beforeSegments: 0, afterSegments: 0, improvementPercent: 0, reductionPercent: 0 });
+  const [processingProgress, setProcessingProgress] = useState<{ percent: number; stage: string } | null>(null);
+  const [processingBenchmark, setProcessingBenchmark] = useState<CadProcessingBenchmark | null>(null);
   const [unit, setUnit] = useState<Unit>(initialData?.unit || "mm");
   const [realWidth, setRealWidth] = useState(initialData?.realWidth || 100);
   const [realHeight, setRealHeight] = useState(initialData?.realHeight || 100);
@@ -213,6 +210,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const eraserDrawing = useRef(false);
   const eraserLastPoint = useRef<{ x: number; y: number } | null>(null);
+  const processingWorker = useRef<Worker | null>(null);
+  const processingRequestId = useRef<string | null>(null);
   const previewViewport = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const controlsSize = useRef(280), cadSize = useRef(270);
@@ -224,6 +223,17 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
   const { restoredDraft, localDraftDirty, saveDraft } = useLocalProjectDraft({ userId, projectId, hasInitialData: Boolean(initialData), clearSignal: draftClearSignal });
+
+  const cancelCadProcessing = useCallback(() => {
+    const worker = processingWorker.current;
+    if (!worker) return;
+    if (processingRequestId.current) worker.postMessage({ type: "CANCEL", requestId: processingRequestId.current });
+    worker.terminate();
+    processingWorker.current = null;
+    processingRequestId.current = null;
+    setProcessingProgress(null);
+    setMessage("Processamento cancelado. O último documento válido foi preservado.");
+  }, []);
 
   useEffect(() => {
     const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
@@ -570,60 +580,89 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       ctx.drawImage(activeSource, 0, 0, w, h);
     }
     const sourceImage = ctx.getImageData(0, 0, w, h);
-    const cadClean = imageQuality === "cad-clean" ? processCadCleanImage(sourceImage) : null;
-    const enhanced = cadClean?.image || enhanceForCad(sourceImage, usingServerEnhance ? "enhanced" : imageQuality);
-    setCadCleanMetrics(cadClean?.metrics || { pixelsProcessed: 0, noiseRemoved: 0, contrastApplied: 0 });
-    setAiEnhancedPreview(serverEnhancedDataUrl);
-    const result = processPixels(enhanced, processing);
-    const bitmap = detectedTexts.length ? protectTextRegions(result.bitmap, w, h, detectedTexts) : result.bitmap;
-    if (detectedTexts.length) {
-      for (let i = 0; i < bitmap.length; i += 1) {
-        if (!bitmap[i]) {
-          const offset = i * 4;
-          result.image.data[offset] = 255;
-          result.image.data[offset + 1] = 255;
-          result.image.data[offset + 2] = 255;
-          result.image.data[offset + 3] = 255;
-        }
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const worker = new Worker(new URL("../lib/workers/cad-processing.worker.ts", import.meta.url), { type: "module" });
+    processingWorker.current?.terminate();
+    processingWorker.current = worker;
+    processingRequestId.current = requestId;
+    queueMicrotask(() => {
+      if (processingWorker.current !== worker) return;
+      setAiEnhancedPreview(serverEnhancedDataUrl);
+      setProcessingProgress({ percent: 0, stage: "Preparando processamento" });
+    });
+
+    worker.onmessage = (event: MessageEvent<CadProcessingWorkerResponse>) => {
+      const response = event.data;
+      if (response.requestId !== requestId) return;
+      if (response.type === "PROGRESS_UPDATE") {
+        setProcessingProgress(response.progress);
+        return;
       }
-    }
-    pc.getContext("2d")!.putImageData(result.image, 0, 0);
-    setProcessedPreview(pc.toDataURL("image/png"));
-    const rawDocument = vectorizeBitmap(bitmap, w, h, vector);
-    const detectedLines = lineIntelligenceEngine.analyze(rawDocument.paths, w, h);
-    const lineSelection = lineIntelligenceEngine.selectPaths(rawDocument.paths, detectedLines, lineProcessingMode, w, h);
-    const intelligentPaths = lineSelection.paths;
-    const cleanupMode = vector.outputMode === "pixel" ? "original" : vector.outputMode === "cad" ? "cad-clean" : "smooth";
-    const cleanup = cleanupVectorDocument({ ...rawDocument, paths: intelligentPaths }, cleanupMode);
-    let selectedScore = lineIntelligenceEngine.score(detectedLines, cleanup.document.paths);
-    if (lineProcessingMode === "auto") {
-      const fallbackQualities = (["original", "enhanced", "ultra-pro", "cad-clean"] as ImageQuality[]).filter(quality => quality !== imageQuality);
-      for (const fallbackQuality of fallbackQualities) {
-        const fallbackSource = fallbackQuality === "cad-clean" ? processCadCleanImage(sourceImage).image : enhanceForCad(sourceImage, fallbackQuality);
-        const fallbackResult = processPixels(fallbackSource, processing);
-        const fallbackBitmap = detectedTexts.length ? protectTextRegions(fallbackResult.bitmap, w, h, detectedTexts) : fallbackResult.bitmap;
-        const fallbackRaw = vectorizeBitmap(fallbackBitmap, w, h, vector);
-        const fallbackLines = lineIntelligenceEngine.analyze(fallbackRaw.paths, w, h);
-        const fallbackSelection = lineIntelligenceEngine.selectPaths(fallbackRaw.paths, fallbackLines, lineProcessingMode, w, h);
-        const fallbackPaths = fallbackSelection.paths;
-        const fallbackCleanup = cleanupVectorDocument({ ...fallbackRaw, paths: fallbackPaths }, cleanupMode);
-        const fallbackScore = lineIntelligenceEngine.score(fallbackLines, fallbackCleanup.document.paths);
-        if (fallbackCleanup.document.paths.length && fallbackScore > selectedScore) {
-          selectedScore = fallbackScore;
-          cleanup.document = fallbackCleanup.document;
-          cleanup.beforePaths = fallbackCleanup.beforePaths;
-          cleanup.beforePoints = fallbackCleanup.beforePoints;
-          cleanup.afterPaths = fallbackCleanup.afterPaths;
-          cleanup.afterPoints = fallbackCleanup.afterPoints;
-          cleanup.reductionPercent = fallbackCleanup.reductionPercent;
-          detectedLines.splice(0, detectedLines.length, ...fallbackLines);
-          intelligentPaths.splice(0, intelligentPaths.length, ...fallbackPaths);
-          lineSelection.unified = fallbackSelection.unified;
-          fallbackResult.image.data.forEach((value, index) => { if (result.image.data[index] !== value) result.image.data[index] = value; });
-          break;
-        }
+      if (response.type === "ERROR") {
+        if (!response.cancelled) setMessage(`Não foi possível processar a imagem: ${response.error}`);
+        setProcessingProgress(null);
+        if (processingWorker.current === worker) processingWorker.current = null;
+        if (processingRequestId.current === requestId) processingRequestId.current = null;
+        worker.terminate();
+        return;
       }
-    }
+
+      const result = response.result;
+      const processed = new ImageData(new Uint8ClampedArray(result.processedImage.data), result.processedImage.width, result.processedImage.height);
+      pc.width = processed.width;
+      pc.height = processed.height;
+      pc.getContext("2d")!.putImageData(processed, 0, 0);
+      setProcessedPreview(pc.toDataURL("image/png"));
+      setCadCleanMetrics(result.cadCleanMetrics);
+      setLineMetrics(result.lineMetrics);
+      setCleanupStats(result.cleanupStats);
+      setProcessingBenchmark(result.benchmark);
+      setProcessingProgress(null);
+      if (result.document) {
+        setDoc(result.document);
+        console.info("[vetorcad][geometry-recognition] completed", result.diagnostics.geometry);
+        console.info("[vetorcad][architecture-recognition] completed", result.diagnostics.architecture);
+        console.info("[vetorcad][architecture-topology] completed", result.diagnostics.topology);
+        console.info("[vetorcad][bim-recognition] completed", result.diagnostics.bim);
+        if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
+        else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
+      } else {
+        setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
+      }
+      if (processingWorker.current === worker) processingWorker.current = null;
+      if (processingRequestId.current === requestId) processingRequestId.current = null;
+      worker.terminate();
+    };
+    worker.onerror = () => {
+      setProcessingProgress(null);
+      setMessage("Não foi possível processar a imagem no Worker. O documento anterior foi preservado.");
+      if (processingWorker.current === worker) processingWorker.current = null;
+      if (processingRequestId.current === requestId) processingRequestId.current = null;
+      worker.terminate();
+    };
+    const pixels = new Uint8ClampedArray(sourceImage.data);
+    worker.postMessage({
+      type: "START_PROCESS",
+      requestId,
+      payload: {
+        image: { data: pixels.buffer, width: w, height: h },
+        imageQuality: usingServerEnhance ? "enhanced" : imageQuality,
+        processing,
+        vector,
+        detectedTexts,
+        lineProcessingMode,
+        project: { width: realWidth, height: realHeight, unit },
+      },
+    }, [pixels.buffer]);
+
+    return () => {
+      worker.postMessage({ type: "CANCEL", requestId });
+      worker.terminate();
+      if (processingWorker.current === worker) processingWorker.current = null;
+      if (processingRequestId.current === requestId) processingRequestId.current = null;
+    };
+
+    /*
     if (!cleanup.document.paths.length) {
       setLineMetrics({ pathsReceived: detectedLines.length, detected: detectedLines.length, strong: 0, medium: 0, weak: detectedLines.length, kept: 0, removed: detectedLines.length, unified: 0, beforeSegments: 0, afterSegments: 0, improvementPercent: 0, reductionPercent: detectedLines.length ? 100 : 0 });
       setMessage("Nenhuma linha foi detectada. O resultado anterior foi preservado; tente CAD Clean ou Ultra CAD Pro.");
@@ -634,7 +673,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     const recognizedArchitecture = recognizeDocumentArchitecture(recognizedGeometry.document, { skeleton });
     const projectScale = createProjectScale({ pixelWidth: w, pixelHeight: h, projectWidth: realWidth, projectHeight: realHeight, unit });
     const topology = createDocumentTopology(recognizedArchitecture.document, projectScale);
-    const bim = createDocumentBimModel(topology.document);
+    // Persist every geometric layer in one canonical project coordinate system
+    // before creating BIM projections from the architectural candidates.
+    const canonicalDocument = scaleDocument(topology.document, realWidth, realHeight, unit);
+    const bim = createDocumentBimModel(canonicalDocument);
     cleanup.document = bim.document;
     console.info("[vetorcad][geometry-recognition] completed", recognizedGeometry.diagnostics);
     console.info("[vetorcad][architecture-recognition] completed", recognizedArchitecture.diagnostics);
@@ -645,6 +687,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     setDoc(cleanup.document);
     if (result.darkRatio > .55) setMessage("Foram detectadas muitas áreas escuras. Tente ajustar o threshold ou inverter as cores.");
     else if (result.darkRatio < .003) setMessage("A imagem tem pouco contraste. Tente aumentar o threshold.");
+    */
   }, [detectedTexts, imageQuality, lineProcessingMode, manualProcessedImage, processing, realHeight, realWidth, serverEnhanceFailed, serverEnhancedDataUrl, serverEnhancedImage, source, sourceFormat, sourceRaster, tiffOptimizationEnabled, unit, vector]);
 
   useEffect(() => {
@@ -766,8 +809,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     }
     if (kind === "dxf" && countDxfEntities(finalDoc) === 0) return setMessage("Nenhum contorno CAD válido foi detectado. Ajuste o threshold ou reduza o fragmento mínimo.");
     const smartTexts = kind === "dxf" && exportSmartTexts ? (aiAnalysis?.texts || []) : [];
-    const exportPlan = getCadEntityExportPlan(finalDoc);
-    console.info(`[vetorcad][export] using ${exportPlan.source === "entities" ? "entities" : "legacy paths"}`, { format: kind, entityCount: exportPlan.entities.length, pathCount: finalDoc.paths.length });
+    const exportGeometry = routeDocumentGeometry(finalDoc);
+    const nativeEntityCount = exportGeometry.filter(item => item.kind === "entity").length;
+    console.info("[vetorcad][export] geometry route", { format: kind, nativeEntityCount, legacyPathCount: exportGeometry.length - nativeEntityCount, pathCount: finalDoc.paths.length });
     download(`${fileName.replace(/\.[^.]+$/, "") || "vectorcad"}.${kind}`, kind === "svg" ? svg : generateDxf(finalDoc, smartTexts), kind === "svg" ? "image/svg+xml" : "application/dxf");
     setMessage(kind === "dxf" ? "DXF gerado com enquadramento automático. Ao abrir no CAD, o desenho deve aparecer imediatamente." : "Arquivo SVG gerado com sucesso.");
   };
@@ -941,6 +985,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
               <span>Contraste aplicado: {cadCleanMetrics.contrastApplied.toFixed(1)}</span>
             </div>
           </div>}
+          {processingProgress && <div className="mt-3 rounded-lg border border-[#526b4c] bg-[#111914] p-3 text-[10px] text-[#c5d2ca]">
+            <div className="flex items-center justify-between gap-3"><span className="font-bold text-[#b7f34a]">{processingProgress.stage}</span><span>{processingProgress.percent}%</span></div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#26342c]"><div className="h-full bg-[#b7f34a] transition-[width] duration-300" style={{ width: `${processingProgress.percent}%` }} /></div>
+            <button type="button" onClick={cancelCadProcessing} className="mt-2 text-[9px] font-bold text-[#ffb3ae] hover:text-[#ff6e66]">Cancelar processamento</button>
+          </div>}
+          {processingBenchmark && <details className="mt-3 rounded-lg border border-[#33433a] bg-[#111914] p-2 text-[10px] text-[#aab8b0]">
+            <summary className="cursor-pointer font-bold text-[#b7f34a]">Benchmark interno do processamento</summary>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1"><span>Tempo: {processingBenchmark.durationMs} ms</span><span>Imagem: {processingBenchmark.inputPixels.toLocaleString("pt-BR")} px</span><span>Memória estimada: {Math.round(processingBenchmark.estimatedWorkingMemoryBytes / 1024 / 1024)} MB</span><span>Paths: {processingBenchmark.paths}</span><span>Entidades: {processingBenchmark.entities}</span><span>Arquitetura: {processingBenchmark.architectureEntities}</span></div>
+          </details>}
           <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 text-xs text-[#bdc9c3]" title="Detecta letras e números para proteger essas regiões da vetorização.">
             <span>Reconhecimento inteligente</span>
             <input type="checkbox" checked={textDetectionEnabled} onChange={e => { setTextDetectionEnabled(e.target.checked); if (!e.target.checked) { setDetectedTexts([]); setOcrDiagnostic(null); } }} className="h-4 w-4 accent-[#b7f34a]" />
@@ -1106,8 +1159,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
         <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
-        {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button>{projectId && !hasUnsavedChanges ? <a href={`/projetos/${encodeURIComponent(projectId)}/3d`} target="_blank" rel="noopener noreferrer" onClick={() => console.info("[vetorcad][3D] opening saved project", { projectId, persistenceStatus: effectivePersistenceStatus, lastSavedAt: lastSavedAt || null, hasDocumentPaths: Boolean(doc?.paths?.length) })} className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</a> : <button type="button" onClick={() => setMessage(blocked3dMessage)} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button>}</div>}</div>}
-        {show3d && <div className="mt-5"><SvgTo3DCadViewer svg={svg} fileName={fileName} unit={unit} /></div>}
+        {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button>{projectId && !hasUnsavedChanges ? <a href={`/projetos/${encodeURIComponent(projectId)}/3d`} target="_blank" rel="noopener noreferrer" onClick={() => console.info("[vetorcad][3D] opening saved project", { projectId, persistenceStatus: effectivePersistenceStatus, lastSavedAt: lastSavedAt || null, hasDocumentPaths: Boolean(doc?.paths?.length), hasDocumentEntities: Boolean(doc?.entities?.length), hasCoordinateSystem: Boolean(doc?.coordinateSystem) })} className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</a> : <button type="button" onClick={() => setMessage(blocked3dMessage)} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button>}</div>}</div>}
+        {show3d && <div className="mt-5"><SvgTo3DCadViewer document={finalDoc} svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
     </section>}
     <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
