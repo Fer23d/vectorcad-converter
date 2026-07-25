@@ -69,6 +69,10 @@ export function ProtectedProject3DViewer() {
         const project = data as CadProject;
         const projectData = project.data as CadProjectData | null;
         const document = projectData?.document;
+        console.info("[vetorcad][3D] document check", {
+          hasDocument: Boolean(document),
+          hasDocumentPaths: Boolean(document?.paths?.length),
+        });
         if (!projectData || !document || !document.paths?.length) throw new Error("VECTOR_NOT_AVAILABLE");
 
         const width = projectData.realWidth || document.width;

@@ -16,7 +16,7 @@ import { persistProjectImagesToStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
-const BACKEND_AUTO_SAVE_DELAY_MS = 900;
+const BACKEND_AUTO_SAVE_DELAY_MS = 240_000;
 
 type UserProfile = {
   user_id: string;
@@ -102,12 +102,15 @@ export function SaasDashboard() {
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
+  const [lastProjectSaveAt, setLastProjectSaveAt] = useState<string | null>(null);
+  const [projectChangeVersion, setProjectChangeVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [draftClearSignal, setDraftClearSignal] = useState("");
   const latestProjectData = useRef<CadProjectData | null>(null);
   const editorProjectId = useRef<string | null>(null);
   const editorCallbackSeen = useRef<string | null>(null);
   const savingProject = useRef(false);
+  const projectChangeVersionRef = useRef(0);
 
   const canUseSupabase = isSupabaseConfigured && supabase;
   const premiumAccess = userHasPremiumAccess(profile);
@@ -288,6 +291,9 @@ export function SaasDashboard() {
     editorCallbackSeen.current = null;
     latestProjectData.current = project.data;
     setProjectSaveState("saved");
+    setLastProjectSaveAt(project.updated_at || null);
+    projectChangeVersionRef.current = 0;
+    setProjectChangeVersion(0);
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
   }, [user]);
@@ -322,6 +328,9 @@ export function SaasDashboard() {
     setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
     setProjectSaveState("saved");
+    setLastProjectSaveAt((data as CadProject).updated_at || null);
+    projectChangeVersionRef.current = 0;
+    setProjectChangeVersion(0);
   }, [projects.length, user]);
 
   const startFirstProject = useCallback(async () => {
@@ -355,6 +364,8 @@ export function SaasDashboard() {
       editorCallbackSeen.current = projectId;
       return;
     }
+    projectChangeVersionRef.current += 1;
+    setProjectChangeVersion(projectChangeVersionRef.current);
     setProjectSaveState("dirty");
   }, []);
 
@@ -367,6 +378,8 @@ export function SaasDashboard() {
     setProjectSaveState("saving");
     setIsUploading(true);
     const updatedAt = new Date().toISOString();
+    const saveVersion = projectChangeVersionRef.current;
+    console.info("[vetorcad][SAVE] started", { projectId: activeProject.id, timestamp: updatedAt });
     let data: CadProjectData;
     let error: { message: string } | null = null;
     try {
@@ -385,9 +398,18 @@ export function SaasDashboard() {
     savingProject.current = false;
     setIsUploading(false);
     if (error) {
+      console.error("[vetorcad][SAVE] error", { projectId: activeProject.id, message: error.message });
       setProjectSaveState("error");
       setStatus(`Erro ao salvar projeto: ${error.message}`);
       setToastMessage("Erro ao salvar projeto");
+      return false;
+    }
+
+    if (projectChangeVersionRef.current !== saveVersion) {
+      console.info("[vetorcad][SAVE] success", { projectId: activeProject.id, timestamp: updatedAt, currentChangesPending: true });
+      setProjectSaveState("dirty");
+      setStatus("Salvamento concluído; há novas alterações pendentes.");
+      setToastMessage("Há novas alterações pendentes para salvar");
       return false;
     }
 
@@ -397,6 +419,8 @@ export function SaasDashboard() {
     clearLocalProjectDraft(user.id);
     setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
+    setLastProjectSaveAt(updatedAt);
+    console.info("[vetorcad][SAVE] success", { projectId: savedProject.id, timestamp: updatedAt });
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
     window.setTimeout(() => setToastMessage(""), 2600);
@@ -454,10 +478,11 @@ export function SaasDashboard() {
 
   useEffect(() => {
     if (projectSaveState !== "dirty" || !activeProject) return;
-    // Keep the existing fast Supabase autosave independent from the one-minute local draft.
+    // The browser draft remains a short-term recovery mechanism; this is the
+    // single official Supabase autosave timer.
     const timer = window.setTimeout(() => { void saveProject(); }, BACKEND_AUTO_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeProject, projectSaveState, saveProject]);
+  }, [activeProject, projectChangeVersion, projectSaveState, saveProject]);
 
   useEffect(() => {
     if (projectSaveState !== "dirty") return;
@@ -479,6 +504,9 @@ export function SaasDashboard() {
     setProjects((current) => current.filter((project) => project.id !== target.id));
     if (activeProject?.id === target.id) {
       setActiveProject(null);
+      setLastProjectSaveAt(null);
+      projectChangeVersionRef.current = 0;
+      setProjectChangeVersion(0);
       editorProjectId.current = null;
       editorCallbackSeen.current = null;
       latestProjectData.current = null;
@@ -581,6 +609,21 @@ export function SaasDashboard() {
   };
 
   const profileFullName = [profileFirstName, profileLastName].map((part) => part.trim()).filter(Boolean).join(" ");
+  const persistenceLabel = projectSaveState === "saved"
+    ? "✓ Projeto salvo"
+    : projectSaveState === "saving"
+      ? "⟳ Salvando projeto..."
+      : projectSaveState === "error"
+        ? "⚠ Erro ao salvar"
+        : "● Alterações pendentes";
+
+  const handleSaveClick = () => {
+    if (projectSaveState === "saving" || isUploading) {
+      setToastMessage("Estamos salvando seu projeto. Aguarde alguns segundos.");
+      return;
+    }
+    void saveProject();
+  };
   const hiddenUserId = "••••••••-••••-••••-••••-••••••••••••";
 
   const copyUserId = async () => {
@@ -773,7 +816,10 @@ export function SaasDashboard() {
             sessão protegida
           </div>}
           {!premiumAccess && <button type="button" onClick={() => router.push("/pricing")} className="hidden rounded-lg border border-[#b7f34a]/50 px-3 py-2 text-xs font-black text-[#b7f34a] transition hover:bg-[#172314] md:inline-flex">Ver planos</button>}
-          {activeTab === "editor" && activeProject && <button type="button" onClick={() => void saveProject()} disabled={projectSaveState === "saving" || isUploading} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{isUploading ? "Enviando imagem..." : projectSaveState === "saving" ? "Salvando..." : "Salvar projeto"}</span><span className="sm:hidden">{isUploading ? "..." : projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
+          {activeTab === "editor" && activeProject && <div className="flex items-center gap-2">
+            <span className={`whitespace-nowrap text-[9px] font-bold sm:text-[10px] ${projectSaveState === "saved" ? "text-[#b7f34a]" : projectSaveState === "error" ? "text-[#ff8f8f]" : projectSaveState === "saving" ? "text-[#e5c86a]" : "text-[#d8e3dc]"}`}>{persistenceLabel}</span>
+            {projectSaveState !== "saved" && <button type="button" onClick={handleSaveClick} aria-disabled={projectSaveState === "saving" || isUploading} className="inline-flex items-center gap-1.5 rounded-lg bg-[#b7f34a] px-2.5 py-2 text-[11px] font-black text-[#09120d] transition hover:brightness-105 aria-disabled:cursor-wait aria-disabled:opacity-60 sm:gap-2 sm:px-3 sm:text-xs"><Save size={14} /> <span className="hidden sm:inline">{isUploading ? "Enviando imagem..." : projectSaveState === "saving" ? "Salvando projeto..." : "Salvar Projeto"}</span><span className="sm:hidden">{projectSaveState === "saving" ? "..." : "Salvar"}</span></button>}
+          </div>}
           <button
             type="button"
             onClick={() => setHeaderCollapsed((value) => !value)}
@@ -855,7 +901,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onPrepare3dProject={prepare3dProject} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onPrepare3dProject={prepare3dProject} persistenceStatus={projectSaveState} lastSavedAt={lastProjectSaveAt} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
