@@ -103,6 +103,7 @@ export function SaasDashboard() {
   const [toastMessage, setToastMessage] = useState("");
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [savedProjectVersion, setSavedProjectVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [draftClearSignal, setDraftClearSignal] = useState("");
   const latestProjectData = useRef<CadProjectData | null>(null);
@@ -294,6 +295,7 @@ export function SaasDashboard() {
     setProjectSaveState("saved");
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
+    setSavedProjectVersion(0);
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
   }, [user]);
@@ -331,6 +333,7 @@ export function SaasDashboard() {
     setProjectSaveState("saved");
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
+    setSavedProjectVersion(0);
   }, [projects.length, user]);
 
   const startFirstProject = useCallback(async () => {
@@ -427,6 +430,7 @@ export function SaasDashboard() {
     clearLocalProjectDraft(user.id);
     setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
+    setSavedProjectVersion(saveVersion);
     console.info("[vetorcad][SAVE] success", { projectId: savedProject.id, timestamp: updatedAt });
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
@@ -858,7 +862,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={projectChangeVersion} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
