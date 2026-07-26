@@ -775,6 +775,16 @@ function addTopologyGroups(group: THREE.Group, graphs: WallGraph[] | undefined) 
           cadEntityType: "CONNECTION",
           label: `CONNECTION ${connection.id}`,
         }));
+      } else if (node) {
+        const marker = new THREE.Mesh(
+          new THREE.RingGeometry(0.9, 1.5, 16),
+          new THREE.MeshBasicMaterial({ color: 0xc588ff, side: THREE.DoubleSide }),
+        );
+        marker.position.copy(threePoint(node));
+        marker.name = `CONNECTION ${connection.id}`;
+        marker.userData = { layer: "TOPOLOGY", cadEntityId: connection.id, cadEntityType: "CONNECTION" };
+        topologyGroup.add(marker);
+        rendered += 1;
       }
     }
     for (const node of graph.nodes) {
