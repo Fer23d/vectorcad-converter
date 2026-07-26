@@ -51,6 +51,7 @@ type DocumentModelBuild = {
   origin: ViewerGeometrySource;
   cadRenderableCount: number;
   renderedByType: Record<string, number>;
+  invalidEntityCount: number;
 };
 
 type ThreeState = {
@@ -849,7 +850,7 @@ function buildModelFromDocument(document: VectorDocument, options: BuildOptions)
   const topologyCount = addTopologyGroups(model, document.topology);
   if (topologyCount) renderedByType.TOPOLOGY = topologyCount;
 
-  return { model, origin: resolved.source, cadRenderableCount, renderedByType };
+  return { model, origin: resolved.source, cadRenderableCount, renderedByType, invalidEntityCount: resolved.invalidEntityCount };
 }
 
 function modelGeometryStats(model: THREE.Group) {
@@ -1190,6 +1191,7 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
     let model: THREE.Group;
     let visualOrigin: ViewerRenderOrigin = "svg";
     let renderedByType: Record<string, number> = {};
+    let invalidEntityCount = 0;
     let fallbackReason: string | null = null;
     try {
       if (document) {
@@ -1197,6 +1199,7 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
         model = documentBuild.model;
         visualOrigin = documentBuild.origin;
         renderedByType = documentBuild.renderedByType;
+        invalidEntityCount = documentBuild.invalidEntityCount;
 
         // A rich document can contain unsupported or malformed entities. Keep
         // the saved SVG as a final visual fallback instead of showing a blank tab.
@@ -1337,6 +1340,7 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
       coordinateSystemId: document?.coordinateSystem?.id || null,
       coordinateUnit: document?.coordinateSystem?.unit || null,
       renderedByType,
+      invalidEntityCount,
       renderableCount: geometryStats.renderableCount,
     });
     // Retained for the existing status callback, which only needs a truthy

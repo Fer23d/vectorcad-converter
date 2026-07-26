@@ -85,4 +85,37 @@ describe("CAD Geometry Model compatibility", () => {
     expect(resolved.entities).toHaveLength(2);
     expect(resolved.entities[1]).toMatchObject({ type: "LWPOLYLINE", layer: "DETAILS" });
   });
+
+  it("keeps valid CAD entities and ignores malformed persisted geometry", () => {
+    const document: VectorDocument = {
+      ...legacyDocument,
+      paths: [],
+      entities: [
+        {
+          id: "line-1",
+          type: "LINE",
+          layer: "CONTOURS",
+          source: "geometry-recognition",
+          confidence: 0.99,
+          coordinates: { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+          metadata: {},
+        },
+        {
+          id: "invalid-circle",
+          type: "CIRCLE",
+          layer: "DETAILS",
+          source: "geometry-recognition",
+          confidence: 0.2,
+          coordinates: { center: { x: 5, y: 5 }, radius: Number.NaN },
+          metadata: {},
+        },
+      ],
+    };
+
+    const resolved = getViewerGeometry(document);
+
+    expect(resolved.source).toBe("entities");
+    expect(resolved.entities).toHaveLength(1);
+    expect(resolved.invalidEntityCount).toBe(1);
+  });
 });
