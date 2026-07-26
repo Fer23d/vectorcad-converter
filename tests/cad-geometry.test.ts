@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCadEntities, vectorPathToCadEntity, withCadEntities } from "@/lib/cad-geometry/legacy-adapter";
+import { getCadEntities, getViewerCadEntities, vectorPathToCadEntity, withCadEntities } from "@/lib/cad-geometry/legacy-adapter";
 import type { VectorDocument, VectorPath } from "@/types/vector";
 
 const legacyPath: VectorPath = {
@@ -59,5 +59,30 @@ describe("CAD Geometry Model compatibility", () => {
 
     expect(withCadEntities(document)).toBe(document);
     expect(getCadEntities(document)[0].type).toBe("CIRCLE");
+  });
+
+  it("keeps legacy paths that are not represented by partial recognition results", () => {
+    const document: VectorDocument = {
+      ...legacyDocument,
+      paths: [
+        { ...legacyPath, id: "path-recognized" },
+        { ...legacyPath, id: "path-legacy", layer: "DETAILS" },
+      ],
+      entities: [{
+        id: "line-1",
+        type: "LINE",
+        layer: "CONTOURS",
+        source: "geometry-recognition",
+        confidence: 0.99,
+        coordinates: { start: { x: 0, y: 0 }, end: { x: 10, y: 0 } },
+        metadata: { sourcePathId: "path-recognized" },
+      }],
+    };
+
+    const resolved = getViewerCadEntities(document);
+
+    expect(resolved.source).toBe("mixed");
+    expect(resolved.entities).toHaveLength(2);
+    expect(resolved.entities[1]).toMatchObject({ type: "LWPOLYLINE", layer: "DETAILS" });
   });
 });

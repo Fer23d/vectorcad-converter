@@ -8,7 +8,7 @@ import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { getCadEntities } from "@/lib/cad-geometry/legacy-adapter";
+import { getViewerCadEntities, type ViewerGeometrySource } from "@/lib/cad-geometry/legacy-adapter";
 import {
   canExportViewerResolution,
   getViewerExportResolution,
@@ -19,6 +19,8 @@ import {
   type ViewerQualityMode,
 } from "@/lib/three-viewer-utils";
 import type { CadEntity, CadPoint } from "@/types/cad-geometry";
+import type { ArchitectureCandidate } from "@/types/architectural-geometry";
+import type { WallGraph } from "@/types/architecture-topology";
 import type { VectorDocument } from "@/types/vector";
 
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
@@ -40,6 +42,15 @@ type BuildOptions = {
   enhanced: boolean;
   cleanSvg: boolean;
   style: ModelStyle;
+};
+
+type ViewerRenderOrigin = ViewerGeometrySource | "svg" | "svg-fallback";
+
+type DocumentModelBuild = {
+  model: THREE.Group;
+  origin: ViewerGeometrySource;
+  cadRenderableCount: number;
+  renderedByType: Record<string, number>;
 };
 
 type ThreeState = {
@@ -592,7 +603,7 @@ export function enhanceGeometryQuality(geometry: THREE.BufferGeometry) {
   return optimized;
 }
 
-function buildModelFromSvg(svg: string, options: BuildOptions) {
+function buildModelFromSvg(svg: string, options: BuildOptions, center = true) {
   const loader = new SVGLoader();
   const data = loader.parse(options.cleanSvg ? fixSvgGeometry(svg) : svg);
   const geometries: THREE.BufferGeometry[] = [];
@@ -623,7 +634,7 @@ function buildModelFromSvg(svg: string, options: BuildOptions) {
   const merged = mergeGeometries(geometries, false);
   geometries.forEach((geometry) => geometry.dispose());
   const finalGeometry = enhanceGeometryQuality(merged);
-  finalGeometry.center();
+  if (center) finalGeometry.center();
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xb7f34a,
@@ -700,17 +711,102 @@ function pointsFromEntity(entity: CadEntity) {
   }
 }
 
+function centerModel(model: THREE.Group) {
+  const bounds = new THREE.Box3().setFromObject(model);
+  if (!bounds.isEmpty()) model.position.sub(bounds.getCenter(new THREE.Vector3()));
+}
+
+function addRenderableLine(group: THREE.Group, points: CadPoint[], color: number, userData: Record<string, unknown>) {
+  if (points.length < 2) return false;
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points.map(threePoint)),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+  );
+  line.name = String(userData.label || userData.cadEntityType || "Geometria");
+  line.userData = userData;
+  group.add(line);
+  return true;
+}
+
+function addArchitectureCandidate(group: THREE.Group, candidate: ArchitectureCandidate) {
+  const candidateGroup = new THREE.Group();
+  const layer = candidate.type === "WALL" ? "WALLS" : candidate.type === "DOOR" ? "DOORS" : candidate.type === "WINDOW" ? "WINDOWS" : "ARCHITECTURE";
+  candidateGroup.name = `${candidate.type} ${candidate.id}`;
+  candidateGroup.userData = { layer, cadEntityId: candidate.id, cadEntityType: candidate.type };
+  const common = { layer, cadEntityId: candidate.id, cadEntityType: candidate.type, label: `${candidate.type} ${candidate.id}` };
+  let rendered = 0;
+
+  if (candidate.type === "WALL") {
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.centerLine.start, candidate.geometry.centerLine.end], 0x8ed8ff, common));
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.boundaries[0].start, candidate.geometry.boundaries[0].end], 0x5da7d9, common));
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.boundaries[1].start, candidate.geometry.boundaries[1].end], 0x5da7d9, common));
+  } else if (candidate.type === "DOOR") {
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.opening.start, candidate.geometry.opening.end], 0xf0b45b, common));
+  } else if (candidate.type === "WINDOW") {
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.opening.start, candidate.geometry.opening.end], 0x76d5cf, common));
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.markers[0].start, candidate.geometry.markers[0].end], 0x76d5cf, common));
+    rendered += Number(addRenderableLine(candidateGroup, [candidate.geometry.markers[1].start, candidate.geometry.markers[1].end], 0x76d5cf, common));
+  } else {
+    rendered += Number(addRenderableLine(candidateGroup, [...candidate.geometry.boundary, candidate.geometry.boundary[0]].filter(Boolean), 0xb7f34a, common));
+  }
+
+  if (rendered) group.add(candidateGroup);
+  return rendered;
+}
+
+function addTopologyGroups(group: THREE.Group, graphs: WallGraph[] | undefined) {
+  if (!graphs?.length) return 0;
+  const topologyGroup = new THREE.Group();
+  topologyGroup.name = "Topologia arquitetonica";
+  let rendered = 0;
+
+  for (const graph of graphs) {
+    const nodePositions = new Map(graph.nodes.map((node) => [node.id, node.position]));
+    for (const connection of graph.connections) {
+      const wallNodes = graph.nodes.filter((node) => connection.wallIds.some((wallId) => node.wallIds.includes(wallId)));
+      const node = nodePositions.get(connection.nodeId);
+      const start = node || wallNodes[0]?.position;
+      const end = wallNodes.find((item) => item.id !== connection.nodeId)?.position;
+      if (start && end) {
+        rendered += Number(addRenderableLine(topologyGroup, [start, end], 0xc588ff, {
+          layer: "TOPOLOGY",
+          cadEntityId: connection.id,
+          cadEntityType: "CONNECTION",
+          label: `CONNECTION ${connection.id}`,
+        }));
+      }
+    }
+    for (const node of graph.nodes) {
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.75, 10, 8),
+        new THREE.MeshBasicMaterial({ color: 0xc588ff }),
+      );
+      marker.position.copy(threePoint(node.position));
+      marker.name = `NODE ${node.id}`;
+      marker.userData = { layer: "TOPOLOGY", cadEntityId: node.id, cadEntityType: "NODE" };
+      topologyGroup.add(marker);
+      rendered += 1;
+    }
+  }
+
+  if (rendered) group.add(topologyGroup);
+  return rendered;
+}
+
 /**
  * Uses CadEntity directly so a saved document keeps its layers, canonical
  * coordinates and open LINE entities when rendered in a standalone tab.
  */
-function buildModelFromDocument(document: VectorDocument, options: BuildOptions) {
+function buildModelFromDocument(document: VectorDocument, options: BuildOptions): DocumentModelBuild {
   const model = new THREE.Group();
   model.name = "Projeto 3D";
   const curveSegments = options.enhanced ? 24 : 12;
   const bevelSize = Math.max(options.depth * 0.025, 0.08);
+  const resolved = getViewerCadEntities(document);
+  const renderedByType: Record<string, number> = {};
+  let cadRenderableCount = 0;
 
-  for (const entity of getCadEntities(document)) {
+  for (const entity of resolved.entities) {
     const shape = shapeFromEntity(entity);
     if (shape) {
       const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -728,6 +824,8 @@ function buildModelFromDocument(document: VectorDocument, options: BuildOptions)
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       model.add(mesh);
+      cadRenderableCount += 1;
+      renderedByType[entity.type] = (renderedByType[entity.type] || 0) + 1;
       continue;
     }
 
@@ -740,11 +838,18 @@ function buildModelFromDocument(document: VectorDocument, options: BuildOptions)
     line.name = `${entity.type} ${entity.id}`;
     line.userData = { layer: entity.layer, cadEntityId: entity.id, cadEntityType: entity.type };
     model.add(line);
+    cadRenderableCount += 1;
+    renderedByType[entity.type] = (renderedByType[entity.type] || 0) + 1;
   }
 
-  const bounds = new THREE.Box3().setFromObject(model);
-  if (!bounds.isEmpty()) model.position.sub(bounds.getCenter(new THREE.Vector3()));
-  return model;
+  for (const candidate of document.architectureEntities || []) {
+    const count = addArchitectureCandidate(model, candidate);
+    if (count) renderedByType[candidate.type] = (renderedByType[candidate.type] || 0) + count;
+  }
+  const topologyCount = addTopologyGroups(model, document.topology);
+  if (topologyCount) renderedByType.TOPOLOGY = topologyCount;
+
+  return { model, origin: resolved.source, cadRenderableCount, renderedByType };
 }
 
 function modelGeometryStats(model: THREE.Group) {
@@ -1083,12 +1188,37 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
       if (!disposed) setLoadingStage("Carregando geometria...");
     }, 0);
     let model: THREE.Group;
+    let visualOrigin: ViewerRenderOrigin = "svg";
+    let renderedByType: Record<string, number> = {};
+    let fallbackReason: string | null = null;
     try {
-      model = document
-        ? buildModelFromDocument(document, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" })
-        : buildModelFromSvg(svg || "", { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
-    } catch {
+      if (document) {
+        const documentBuild = buildModelFromDocument(document, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+        model = documentBuild.model;
+        visualOrigin = documentBuild.origin;
+        renderedByType = documentBuild.renderedByType;
+
+        // A rich document can contain unsupported or malformed entities. Keep
+        // the saved SVG as a final visual fallback instead of showing a blank tab.
+        if (documentBuild.cadRenderableCount === 0 && svg) {
+          const fallbackModel = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" }, false);
+          const fallbackStats = modelGeometryStats(fallbackModel);
+          while (fallbackModel.children.length) model.add(fallbackModel.children[0]);
+          visualOrigin = "svg-fallback";
+          fallbackReason = "no-renderable-cad-entities";
+          renderedByType = { ...renderedByType, SVG_FALLBACK: fallbackStats.renderableCount };
+        }
+        centerModel(model);
+      } else {
+        model = buildModelFromSvg(svg || "", { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+      }
+    } catch (error) {
+      console.warn("[vetorcad][3D] model build failed", {
+        source: document ? "document" : "svg",
+        errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
+      });
       model = new THREE.Group();
+      fallbackReason = "model-build-error";
     }
     const modelBox = new THREE.Box3().setFromObject(model);
     const modelSize = modelBox.isEmpty() ? 420 : Math.max(modelBox.getSize(new THREE.Vector3()).length() * 1.8, 420);
@@ -1182,6 +1312,18 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
     requestRender();
 
     const geometryStats = modelGeometryStats(model);
+    console.info("[vetorcad][3D] model rendered", {
+      visualOrigin,
+      fallbackReason,
+      pathCount: document?.paths.length || 0,
+      entityCount: document?.entities?.length || 0,
+      architectureCount: document?.architectureEntities?.length || 0,
+      topologyCount: document?.topology?.length || 0,
+      coordinateSystemId: document?.coordinateSystem?.id || null,
+      coordinateUnit: document?.coordinateSystem?.unit || null,
+      renderedByType,
+      renderableCount: geometryStats.renderableCount,
+    });
     // Retained for the existing status callback, which only needs a truthy
     // renderable marker rather than assuming the first child is a mesh.
     const mesh = geometryStats.renderableCount > 0 ? model.children[0] : null;

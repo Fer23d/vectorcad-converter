@@ -104,11 +104,13 @@ export function SaasDashboard() {
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
   const [lastProjectSaveAt, setLastProjectSaveAt] = useState<string | null>(null);
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [savedProjectVersion, setSavedProjectVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [draftClearSignal, setDraftClearSignal] = useState("");
   const latestProjectData = useRef<CadProjectData | null>(null);
   const editorProjectId = useRef<string | null>(null);
   const editorCallbackSeen = useRef<string | null>(null);
+  const ignoreNextEditorSnapshot = useRef(false);
   const savingProject = useRef(false);
   const projectChangeVersionRef = useRef(0);
 
@@ -289,11 +291,13 @@ export function SaasDashboard() {
     setDraftClearSignal("");
     editorProjectId.current = project.id;
     editorCallbackSeen.current = null;
+    ignoreNextEditorSnapshot.current = false;
     latestProjectData.current = project.data;
     setProjectSaveState("saved");
     setLastProjectSaveAt(project.updated_at || null);
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
+    setSavedProjectVersion(0);
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
   }, [user]);
@@ -324,6 +328,7 @@ export function SaasDashboard() {
     setDraftClearSignal("");
     editorProjectId.current = (data as CadProject).id;
     editorCallbackSeen.current = null;
+    ignoreNextEditorSnapshot.current = false;
     latestProjectData.current = (data as CadProject).data;
     setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
@@ -331,6 +336,7 @@ export function SaasDashboard() {
     setLastProjectSaveAt((data as CadProject).updated_at || null);
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
+    setSavedProjectVersion(0);
   }, [projects.length, user]);
 
   const startFirstProject = useCallback(async () => {
@@ -358,6 +364,13 @@ export function SaasDashboard() {
     const projectId = editorProjectId.current;
     if (!projectId) return;
     latestProjectData.current = data;
+
+    // Hydration after a successful save re-emits the persisted snapshot. It is
+    // not a user edit and must not invalidate the saved document version.
+    if (ignoreNextEditorSnapshot.current) {
+      ignoreNextEditorSnapshot.current = false;
+      return;
+    }
 
     // The first snapshot is the restored state. Only subsequent snapshots are edits.
     if (editorCallbackSeen.current !== projectId) {
@@ -416,10 +429,12 @@ export function SaasDashboard() {
     const savedProject = { ...activeProject, data, updated_at: updatedAt };
     setActiveProject(savedProject);
     setProjects((current) => current.map((project) => project.id === savedProject.id ? savedProject : project));
+    ignoreNextEditorSnapshot.current = true;
     clearLocalProjectDraft(user.id);
     setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
     setLastProjectSaveAt(updatedAt);
+    setSavedProjectVersion(saveVersion);
     console.info("[vetorcad][SAVE] success", { projectId: savedProject.id, timestamp: updatedAt });
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
@@ -475,6 +490,10 @@ export function SaasDashboard() {
     window.setTimeout(() => setToastMessage(""), 2600);
     return savedProject.id;
   }, [activeProject, projects.length, saveProject, user]);
+
+  // Kept isolated for backward compatibility with older editor embeddings.
+  // The current 3D route uses the persisted-version link instead.
+  void prepare3dProject;
 
   useEffect(() => {
     if (projectSaveState !== "dirty" || !activeProject) return;
@@ -901,7 +920,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} onPrepare3dProject={prepare3dProject} persistenceStatus={projectSaveState} lastSavedAt={lastProjectSaveAt} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} lastSavedAt={lastProjectSaveAt} projectVersion={projectChangeVersion} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">

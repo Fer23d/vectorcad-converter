@@ -89,6 +89,8 @@ export function ProtectedProject3DViewer() {
           architectureCount: prepared.document.architectureEntities?.length || 0,
           topologyCount: prepared.document.topology?.length || 0,
           coordinateSystemId: prepared.document.coordinateSystem?.id || null,
+          coordinateUnit: prepared.document.coordinateSystem?.unit || null,
+          coordinateSystemPreserved: prepared.coordinateSystemPreserved,
         });
         if (!prepared.hasGeometry) throw new Error("VECTOR_NOT_AVAILABLE");
         // Kept only for pre-CadEntity projects. Rich documents are rendered

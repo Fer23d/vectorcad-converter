@@ -39,7 +39,8 @@ describe("3D viewer document preparation", () => {
     expect(prepared.hasGeometry).toBe(true);
     expect(prepared.document.entities).toHaveLength(2);
     expect(prepared.document.entities?.[0].coordinates).toEqual({ start: { x: 0, y: 0 }, end: { x: 200, y: 0 } });
-    expect(prepared.document.coordinateSystem?.id).toBe("document-mm-200x100");
+    expect(prepared.coordinateSystemPreserved).toBe(true);
+    expect(prepared.document.coordinateSystem?.id).toBe("cad-mm");
   });
 
   it("preserves proportion when dimensions change together", () => {
@@ -48,5 +49,36 @@ describe("3D viewer document preparation", () => {
 
     expect(last.x / last.y).toBe(2);
     expect(prepared.document.width / prepared.document.height).toBe(2);
+  });
+
+  it("keeps manual coordinate calibration, architecture and topology intact when no target transform is requested", () => {
+    const document: VectorDocument = {
+      ...legacyDocument(),
+      coordinateSystem: { id: "imported-rotated", origin: { x: 17, y: -4 }, scale: { x: 2.5, y: 2.5 }, rotation: 0.2, unit: "millimeter", precision: 6, createdFrom: "imported" },
+      width: 100,
+      height: 50,
+      unit: "mm",
+      architectureEntities: [{
+        id: "wall-1",
+        type: "WALL",
+        confidence: 0.9,
+        sourceEntities: [],
+        geometry: {
+          centerLine: { start: { x: 0, y: 0 }, end: { x: 100, y: 0 } },
+          boundaries: [{ start: { x: 0, y: -5 }, end: { x: 100, y: -5 } }, { start: { x: 0, y: 5 }, end: { x: 100, y: 5 } }],
+          thickness: 10,
+          orientation: "horizontal",
+          bounds: { minX: 0, minY: -5, maxX: 100, maxY: 5 },
+        },
+      }],
+      topology: [{ id: "graph-1", scale: { unit: "mm", pixelsPerUnit: 1, conversionFactor: 1 }, nodes: [{ id: "node-1", position: { x: 0, y: 0 }, wallIds: ["wall-1"], kind: "ENDPOINT" }], connections: [], openings: [] }],
+    };
+
+    const prepared = prepareThreeViewerDocument(document, 100, 50, "mm");
+
+    expect(prepared.coordinateSystemPreserved).toBe(true);
+    expect(prepared.document).toBe(document);
+    expect(prepared.document.architectureEntities).toHaveLength(1);
+    expect(prepared.document.topology).toHaveLength(1);
   });
 });
