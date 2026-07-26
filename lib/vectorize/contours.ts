@@ -1,4 +1,6 @@
 import { chaikin, joinNearbyPaths } from "@/lib/vectorize/geometry";
+import { IMAGE_COORDINATE_SYSTEM, coordinateUnitFromDocumentUnit, transformArchitectureEntity, transformBimModel, transformEntity, transformPoint, transformProjectScale, transformTopology } from "@/lib/geometry/coordinate-transform";
+import type { CoordinateSystem } from "@/types/coordinate-system";
 import type { Point, VectorDocument, VectorPath, VectorSettings } from "@/types/vector";
 
 type Segment = [Point, Point];
@@ -85,6 +87,35 @@ export function vectorizeBitmap(data: Uint8Array, width: number, height: number,
 }
 
 export function scaleDocument(doc: VectorDocument, width: number, height: number, unit: VectorDocument["unit"]): VectorDocument {
-  const sx = width / doc.sourceWidth, sy = height / doc.sourceHeight;
-  return { ...doc, width, height, unit, paths: doc.paths.map(path => ({ ...path, points: path.points.map(point => ({ x: point.x * sx, y: point.y * sy })) })) };
+  const sourceCoordinateSystem = doc.coordinateSystem || IMAGE_COORDINATE_SYSTEM;
+  const coordinateSystem: CoordinateSystem = {
+    id: `document-${unit}-${width}x${height}`,
+    origin: sourceCoordinateSystem.origin,
+    scale: {
+      x: width / Math.max(doc.sourceWidth, Number.EPSILON),
+      y: height / Math.max(doc.sourceHeight, Number.EPSILON),
+    },
+    rotation: sourceCoordinateSystem.rotation,
+    unit: coordinateUnitFromDocumentUnit(unit),
+    precision: sourceCoordinateSystem.precision,
+    createdFrom: sourceCoordinateSystem.createdFrom === "image" ? "manual" : sourceCoordinateSystem.createdFrom,
+  };
+  const options = { from: sourceCoordinateSystem };
+  const topology = doc.topology?.map(graph => transformTopology(graph, coordinateSystem, options));
+
+  return {
+    ...doc,
+    width,
+    height,
+    unit,
+    coordinateSystem,
+    paths: doc.paths.map(path => ({ ...path, points: path.points.map(point => transformPoint(point, coordinateSystem, options)) })),
+    entities: doc.entities?.map(entity => transformEntity(entity, coordinateSystem, options)),
+    architectureEntities: doc.architectureEntities?.map(candidate => transformArchitectureEntity(candidate, coordinateSystem, options)),
+    projectScale: doc.projectScale ? transformProjectScale(doc.projectScale, coordinateSystem, options) : topology?.[0]?.scale,
+    topology,
+    // Legacy BIM projections were already stored in project units before the
+    // coordinate system existed. New projections use the document system.
+    bimModel: doc.bimModel && doc.coordinateSystem ? transformBimModel(doc.bimModel, coordinateSystem, options) : doc.bimModel,
+  };
 }
