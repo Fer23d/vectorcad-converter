@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getCadEntities, getViewerCadEntities, vectorPathToCadEntity, withCadEntities } from "@/lib/cad-geometry/legacy-adapter";
+import { getCadEntities, getViewerGeometry, vectorPathToCadEntity, withCadEntities } from "@/lib/cad-geometry/legacy-adapter";
 import type { VectorDocument, VectorPath } from "@/types/vector";
 
 const legacyPath: VectorPath = {
@@ -79,7 +79,7 @@ describe("CAD Geometry Model compatibility", () => {
       }],
     };
 
-    const resolved = getViewerCadEntities(document);
+    const resolved = getViewerGeometry(document);
 
     expect(resolved.source).toBe("mixed");
     expect(resolved.entities).toHaveLength(2);

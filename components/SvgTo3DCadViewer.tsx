@@ -8,7 +8,7 @@ import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js";
 import { mergeGeometries, mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { getViewerCadEntities, type ViewerGeometrySource } from "@/lib/cad-geometry/legacy-adapter";
+import { getViewerGeometry, type ViewerGeometrySource } from "@/lib/cad-geometry/legacy-adapter";
 import {
   canExportViewerResolution,
   getViewerExportResolution,
@@ -802,7 +802,7 @@ function buildModelFromDocument(document: VectorDocument, options: BuildOptions)
   model.name = "Projeto 3D";
   const curveSegments = options.enhanced ? 24 : 12;
   const bevelSize = Math.max(options.depth * 0.025, 0.08);
-  const resolved = getViewerCadEntities(document);
+  const resolved = getViewerGeometry(document);
   const renderedByType: Record<string, number> = {};
   let cadRenderableCount = 0;
 
@@ -1217,8 +1217,23 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
         source: document ? "document" : "svg",
         errorCode: error instanceof Error ? error.name : "UNKNOWN_ERROR",
       });
-      model = new THREE.Group();
-      fallbackReason = "model-build-error";
+      if (svg) {
+        try {
+          model = buildModelFromSvg(svg, { depth: height, enhanced, cleanSvg: aiClean, style: "cad_clean" });
+          visualOrigin = "svg-fallback";
+          fallbackReason = "cad-build-error";
+          renderedByType = { SVG_FALLBACK: modelGeometryStats(model).renderableCount };
+        } catch (fallbackError) {
+          console.warn("[vetorcad][3D] svg fallback failed", {
+            errorCode: fallbackError instanceof Error ? fallbackError.name : "UNKNOWN_ERROR",
+          });
+          model = new THREE.Group();
+          fallbackReason = "svg-fallback-error";
+        }
+      } else {
+        model = new THREE.Group();
+        fallbackReason = "model-build-error";
+      }
     }
     const modelBox = new THREE.Box3().setFromObject(model);
     const modelSize = modelBox.isEmpty() ? 420 : Math.max(modelBox.getSize(new THREE.Vector3()).length() * 1.8, 420);

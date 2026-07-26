@@ -54,7 +54,7 @@ function sourcePathKey(path: VectorPath, index: number) {
  * only part of its paths. Unlike getCadEntities(), this resolver appends every
  * legacy path that is not explicitly represented by an entity sourcePathId.
  */
-export function getViewerCadEntities(document: Pick<VectorDocument, "paths" | "entities">): ViewerCadEntityResolution {
+export function getViewerGeometry(document: Pick<VectorDocument, "paths" | "entities">): ViewerCadEntityResolution {
   const recognized = document.entities || [];
   if (!recognized.length) {
     return {
@@ -80,6 +80,9 @@ export function getViewerCadEntities(document: Pick<VectorDocument, "paths" | "e
     legacyPathCount: legacyEntities.length,
   };
 }
+
+/** @deprecated Use getViewerGeometry() for new 3D-viewer integrations. */
+export const getViewerCadEntities = getViewerGeometry;
 
 export function withCadEntities(document: VectorDocument): VectorDocument {
   if (document.entities?.length) return document;
