@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { ArrowLeft, Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
@@ -46,9 +46,14 @@ type UsageInfo = {
   export3dLimit: number | null;
 };
 
-type ViewMode = "editor" | "3d";
+type ViewMode = "editor" | "split-3d" | "fullscreen-3d";
 
 function Internal3DOnlyView({ document, svg, fileName, unit, onBack }: { document: VectorDocument | null; svg: string; fileName: string; unit: Unit; onBack: () => void }) {
+  const handleBack = () => {
+    console.info("[3D INTERNAL VIEW]", { action: "return_to_editor" });
+    onBack();
+  };
+
   useEffect(() => {
     if (!document) return;
     console.info("[3D INTERNAL VIEW]", {
@@ -60,11 +65,11 @@ function Internal3DOnlyView({ document, svg, fileName, unit, onBack }: { documen
   }, [document]);
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] text-[#e8efeb]">
-    <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[#26312c] px-4 py-3 md:px-7">
+    <header className="fixed inset-x-0 top-0 z-50 flex min-h-16 items-center justify-between gap-3 border-b border-[#26312c] bg-[#080c0b]/95 px-4 py-3 backdrop-blur md:px-7">
       <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualização 3D</div></div></div>
-      <button type="button" onClick={onBack} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ExternalLink size={14} /> Voltar ao Editor</button>
+      <button type="button" onClick={handleBack} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao Editor</button>
     </header>
-    <section className="mx-auto max-w-[1600px] p-4 md:p-7">
+    <section className="mx-auto max-w-[1600px] p-4 pt-24 md:p-7 md:pt-28">
       {document ? <SvgTo3DCadViewer document={document} svg={svg} fileName={fileName} unit={unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] text-sm text-[#dce8e1]">Vetorize uma imagem antes de abrir a visualização 3D.</div>}
     </section>
   </main>;
@@ -899,7 +904,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     const allowed = await consumeUsage("export3d");
     if (!allowed) return;
     setShow3d(true);
-    setViewMode("3d");
+    setViewMode("fullscreen-3d");
     setMessage("Modelo 3D CAD pronto para preview. Ajuste a altura e exporte STL ou GLB.");
   };
   const analyzeWithAi = async () => {
@@ -965,7 +970,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
 
-  if (viewMode === "3d") {
+  if (viewMode === "fullscreen-3d") {
     return <Internal3DOnlyView document={finalDoc} svg={svg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
   }
 
@@ -976,7 +981,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
 
-    {show3d && <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-2 text-right md:px-7"><button type="button" onClick={() => setViewMode("3d")} className="inline-flex items-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] px-3 py-2 text-xs font-black text-[#b7f34a]"><Box size={14} /> Visualização 3D interna</button></div>}
+    {show3d && <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-2 text-right md:px-7"><button type="button" onClick={() => setViewMode("fullscreen-3d")} className="inline-flex items-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] px-3 py-2 text-xs font-black text-[#b7f34a]"><Box size={14} /> Visualização 3D interna</button></div>}
 
     {!hasSource && <section className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center md:pt-24">
       <div className="mx-auto mb-5 flex w-fit items-center gap-2 rounded-full border border-[#3d513e] bg-[#162219] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-[#b7f34a]"><Sparkles size={12} /> Raster para CAD editável</div>
@@ -1217,6 +1222,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
 
       <button type="button" aria-label="Redimensionar painel CAD" title="Arraste para redimensionar" onPointerDown={cadPanel.startResize} className={`panel-resizer panel-resizer-right ${cadPanel.resizing ? "is-resizing" : ""}`}><span /></button>
       <aside className="cad-panel border-l border-[#26312c] bg-[#0d1210] p-4">
+        {show3d && <div className="mb-5 grid gap-2 border-b border-[#26312c] pb-5"><button type="button" onClick={() => setViewMode("split-3d")} className={`flex items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-black ${viewMode === "split-3d" ? "border-[#b7f34a] bg-[#182019] text-[#b7f34a]" : "border-[#34413b] text-[#dce8e1]"}`}><Box size={14} /> Visualizar 3D ao lado</button><button type="button" onClick={() => setViewMode("fullscreen-3d")} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Visualizar somente 3D</button>{viewMode !== "editor" && <button type="button" onClick={() => setViewMode("editor")} className="flex items-center justify-center gap-2 rounded-lg border border-[#34413b] py-2.5 text-xs font-bold text-[#dce8e1]"><ArrowLeft size={14} /> Voltar ao Editor</button>}</div>}
+        {viewMode === "split-3d" && <div className="mb-5 border-b border-[#26312c] pb-5"><div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[.12em] text-[#e7eee9]"><Box size={14} /> Visualização 3D</div>{finalDoc ? <SvgTo3DCadViewer document={finalDoc} svg={svg} fileName={fileName} unit={unit} /> : <div className="rounded-lg border border-[#34413b] p-3 text-[10px] text-[#9faca6]">Vetorize uma imagem para visualizar o modelo 3D.</div>}</div>}
         <Section title="Configurações CAD" icon={<Settings2 size={14} />}>
           <label className="text-[10px] uppercase tracking-wider text-[#77867e]">Unidade de saída</label><div className="grid grid-cols-3 gap-1">{(["mm", "cm", "px"] as Unit[]).map(u => <button key={u} onClick={() => setUnit(u)} className={`rounded-md py-2 text-xs font-bold ${unit === u ? "bg-[#b7f34a] text-[#0c150e]" : "bg-[#18201c] text-[#8f9d95]"}`}>{u}</button>)}</div>
           <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-[#8d9a93]">Largura<input className="mt-1 w-full" type="number" min="0.1" value={realWidth} onChange={e => updateWidth(+e.target.value)} /></label><label className="text-[10px] text-[#8d9a93]">Altura<input className="mt-1 w-full" type="number" min="0.1" value={realHeight} onChange={e => updateHeight(+e.target.value)} /></label></div>
