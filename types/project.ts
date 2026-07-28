@@ -1,4 +1,5 @@
 export type CadProjectType = "2d" | "3d";
+export type EditorViewMode = "editor" | "split-3d" | "fullscreen-3d";
 
 export type CadProjectData = {
   notes: string;
@@ -28,6 +29,7 @@ export type CadProjectData = {
   realHeight?: number;
   locked?: boolean;
   activeView?: "original" | "processed" | "vector";
+  viewMode?: EditorViewMode;
 };
 
 export type CadProject = {

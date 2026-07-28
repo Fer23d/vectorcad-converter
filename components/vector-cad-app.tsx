@@ -22,7 +22,7 @@ import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { routeDocumentGeometry } from "@/lib/exporters/export-entity-router";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
-import type { CadProjectData } from "@/types/project";
+import type { CadProjectData, EditorViewMode } from "@/types/project";
 
 const MAX_FILE = 30 * 1024 * 1024;
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/x-tiff"];
@@ -46,7 +46,7 @@ type UsageInfo = {
   export3dLimit: number | null;
 };
 
-type ViewMode = "editor" | "split-3d" | "fullscreen-3d";
+type ViewMode = EditorViewMode;
 
 function Internal3DOnlyView({ document, svg, fileName, unit, onBack }: { document: VectorDocument | null; svg: string; fileName: string; unit: Unit; onBack: () => void }) {
   const handleBack = () => {
@@ -229,7 +229,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const [show3d, setShow3d] = useState(initialData?.editorMode === "cad3d");
-  const [viewMode, setViewMode] = useState<ViewMode>("editor");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialData?.viewMode || "editor");
   const [show3dOptions, setShow3dOptions] = useState(false);
   const [isEraserMode, setIsEraserMode] = useState(false);
   const [eraserSize, setEraserSize] = useState(20);
@@ -259,7 +259,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
-  const { restoredDraft, localDraftDirty, saveDraft } = useLocalProjectDraft({ userId, projectId, hasInitialData: Boolean(initialData), clearSignal: draftClearSignal });
+  const { restoredDraft, localDraftDirty, restoreStatus, saveDraft, clearDraft } = useLocalProjectDraft({ userId, projectId, hasInitialData: Boolean(initialData), clearSignal: draftClearSignal });
 
   const cancelCadProcessing = useCallback(() => {
     const worker = processingWorker.current;
@@ -306,6 +306,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       setLocked(saved?.locked ?? true);
       setActiveView(saved?.activeView || "vector");
       setShow3d(saved?.editorMode === "cad3d");
+      setViewMode(saved?.viewMode || "editor");
       hydrating.current = false;
       return;
       }
@@ -334,6 +335,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     setLocked(saved.locked ?? true);
     setActiveView(saved.activeView || "vector");
     setShow3d(saved.editorMode === "cad3d");
+    setViewMode(saved.viewMode || "editor");
 
     if (saved.sourceFormat === "tiff" && !saved.sourceOriginalDataUrl) return;
 
@@ -412,6 +414,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     const data: CadProjectData = {
       notes: "",
       editorMode: show3d ? "cad3d" : "cad2d",
+      viewMode,
       schemaVersion: 1,
       documentRevision: documentRevisionRef.current,
       sourceImageDataUrl,
@@ -452,7 +455,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, projectId, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, projectId, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector, viewMode]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
@@ -969,12 +972,18 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     setAiFeedback(current => [...current.filter(item => item.elementKey !== feedback.elementKey), feedback]);
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
+  const draftRecoveryBanner = restoreStatus === "restoring"
+    ? <div className="border-b border-[#34413b] bg-[#111b15] px-4 py-2 text-xs text-[#dce8e1]" role="status" aria-live="polite">Recuperando projeto...</div>
+    : restoredDraft
+      ? <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#506b49] bg-[#17251a] px-4 py-2 text-xs text-[#dce8e1]" role="status" aria-live="polite"><span className="text-[#b7f34a]">Rascunho restaurado</span><button type="button" onClick={() => { clearDraft(); setMessage("Recuperação descartada. O projeto atual foi mantido."); }} className="rounded border border-[#6b815f] px-2 py-1 text-[10px] font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Descartar recuperação</button></div>
+      : null;
 
   if (viewMode === "fullscreen-3d") {
     return <Internal3DOnlyView document={finalDoc} svg={svg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
   }
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
+    {draftRecoveryBanner}
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
       <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>

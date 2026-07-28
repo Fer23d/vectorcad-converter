@@ -8,8 +8,10 @@ export type LocalProjectDraft = {
 };
 
 const pendingDraftTimers = new Map<string, number>();
-const LOCAL_DRAFT_DELAY_MS = 60_000;
+const LOCAL_DRAFT_DELAY_MS = 750;
 const LARGE_DATA_URL_LENGTH = 1_000_000;
+
+export type LocalDraftRestoreStatus = "idle" | "restoring" | "restored";
 
 function compactDraftData(data: CadProjectData): CadProjectData {
   const compacted = { ...data };
@@ -69,19 +71,26 @@ export function useLocalProjectDraft({ userId, projectId, hasInitialData, clearS
   const timer = useRef<number | null>(null);
   const [restoredDraft, setRestoredDraft] = useState<LocalProjectDraft | null>(null);
   const [localDraftDirty, setLocalDraftDirty] = useState(false);
+  const [restoreStatus, setRestoreStatus] = useState<LocalDraftRestoreStatus>("idle");
 
   // Read only the current user's draft. A project draft can restore into the
   // editor even before the dashboard has selected the matching backend row.
   useEffect(() => {
     if (!userId) {
-      const resetTimer = window.setTimeout(() => setRestoredDraft(null), 0);
+      const resetTimer = window.setTimeout(() => {
+        setRestoredDraft(null);
+        setRestoreStatus("idle");
+      }, 0);
       return () => window.clearTimeout(resetTimer);
     }
 
     const restoreTimer = window.setTimeout(() => {
+      setRestoreStatus("restoring");
       const stored = readDraft(userId);
       const belongsToCurrentProject = !hasInitialData || stored?.projectId === projectId;
-      setRestoredDraft(stored && belongsToCurrentProject ? stored : null);
+      const matchingDraft = stored && belongsToCurrentProject ? stored : null;
+      setRestoredDraft(matchingDraft);
+      setRestoreStatus(matchingDraft ? "restored" : "idle");
     }, 0);
     return () => window.clearTimeout(restoreTimer);
   }, [hasInitialData, projectId, userId]);
@@ -92,6 +101,7 @@ export function useLocalProjectDraft({ userId, projectId, hasInitialData, clearS
       clearLocalProjectDraft(userId);
       setRestoredDraft(null);
       setLocalDraftDirty(false);
+      setRestoreStatus("idle");
     }, 0);
     return () => window.clearTimeout(clearTimer);
   }, [clearSignal, userId]);
@@ -122,11 +132,12 @@ export function useLocalProjectDraft({ userId, projectId, hasInitialData, clearS
     clearLocalProjectDraft(userId);
     setRestoredDraft(null);
     setLocalDraftDirty(false);
+    setRestoreStatus("idle");
   }, [userId]);
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
   }, []);
 
-  return { restoredDraft, localDraftDirty, saveDraft, clearDraft };
+  return { restoredDraft, localDraftDirty, restoreStatus, saveDraft, clearDraft };
 }

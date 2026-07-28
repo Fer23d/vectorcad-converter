@@ -1310,6 +1310,28 @@ export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadVi
     requestRender();
 
     const geometryStats = modelGeometryStats(model);
+    const visibleObjects = (() => {
+      let count = 0;
+      model.traverse((object) => {
+        if (object.visible && (object instanceof THREE.Mesh || object instanceof THREE.Line)) count += 1;
+      });
+      return count;
+    })();
+    const bounds = modelBox.isEmpty() ? null : {
+      min: modelBox.min.toArray(),
+      max: modelBox.max.toArray(),
+      size: modelBox.getSize(new THREE.Vector3()).toArray(),
+    };
+    console.info("[3D VIEWER]", {
+      sceneCreated: Boolean(scene),
+      cameraCreated: Boolean(camera),
+      rendererCreated: Boolean(renderer),
+      canvasSize: { width: renderer.domElement.clientWidth, height: renderer.domElement.clientHeight },
+      objectsCreated: model.children.length,
+      visibleObjects,
+      boundingBox: bounds,
+      cameraPosition: camera.position.toArray(),
+    });
     console.info("[vetorcad][3D] model rendered", {
       visualOrigin,
       fallbackReason,

@@ -29,7 +29,7 @@ export function ProtectedProject3DViewer() {
     let cancelled = false;
     const load = async () => {
       const projectId = typeof params.id === "string" ? params.id : "";
-      console.info("[vetorcad][3D] route opened", { hasProjectId: Boolean(projectId) });
+      console.info("[3D ROUTE]", { projectId: projectId || null, routeAccessed: true });
 
       try {
         if (!projectId) throw new Error("PROJECT_ID_MISSING");
@@ -39,6 +39,7 @@ export function ProtectedProject3DViewer() {
         }
 
         const { data: sessionData } = await supabase.auth.getSession();
+        console.info("[3D ROUTE]", { projectId, authenticated: Boolean(sessionData.session) });
         if (!sessionData.session) {
           router.replace("/login");
           return;
@@ -59,12 +60,22 @@ export function ProtectedProject3DViewer() {
           .eq("id", projectId)
           .eq("user_id", userData.user.id)
           .single();
+        console.info("[3D ROUTE]", { projectId, projectFound: Boolean(data), queryErrorCode: error?.code || null });
         if (error || !data) throw new Error("PROJECT_NOT_FOUND");
         if (cancelled) return;
 
         const project = data as CadProject;
         const projectData = project.data as CadProjectData | null;
         const document = projectData?.document;
+        console.info("[3D FETCH RESULT]", {
+          projectId,
+          documentFound: Boolean(document),
+          documentVersion: projectData?.schemaVersion || null,
+          pathsCount: document?.paths?.length || 0,
+          entitiesCount: document?.entities?.length || 0,
+          architectureCount: document?.architectureEntities?.length || 0,
+          topologyCount: document?.topology?.length || 0,
+        });
         if (!document) throw new Error("VECTOR_NOT_AVAILABLE");
 
         const unit = projectData.unit || document.unit;
