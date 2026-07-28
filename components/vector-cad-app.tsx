@@ -46,6 +46,30 @@ type UsageInfo = {
   export3dLimit: number | null;
 };
 
+type ViewMode = "editor" | "3d";
+
+function Internal3DOnlyView({ document, svg, fileName, unit, onBack }: { document: VectorDocument | null; svg: string; fileName: string; unit: Unit; onBack: () => void }) {
+  useEffect(() => {
+    if (!document) return;
+    console.info("[3D INTERNAL VIEW]", {
+      pathsCount: document.paths.length,
+      entitiesCount: document.entities?.length || 0,
+      architectureCount: document.architectureEntities?.length || 0,
+      topologyCount: document.topology?.length || 0,
+    });
+  }, [document]);
+
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] text-[#e8efeb]">
+    <header className="flex min-h-16 items-center justify-between gap-3 border-b border-[#26312c] px-4 py-3 md:px-7">
+      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualização 3D</div></div></div>
+      <button type="button" onClick={onBack} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ExternalLink size={14} /> Voltar ao Editor</button>
+    </header>
+    <section className="mx-auto max-w-[1600px] p-4 md:p-7">
+      {document ? <SvgTo3DCadViewer document={document} svg={svg} fileName={fileName} unit={unit} /> : <div className="grid min-h-[70vh] place-items-center rounded-2xl border border-[#26312c] bg-[#101613] text-sm text-[#dce8e1]">Vetorize uma imagem antes de abrir a visualização 3D.</div>}
+    </section>
+  </main>;
+}
+
 function Slider({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
   return <label className="range-row text-xs text-[#aab8b1]"><span>{label}</span><b className="text-right text-[#e8efeb]">{value}</b><input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} /></label>;
 }
@@ -200,6 +224,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("Envie uma imagem para começar.");
   const [show3d, setShow3d] = useState(initialData?.editorMode === "cad3d");
+  const [viewMode, setViewMode] = useState<ViewMode>("editor");
   const [show3dOptions, setShow3dOptions] = useState(false);
   const [isEraserMode, setIsEraserMode] = useState(false);
   const [eraserSize, setEraserSize] = useState(20);
@@ -874,6 +899,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     const allowed = await consumeUsage("export3d");
     if (!allowed) return;
     setShow3d(true);
+    setViewMode("3d");
     setMessage("Modelo 3D CAD pronto para preview. Ajuste a altura e exporte STL ou GLB.");
   };
   const analyzeWithAi = async () => {
@@ -939,12 +965,18 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
 
+  if (viewMode === "3d") {
+    return <Internal3DOnlyView document={finalDoc} svg={svg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
+  }
+
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
       <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Nova imagem</button>
     </header>
+
+    {show3d && <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-2 text-right md:px-7"><button type="button" onClick={() => setViewMode("3d")} className="inline-flex items-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] px-3 py-2 text-xs font-black text-[#b7f34a]"><Box size={14} /> Visualização 3D interna</button></div>}
 
     {!hasSource && <section className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center md:pt-24">
       <div className="mx-auto mb-5 flex w-fit items-center gap-2 rounded-full border border-[#3d513e] bg-[#162219] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-[#b7f34a]"><Sparkles size={12} /> Raster para CAD editável</div>
@@ -1194,7 +1226,6 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
         <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
         {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => setShow3dOptions(false)} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button>{canOpenStandalone3d ? <a href={`/projetos/${encodeURIComponent(projectId || "")}/3d`} target="_blank" rel="noopener noreferrer" onClick={() => console.info("[vetorcad][3D] opening persisted project", { projectId, persistenceStatus, projectVersion, savedProjectVersion, pathCount: finalDoc?.paths.length || 0, entityCount: finalDoc?.entities?.length || 0, architectureCount: finalDoc?.architectureEntities?.length || 0, topologyCount: finalDoc?.topology?.length || 0, coordinateSystemId: finalDoc?.coordinateSystem?.id || null })} className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</a> : <button type="button" onClick={() => setMessage(standalone3dBlockedMessage)} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button>}</div>}</div>}
-        {show3d && <div className="mt-5"><SvgTo3DCadViewer document={finalDoc} svg={svg} fileName={fileName} unit={unit} /></div>}
       </aside>
     </section>}
     <footer className="border-t border-[#26312c] bg-[#080c0b]/90 px-5 py-6 text-center">
