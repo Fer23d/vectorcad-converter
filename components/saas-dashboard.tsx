@@ -56,6 +56,31 @@ const emptyProjectData: CadProjectData = {
   editorMode: "cad2d",
 };
 
+function viewerDocumentSummary(data: CadProjectData | null | undefined) {
+  const document = data?.document;
+  return {
+    documentFound: Boolean(document),
+    documentVersion: data?.schemaVersion || null,
+    documentRevision: data?.documentRevision ?? 0,
+    pathsCount: document?.paths?.length || 0,
+    entitiesCount: document?.entities?.length || 0,
+    architectureCount: document?.architectureEntities?.length || 0,
+    topologyCount: document?.topology?.length || 0,
+    coordinateSystemId: document?.coordinateSystem?.id || null,
+  };
+}
+
+function sameViewerDocumentSummary(left: ReturnType<typeof viewerDocumentSummary>, right: ReturnType<typeof viewerDocumentSummary>) {
+  return left.documentFound === right.documentFound
+    && left.documentVersion === right.documentVersion
+    && left.documentRevision === right.documentRevision
+    && left.pathsCount === right.pathsCount
+    && left.entitiesCount === right.entitiesCount
+    && left.architectureCount === right.architectureCount
+    && left.topologyCount === right.topologyCount
+    && left.coordinateSystemId === right.coordinateSystemId;
+}
+
 function metadataName(user: User | null) {
   return {
     firstName: String(user?.user_metadata?.first_name || ""),
@@ -103,10 +128,12 @@ export function SaasDashboard() {
   const [toastMessage, setToastMessage] = useState("");
   const [projectSaveState, setProjectSaveState] = useState<"saved" | "dirty" | "saving" | "error">("saved");
   const [projectChangeVersion, setProjectChangeVersion] = useState(0);
+  const [currentDocumentRevision, setCurrentDocumentRevision] = useState(0);
   const [savedProjectVersion, setSavedProjectVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [draftClearSignal, setDraftClearSignal] = useState("");
-  const latestProjectData = useRef<CadProjectData | null>(null);
+  const currentProjectDataRef = useRef<CadProjectData | null>(null);
+  const currentDocumentRevisionRef = useRef(0);
   const editorProjectId = useRef<string | null>(null);
   const editorCallbackSeen = useRef<string | null>(null);
   const ignoreNextEditorSnapshot = useRef(false);
@@ -291,11 +318,13 @@ export function SaasDashboard() {
     editorProjectId.current = project.id;
     editorCallbackSeen.current = null;
     ignoreNextEditorSnapshot.current = false;
-    latestProjectData.current = project.data;
+    currentProjectDataRef.current = project.data;
+    currentDocumentRevisionRef.current = project.data?.documentRevision || 0;
+    setCurrentDocumentRevision(project.data?.documentRevision || 0);
     setProjectSaveState("saved");
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
-    setSavedProjectVersion(0);
+    setSavedProjectVersion(project.data?.documentRevision || 0);
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
   }, [user]);
@@ -327,13 +356,15 @@ export function SaasDashboard() {
     editorProjectId.current = (data as CadProject).id;
     editorCallbackSeen.current = null;
     ignoreNextEditorSnapshot.current = false;
-    latestProjectData.current = (data as CadProject).data;
+    currentProjectDataRef.current = (data as CadProject).data;
+    currentDocumentRevisionRef.current = (data as CadProject).data?.documentRevision || 0;
+    setCurrentDocumentRevision((data as CadProject).data?.documentRevision || 0);
     setActiveTab("editor");
     setStatus(`Projeto criado: ${(data as CadProject).name}`);
     setProjectSaveState("saved");
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
-    setSavedProjectVersion(0);
+    setSavedProjectVersion((data as CadProject).data?.documentRevision || 0);
   }, [projects.length, user]);
 
   const startFirstProject = useCallback(async () => {
@@ -360,7 +391,11 @@ export function SaasDashboard() {
   const handleProjectChange = useCallback((data: CadProjectData) => {
     const projectId = editorProjectId.current;
     if (!projectId) return;
-    latestProjectData.current = data;
+    currentProjectDataRef.current = data;
+    if (typeof data.documentRevision === "number") {
+      currentDocumentRevisionRef.current = data.documentRevision;
+      setCurrentDocumentRevision(data.documentRevision);
+    }
 
     // Hydration after a successful save re-emits the persisted snapshot. It is
     // not a user edit and must not invalidate the saved document version.
@@ -375,12 +410,15 @@ export function SaasDashboard() {
       return;
     }
     projectChangeVersionRef.current += 1;
+    const nextDocumentRevision = typeof data.documentRevision === "number" ? data.documentRevision : projectChangeVersionRef.current;
+    currentDocumentRevisionRef.current = nextDocumentRevision;
+    setCurrentDocumentRevision(nextDocumentRevision);
     setProjectChangeVersion(projectChangeVersionRef.current);
     setProjectSaveState("dirty");
   }, []);
 
   const saveProject = useCallback(async (): Promise<boolean> => {
-    if (!supabase || !user || !activeProject || !latestProjectData.current || savingProject.current) return false;
+    if (!supabase || !user || !activeProject || !currentProjectDataRef.current || savingProject.current) return false;
 
     // Manual save takes precedence over the one-minute browser draft timer.
     cancelLocalProjectDraftTimer(user.id);
@@ -389,19 +427,80 @@ export function SaasDashboard() {
     setIsUploading(true);
     const updatedAt = new Date().toISOString();
     const saveVersion = projectChangeVersionRef.current;
+    const saveDocumentRevision = currentDocumentRevisionRef.current;
     console.info("[vetorcad][SAVE] started", { projectId: activeProject.id, timestamp: updatedAt });
+    const currentData = currentProjectDataRef.current;
+    const currentDataSummary = viewerDocumentSummary(currentData);
+    console.info("[CURRENT DATA BEFORE SAVE]", {
+      projectId: activeProject.id,
+      ...currentDataSummary,
+    });
+    console.info("[vetorcad][3D DIAGNOSTIC] EDITOR DOCUMENT", {
+      projectId: activeProject.id,
+      version: saveVersion,
+      ...viewerDocumentSummary(currentData),
+    });
+    console.info("[DOCUMENT BEFORE SAVE]", {
+      projectId: activeProject.id,
+      ...viewerDocumentSummary(currentData),
+      coordinateSystemPresent: Boolean(currentData.document?.coordinateSystem),
+    });
     let data: CadProjectData;
     let error: { message: string } | null = null;
     try {
-      data = await persistProjectImagesToStorage(activeProject.id, latestProjectData.current);
+      data = await persistProjectImagesToStorage(activeProject.id, currentData);
+      const payloadSummary = viewerDocumentSummary(data);
+      console.info("[SUPABASE SAVE DEBUG]", {
+        projectId: activeProject.id,
+        ...payloadSummary,
+      });
+      console.info("[PAYLOAD TO SUPABASE]", {
+        projectId: activeProject.id,
+        ...payloadSummary,
+        documentRevision: data.documentRevision ?? saveDocumentRevision,
+        editorEqualsPayload: sameViewerDocumentSummary(currentDataSummary, payloadSummary),
+      });
+      console.info("[SAVE FINAL DOCUMENT]", {
+        projectId: activeProject.id,
+        pathsCount: data.document?.paths?.length || 0,
+        entitiesCount: data.document?.entities?.length || 0,
+        architectureCount: data.document?.architectureEntities?.length || 0,
+        topologyCount: data.document?.topology?.length || 0,
+      });
       const result = await supabase
         .from("projects")
         .update({ data, updated_at: updatedAt })
         .eq("id", activeProject.id)
         .eq("user_id", user.id);
       error = result.error;
+      if (!error) {
+        const { data: persisted, error: readError } = await supabase
+          .from("projects")
+          .select("data")
+          .eq("id", activeProject.id)
+          .eq("user_id", user.id)
+          .single();
+        console.info("[vetorcad][3D DIAGNOSTIC] SUPABASE DOCUMENT", {
+          projectId: activeProject.id,
+          version: saveVersion,
+          readSucceeded: Boolean(persisted) && !readError,
+          ...viewerDocumentSummary((persisted?.data || null) as CadProjectData | null),
+        });
+        console.info("[DOCUMENT AFTER FETCH]", {
+          projectId: activeProject.id,
+          ...viewerDocumentSummary((persisted?.data || null) as CadProjectData | null),
+          coordinateSystemPresent: Boolean((persisted?.data as CadProjectData | null)?.document?.coordinateSystem),
+        });
+        const fetchedSummary = viewerDocumentSummary((persisted?.data || null) as CadProjectData | null);
+        console.info("[SYNC COMPARISON]", {
+          projectId: activeProject.id,
+          editorEqualsSavePayload: sameViewerDocumentSummary(currentDataSummary, payloadSummary),
+          savePayloadEqualsSupabaseFetch: sameViewerDocumentSummary(payloadSummary, fetchedSummary),
+          editorEqualsSupabaseFetch: sameViewerDocumentSummary(currentDataSummary, fetchedSummary),
+        });
+      }
     } catch (saveError) {
-      data = latestProjectData.current;
+      data = currentProjectDataRef.current;
       error = { message: saveError instanceof Error ? saveError.message : "Não foi possível salvar as imagens." };
     }
 
@@ -424,13 +523,16 @@ export function SaasDashboard() {
     }
 
     const savedProject = { ...activeProject, data, updated_at: updatedAt };
+    currentProjectDataRef.current = data;
+    currentDocumentRevisionRef.current = data.documentRevision ?? saveDocumentRevision;
+    setCurrentDocumentRevision(currentDocumentRevisionRef.current);
     setActiveProject(savedProject);
     setProjects((current) => current.map((project) => project.id === savedProject.id ? savedProject : project));
     ignoreNextEditorSnapshot.current = true;
     clearLocalProjectDraft(user.id);
     setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
-    setSavedProjectVersion(saveVersion);
+    setSavedProjectVersion(currentDocumentRevisionRef.current);
     console.info("[vetorcad][SAVE] success", { projectId: savedProject.id, timestamp: updatedAt });
     setStatus("Projeto salvo");
     setToastMessage("Projeto salvo com sucesso");
@@ -470,7 +572,9 @@ export function SaasDashboard() {
       setProjectChangeVersion(0);
       editorProjectId.current = null;
       editorCallbackSeen.current = null;
-      latestProjectData.current = null;
+      currentProjectDataRef.current = null;
+      currentDocumentRevisionRef.current = 0;
+      setCurrentDocumentRevision(0);
     }
     setDeleteTarget(null);
 
@@ -528,7 +632,9 @@ export function SaasDashboard() {
       setActiveProject(null);
       editorProjectId.current = null;
       editorCallbackSeen.current = null;
-      latestProjectData.current = null;
+      currentProjectDataRef.current = null;
+      currentDocumentRevisionRef.current = 0;
+      setCurrentDocumentRevision(0);
       setProjects([]);
       if (session?.user) {
         if (!session.user.email_confirmed_at) {
@@ -862,7 +968,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={projectChangeVersion} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={currentDocumentRevision} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">

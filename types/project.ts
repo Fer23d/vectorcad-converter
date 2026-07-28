@@ -5,6 +5,7 @@ export type CadProjectData = {
   editorMode: "cad2d" | "cad3d";
   lastOpenedAt?: string;
   schemaVersion?: 1;
+  documentRevision?: number;
   sourceImageDataUrl?: string;
   sourceOriginalDataUrl?: string;
   processedImageDataUrl?: string;

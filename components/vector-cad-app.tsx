@@ -207,6 +207,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [upgradeModal, setUpgradeModal] = useState("");
   const hydrating = useRef(true);
   const skipLocalSave = useRef(true);
+  const documentRevisionRef = useRef(initialData?.documentRevision || 0);
+  const documentSnapshotRef = useRef<{
+    paths: VectorDocument["paths"] | undefined;
+    entities: VectorDocument["entities"] | undefined;
+    architectureEntities: VectorDocument["architectureEntities"] | undefined;
+    topology: VectorDocument["topology"] | undefined;
+  } | null>(null);
   const originalCanvas = useRef<HTMLCanvasElement>(null), processedCanvas = useRef<HTMLCanvasElement>(null);
   const eraserDrawing = useRef(false);
   const eraserLastPoint = useRef<{ x: number; y: number } | null>(null);
@@ -240,6 +247,8 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     hydrating.current = true;
     skipLocalSave.current = true;
     const restore = () => {
+    documentRevisionRef.current = saved?.documentRevision || 0;
+    documentSnapshotRef.current = null;
 
     if (!saved?.sourceImageDataUrl) {
       setSource(null);
@@ -354,10 +363,27 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
 
   useEffect(() => {
     if (hydrating.current) return;
+    const documentSnapshot = {
+      paths: doc?.paths,
+      entities: doc?.entities,
+      architectureEntities: doc?.architectureEntities,
+      topology: doc?.topology,
+    };
+    const previousDocumentSnapshot = documentSnapshotRef.current;
+    if (previousDocumentSnapshot && (
+      previousDocumentSnapshot.paths !== documentSnapshot.paths
+      || previousDocumentSnapshot.entities !== documentSnapshot.entities
+      || previousDocumentSnapshot.architectureEntities !== documentSnapshot.architectureEntities
+      || previousDocumentSnapshot.topology !== documentSnapshot.topology
+    )) {
+      documentRevisionRef.current += 1;
+    }
+    documentSnapshotRef.current = documentSnapshot;
     const data: CadProjectData = {
       notes: "",
       editorMode: show3d ? "cad3d" : "cad2d",
       schemaVersion: 1,
+      documentRevision: documentRevisionRef.current,
       sourceImageDataUrl,
       sourceOriginalDataUrl: sourceFormat === "tiff" ? sourceOriginalDataUrl : undefined,
       processedImageDataUrl: processedImage || undefined,
@@ -381,6 +407,14 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       locked,
       activeView,
     };
+    console.info("[EDITOR DOC CREATED]", {
+      projectId: projectId || null,
+      documentRevision: data.documentRevision || 0,
+      pathsCount: data.document?.paths?.length || 0,
+      entitiesCount: data.document?.entities?.length || 0,
+      architectureCount: data.document?.architectureEntities?.length || 0,
+      topologyCount: data.document?.topology?.length || 0,
+    });
     if (skipLocalSave.current) {
       skipLocalSave.current = false;
       onProjectChange?.(data);
@@ -388,7 +422,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     }
     saveDraft(data);
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, projectId, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector]);
 
   useEffect(() => {
     if (!localDraftDirty) return;
