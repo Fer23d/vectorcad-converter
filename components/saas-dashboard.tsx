@@ -11,7 +11,6 @@ import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
-import { cancelLocalProjectDraftTimer, clearLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import { persistProjectImagesToStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
@@ -131,7 +130,6 @@ export function SaasDashboard() {
   const [currentDocumentRevision, setCurrentDocumentRevision] = useState(0);
   const [savedProjectVersion, setSavedProjectVersion] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
-  const [draftClearSignal, setDraftClearSignal] = useState("");
   const currentProjectDataRef = useRef<CadProjectData | null>(null);
   const currentDocumentRevisionRef = useRef(0);
   const editorProjectId = useRef<string | null>(null);
@@ -314,7 +312,6 @@ export function SaasDashboard() {
 
     const project = data as CadProject;
     setActiveProject(project);
-    setDraftClearSignal("");
     editorProjectId.current = project.id;
     editorCallbackSeen.current = null;
     ignoreNextEditorSnapshot.current = false;
@@ -352,7 +349,6 @@ export function SaasDashboard() {
 
     setProjects((current) => [data as CadProject, ...current]);
     setActiveProject(data as CadProject);
-    setDraftClearSignal("");
     editorProjectId.current = (data as CadProject).id;
     editorCallbackSeen.current = null;
     ignoreNextEditorSnapshot.current = false;
@@ -420,8 +416,6 @@ export function SaasDashboard() {
   const saveProject = useCallback(async (): Promise<boolean> => {
     if (!supabase || !user || !activeProject || !currentProjectDataRef.current || savingProject.current) return false;
 
-    // Manual save takes precedence over the one-minute browser draft timer.
-    cancelLocalProjectDraftTimer(user.id);
     savingProject.current = true;
     setProjectSaveState("saving");
     setIsUploading(true);
@@ -529,8 +523,6 @@ export function SaasDashboard() {
     setActiveProject(savedProject);
     setProjects((current) => current.map((project) => project.id === savedProject.id ? savedProject : project));
     ignoreNextEditorSnapshot.current = true;
-    clearLocalProjectDraft(user.id);
-    setDraftClearSignal(updatedAt);
     setProjectSaveState("saved");
     setSavedProjectVersion(currentDocumentRevisionRef.current);
     console.info("[vetorcad][SAVE] success", { projectId: savedProject.id, timestamp: updatedAt });
@@ -542,8 +534,7 @@ export function SaasDashboard() {
 
   useEffect(() => {
     if (projectSaveState !== "dirty" || !activeProject) return;
-    // The browser draft remains a short-term recovery mechanism; this is the
-    // single official Supabase autosave timer.
+    // This is the single official Supabase autosave timer.
     const timer = window.setTimeout(() => { void saveProject(); }, BACKEND_AUTO_SAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [activeProject, projectChangeVersion, projectSaveState, saveProject]);
@@ -968,7 +959,7 @@ export function SaasDashboard() {
 
     {activeTab === "editor" && <section className={`editor-tab ${headerCollapsed ? "min-h-[calc(100vh-49px)]" : "min-h-[calc(100vh-121px)]"}`}>
       {!activeProject && <div className="border-b border-[#26312c] bg-[#101613] px-4 py-3 text-xs text-[#9caaa3]">Crie ou abra um projeto para que suas alterações sejam salvas no Supabase.</div>}
-      <VectorCadApp key={activeProject?.id || "empty-editor"} userId={user.id} projectId={activeProject?.id} draftClearSignal={draftClearSignal} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={currentDocumentRevision} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
+      <VectorCadApp key={activeProject?.id || "empty-editor"} projectId={activeProject?.id} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={currentDocumentRevision} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
     </section>}
 
     {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
-import { useLocalProjectDraft } from "@/components/hooks/use-local-project-draft";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad } from "@/lib/image-processing/process";
@@ -174,7 +173,7 @@ function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { 
   </svg>;
 }
 
-export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, userId, draftClearSignal, persistenceStatus = "saved", projectVersion = 0, savedProjectVersion = 0 }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; userId?: string | null; draftClearSignal?: string; persistenceStatus?: "saved" | "saving" | "dirty" | "error"; projectVersion?: number; savedProjectVersion?: number }) {
+export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, persistenceStatus = "saved", projectVersion = 0, savedProjectVersion = 0 }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; persistenceStatus?: "saved" | "saving" | "dirty" | "error"; projectVersion?: number; savedProjectVersion?: number }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
@@ -259,7 +258,6 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
   const viewer = useZoomPan("vectorcad-preview-zoom");
-  const { restoredDraft, localDraftDirty, restoreStatus, saveDraft, clearDraft } = useLocalProjectDraft({ userId, projectId, hasInitialData: Boolean(initialData), clearSignal: draftClearSignal });
 
   const cancelCadProcessing = useCallback(() => {
     const worker = processingWorker.current;
@@ -273,7 +271,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   }, []);
 
   useEffect(() => {
-    const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
+    const saved = initialData;
     hydrating.current = true;
     skipLocalSave.current = true;
     const restore = () => {
@@ -356,7 +354,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     };
     const restoreTimer = window.setTimeout(restore, 0);
     return () => window.clearTimeout(restoreTimer);
-  }, [draftClearSignal, initialData, restoredDraft]);
+  }, [initialData]);
 
   useEffect(() => {
     if (!processedImage) return;
@@ -374,7 +372,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   }, [processedImage]);
 
   useEffect(() => {
-    const saved = (!draftClearSignal && restoredDraft?.data) || initialData;
+    const saved = initialData;
     if (!saved?.sourceImageDataUrl || saved.sourceFormat !== "tiff" || saved.sourceOriginalDataUrl) return;
     let cancelled = false;
     void decodeTiffDataUrl(saved.sourceImageDataUrl).then((raster) => {
@@ -391,7 +389,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       }
     });
     return () => { cancelled = true; };
-  }, [draftClearSignal, initialData, restoredDraft]);
+  }, [initialData]);
 
   useEffect(() => {
     if (hydrating.current) return;
@@ -448,24 +446,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       architectureCount: data.document?.architectureEntities?.length || 0,
       topologyCount: data.document?.topology?.length || 0,
     });
-    if (skipLocalSave.current) {
-      skipLocalSave.current = false;
-      onProjectChange?.(data);
-      return;
-    }
-    saveDraft(data);
+    if (skipLocalSave.current) skipLocalSave.current = false;
     if (onProjectChange) onProjectChange(data);
-  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, projectId, realHeight, realWidth, saveDraft, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector, viewMode]);
+  }, [activeView, aiAnalysis, aiFeedback, detectedTexts, doc, exportSmartTexts, fileName, imageAnalysis, imageQuality, lineProcessingMode, locked, onProjectChange, processedImage, processing, projectId, realHeight, realWidth, show3d, sourceFormat, sourceImageDataUrl, sourceOriginalDataUrl, textDetectionEnabled, tiffOptimizationEnabled, unit, vector, viewMode]);
 
   useEffect(() => {
-    if (!localDraftDirty) return;
+    if (persistenceStatus !== "dirty") return;
     const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "Você tem alterações não salvas.";
     };
     window.addEventListener("beforeunload", warnBeforeLeaving);
     return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
-  }, [localDraftDirty]);
+  }, [persistenceStatus]);
 
   const consumeUsage = useCallback(async (action: "vectorize" | "export_svg" | "export_png" | "export3d" | "export_dxf") => {
     if (!isSupabaseConfigured || !supabase) return true;
@@ -972,18 +965,11 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     setAiFeedback(current => [...current.filter(item => item.elementKey !== feedback.elementKey), feedback]);
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
-  const draftRecoveryBanner = restoreStatus === "restoring"
-    ? <div className="border-b border-[#34413b] bg-[#111b15] px-4 py-2 text-xs text-[#dce8e1]" role="status" aria-live="polite">Recuperando projeto...</div>
-    : restoredDraft
-      ? <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#506b49] bg-[#17251a] px-4 py-2 text-xs text-[#dce8e1]" role="status" aria-live="polite"><span className="text-[#b7f34a]">Rascunho restaurado</span><button type="button" onClick={() => { clearDraft(); setMessage("Recuperação descartada. O projeto atual foi mantido."); }} className="rounded border border-[#6b815f] px-2 py-1 text-[10px] font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Descartar recuperação</button></div>
-      : null;
-
   if (viewMode === "fullscreen-3d") {
     return <Internal3DOnlyView document={finalDoc} svg={svg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
   }
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
-    {draftRecoveryBanner}
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
       <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
