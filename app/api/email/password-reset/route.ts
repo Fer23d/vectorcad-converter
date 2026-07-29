@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sendPasswordResetEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
+import { consumeRateLimit, requestAddress } from "@/lib/security/rate-limit";
 
 const PASSWORD_RESET_REDIRECT_TO = "https://vetorcad.com.br/reset-password";
 
@@ -66,6 +67,10 @@ export async function POST(request: Request) {
   if (!email || !email.includes("@")) {
     return NextResponse.json({ error: "Informe um email valido." }, { status: 400 });
   }
+
+  const emailLimit = await consumeRateLimit(`password-reset:email:${email}`, 3, 60 * 60 * 1000);
+  const ipLimit = await consumeRateLimit(`password-reset:ip:${requestAddress(request)}`, 10, 60 * 60 * 1000);
+  if (!emailLimit.allowed || !ipLimit.allowed) return NextResponse.json({ error: "Muitas solicitações. Aguarde antes de tentar novamente." }, { status: 429 });
 
   const redirectTo = PASSWORD_RESET_REDIRECT_TO;
   const adminClient = createSupabaseAdminClient();

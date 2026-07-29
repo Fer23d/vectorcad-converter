@@ -3,6 +3,7 @@ import type { CadPoint } from "@/types/cad-geometry";
 import type { VectorDocument } from "@/types/vector";
 
 const n = (value: number) => Number(value.toFixed(3));
+const xml = (value: string) => value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function pathData(points: CadPoint[], closed: boolean, curved?: boolean) {
   if (!points.length) return "";
@@ -36,7 +37,7 @@ function layerId(layer: string, index: number) {
 
 function renderGeometry(item: RoutedExportGeometry, index: number) {
   if (item.kind === "path") {
-    return `  <path id="${layerId(item.path.layer, index)}" data-layer="${item.path.layer}" d="${pathData(item.path.points, item.path.closed, item.path.curved)}" />`;
+    return `  <path id="${xml(layerId(item.path.layer, index))}" data-layer="${xml(item.path.layer)}" d="${pathData(item.path.points, item.path.closed, item.path.curved)}" />`;
   }
 
   const { entity } = item;
@@ -44,24 +45,24 @@ function renderGeometry(item: RoutedExportGeometry, index: number) {
   switch (entity.type) {
     case "LINE": {
       const { start, end } = entity.coordinates;
-      return `  <line id="${id}" data-layer="${entity.layer}" x1="${n(start.x)}" y1="${n(start.y)}" x2="${n(end.x)}" y2="${n(end.y)}" />`;
+      return `  <line id="${xml(id)}" data-layer="${xml(entity.layer)}" x1="${n(start.x)}" y1="${n(start.y)}" x2="${n(end.x)}" y2="${n(end.y)}" />`;
     }
     case "CIRCLE": {
       const { center, radius } = entity.coordinates;
-      return `  <circle id="${id}" data-layer="${entity.layer}" cx="${n(center.x)}" cy="${n(center.y)}" r="${n(radius)}" />`;
+      return `  <circle id="${xml(id)}" data-layer="${xml(entity.layer)}" cx="${n(center.x)}" cy="${n(center.y)}" r="${n(radius)}" />`;
     }
     case "ELLIPSE": {
       const { center, majorRadius, minorRadius, rotation } = entity.coordinates;
-      return `  <ellipse id="${id}" data-layer="${entity.layer}" cx="${n(center.x)}" cy="${n(center.y)}" rx="${n(majorRadius)}" ry="${n(minorRadius)}" transform="rotate(${n(rotation * 180 / Math.PI)} ${n(center.x)} ${n(center.y)})" />`;
+      return `  <ellipse id="${xml(id)}" data-layer="${xml(entity.layer)}" cx="${n(center.x)}" cy="${n(center.y)}" rx="${n(majorRadius)}" ry="${n(minorRadius)}" transform="rotate(${n(rotation * 180 / Math.PI)} ${n(center.x)} ${n(center.y)})" />`;
     }
     case "ARC":
-      return `  <path id="${id}" data-layer="${entity.layer}" d="${arcPath(entity.coordinates.center, entity.coordinates.radius, entity.coordinates.startAngle, entity.coordinates.endAngle)}" />`;
+      return `  <path id="${xml(id)}" data-layer="${xml(entity.layer)}" d="${arcPath(entity.coordinates.center, entity.coordinates.radius, entity.coordinates.startAngle, entity.coordinates.endAngle)}" />`;
     case "SPLINE":
-      return `  <path id="${id}" data-layer="${entity.layer}" d="${pathData(entity.coordinates.fitPoints, Boolean(entity.coordinates.closed), true)}" />`;
+      return `  <path id="${xml(id)}" data-layer="${xml(entity.layer)}" d="${pathData(entity.coordinates.fitPoints, Boolean(entity.coordinates.closed), true)}" />`;
     case "LWPOLYLINE":
-      return `  <path id="${id}" data-layer="${entity.layer}" d="${pathData(entity.coordinates.points, entity.coordinates.closed, entity.metadata.curved === true)}" />`;
+      return `  <path id="${xml(id)}" data-layer="${xml(entity.layer)}" d="${pathData(entity.coordinates.points, entity.coordinates.closed, entity.metadata.curved === true)}" />`;
     case "POLYGON":
-      return `  <path id="${id}" data-layer="${entity.layer}" d="${pathData(entity.coordinates.points, true)}" />`;
+      return `  <path id="${xml(id)}" data-layer="${xml(entity.layer)}" d="${pathData(entity.coordinates.points, true)}" />`;
   }
 }
 

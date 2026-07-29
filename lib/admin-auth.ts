@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { ADMIN_EMAIL, ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole } from "@/lib/admin";
+import { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole } from "@/lib/admin";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
-export { ADMIN_EMAIL, ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole };
+export { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole };
 
 function bearerToken(request: Request) {
   const header = request.headers.get("authorization") || "";
@@ -32,17 +32,27 @@ export async function requireAdmin(request: Request) {
     return { response: NextResponse.json({ error: "Confirme seu e-mail antes de acessar a área administrativa." }, { status: 403 }) };
   }
 
-  const role = getUserRole(user);
-  if (!isAdminRole(role)) {
-    return { response: NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 }) };
-  }
-
   if (!isSupabaseAdminConfigured) {
     return { response: NextResponse.json({ error: "Configure SUPABASE_SERVICE_ROLE_KEY para ativar o painel admin." }, { status: 500 }) };
   }
 
+  const adminClient = createSupabaseAdminClient();
+  const { data: roleRow, error: roleError } = await adminClient
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (roleError) {
+    return { response: NextResponse.json({ error: "Não foi possível validar a permissão administrativa." }, { status: 500 }) };
+  }
+
+  const role = getUserRole(roleRow?.role);
+  if (!isAdminRole(role)) {
+    return { response: NextResponse.json({ error: "Acesso não autorizado." }, { status: 403 }) };
+  }
+
   return {
-    adminClient: createSupabaseAdminClient(),
+    adminClient,
     role,
     token,
     user,

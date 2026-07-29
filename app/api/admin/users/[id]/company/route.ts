@@ -3,6 +3,7 @@ import { normalizeCompany, planHasPremiumAccess } from "@/lib/access-control";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getUserEffectivePlan } from "@/lib/effective-plan";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { secureLogger } from "@/lib/security/logger";
 
 async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdminClient>, adminId: string, action: string, targetType: string, targetId: string, metadata: Record<string, unknown> = {}) {
   const { error } = await adminClient.from("admin_logs").insert([{ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata }]);
@@ -143,13 +144,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const effectivePlan = await getUserEffectivePlan(adminClient, id, { user: userData.user });
-  console.log("[admin/users/company] company assignment", {
-    email: userData.user.email,
-    company,
-    company_id: companyId,
-    applied_plan: effectivePlan.plan,
-    source: effectivePlan.source,
-  });
+  secureLogger.info("[admin/users/company] company assignment", { companyAssigned: Boolean(company), hasCompanyId: Boolean(companyId), appliedPlan: effectivePlan.plan, source: effectivePlan.source });
 
   await logAdminAction(
     adminClient,

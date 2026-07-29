@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isTemporaryEmail, normalizeEmail, temporaryEmailMessage } from "@/lib/auth/email-domain";
 import { getAppUrl } from "@/lib/resend";
 import { createSupabaseAuthServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { consumeRateLimit, requestAddress } from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
@@ -17,6 +18,10 @@ export async function POST(request: Request) {
   if (isTemporaryEmail(email)) {
     return NextResponse.json({ error: temporaryEmailMessage() }, { status: 400 });
   }
+
+  const emailLimit = await consumeRateLimit(`resend:email:${email}`, 3, 60 * 60 * 1000);
+  const ipLimit = await consumeRateLimit(`resend:ip:${requestAddress(request)}`, 10, 60 * 60 * 1000);
+  if (!emailLimit.allowed || !ipLimit.allowed) return NextResponse.json({ error: "Muitas solicitações. Aguarde antes de tentar novamente." }, { status: 429 });
 
   const authClient = createSupabaseAuthServerClient();
   const { error } = await authClient.auth.resend({

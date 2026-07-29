@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 import { getMercadoPagoPlan, mercadoPagoRequest } from "@/lib/mercadopago";
 import { isBillablePlan } from "@/lib/billing";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 type PreapprovalResponse = {
   id: string;
@@ -46,7 +47,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
     }
 
-    const origin = request.headers.get("origin") || process.env.NEXT_PUBLIC_SITE_URL || "https://vetorcad.com.br";
+    if (!userData.user.email_confirmed_at) return NextResponse.json({ error: "Confirme seu e-mail antes de iniciar o pagamento." }, { status: 403 });
+    const limit = await consumeRateLimit(`payment-create:${userData.user.id}`, 5, 60 * 60 * 1000);
+    if (!limit.allowed) return NextResponse.json({ error: "Muitas tentativas de pagamento. Aguarde e tente novamente." }, { status: 429 });
+    const configuredOrigin = (process.env.NEXT_PUBLIC_SITE_URL || "https://vetorcad.com.br").replace(/\/$/, "");
+    const allowedOrigins = new Set(["https://vetorcad.com.br", "https://www.vetorcad.com.br", configuredOrigin]);
+    const requestOrigin = (request.headers.get("origin") || "").replace(/\/$/, "");
+    const origin = allowedOrigins.has(requestOrigin) ? requestOrigin : configuredOrigin;
     const user = userData.user;
     const preapproval = await mercadoPagoRequest<PreapprovalResponse>("/preapproval", {
       method: "POST",

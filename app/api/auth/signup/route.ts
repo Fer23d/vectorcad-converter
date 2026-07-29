@@ -3,30 +3,7 @@ import { normalizeCompany } from "@/lib/access-control";
 import { isTemporaryEmail, normalizeEmail, temporaryEmailMessage } from "@/lib/auth/email-domain";
 import { getAppUrl, sendEmailConfirmationEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
-
-const WINDOW_MS = 60 * 60 * 1000;
-const MAX_ATTEMPTS_PER_EMAIL = 3;
-const MAX_ATTEMPTS_PER_IP = 12;
-const attemptsByEmail = new Map<string, { count: number; resetAt: number }>();
-const attemptsByIp = new Map<string, { count: number; resetAt: number }>();
-
-function clientIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for") || "";
-  return forwarded.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
-}
-
-function bumpLimit(store: Map<string, { count: number; resetAt: number }>, key: string, limit: number) {
-  const now = Date.now();
-  const current = store.get(key);
-  if (!current || current.resetAt < now) {
-    store.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-
-  current.count += 1;
-  store.set(key, current);
-  return current.count > limit;
-}
+import { consumeRateLimit, requestAddress } from "@/lib/security/rate-limit";
 
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured || !isSupabaseAdminConfigured) {
@@ -54,7 +31,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: temporaryEmailMessage() }, { status: 400 });
   }
 
-  if (bumpLimit(attemptsByEmail, email, MAX_ATTEMPTS_PER_EMAIL) || bumpLimit(attemptsByIp, clientIp(request), MAX_ATTEMPTS_PER_IP)) {
+  const emailLimit = await consumeRateLimit(`signup:email:${email}`, 3, 60 * 60 * 1000);
+  const ipLimit = await consumeRateLimit(`signup:ip:${requestAddress(request)}`, 12, 60 * 60 * 1000);
+  if (!emailLimit.allowed || !ipLimit.allowed) {
     return NextResponse.json({ error: "Muitas tentativas de cadastro. Aguarde alguns minutos antes de tentar novamente." }, { status: 429 });
   }
 

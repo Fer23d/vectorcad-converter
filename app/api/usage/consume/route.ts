@@ -130,7 +130,7 @@ function usagePayload(context: UsageContext, usage: number, export3d: number) {
   };
 }
 
-async function persistUsage(context: UsageContext, usage: number, export3d: number) {
+async function persistUsage(context: UsageContext, usage: number, export3d: number, profileAlreadyPersisted = false) {
   const updates = {
     user_id: context.user.id,
     plan: context.basePlan,
@@ -141,9 +141,11 @@ async function persistUsage(context: UsageContext, usage: number, export3d: numb
     updated_at: context.now,
   };
 
-  const { error: updateError } = await context.adminClient.from("profiles").upsert(updates, { onConflict: "user_id" });
-  if (updateError && !isMissingTableOrColumn(updateError)) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  if (!profileAlreadyPersisted) {
+    const { error: updateError } = await context.adminClient.from("profiles").upsert(updates, { onConflict: "user_id" });
+    if (updateError && !isMissingTableOrColumn(updateError)) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
   }
 
   const publicUserPayload = {
@@ -213,9 +215,20 @@ export async function POST(request: Request) {
     }
   }
 
-  const nextUsage = DAILY_USAGE_ACTIONS.includes(action) ? context.currentUsage + 1 : context.currentUsage;
-  const next3d = action === "export3d" ? context.current3d + 1 : context.current3d;
-  const errorResponse = await persistUsage(context, nextUsage, next3d);
+  const { data: claimRows, error: claimError } = await context.adminClient.rpc("consume_usage", {
+    p_user_id: context.user.id,
+    p_action: action,
+    p_usage_limit: context.usageLimit,
+    p_export3d_limit: context.export3dLimit,
+  });
+  if (claimError || !Array.isArray(claimRows) || !claimRows[0]) {
+    return NextResponse.json({ error: "Controle de uso indisponível. Tente novamente mais tarde." }, { status: 503 });
+  }
+  const claim = claimRows[0] as { allowed?: boolean; usage_count?: number; export3d_count?: number };
+  if (!claim.allowed) return NextResponse.json({ error: limitMessage(context.usageLimit || context.export3dLimit || 0), plan: context.plan, usage: context.currentUsage, usageLimit: context.usageLimit }, { status: 402 });
+  const nextUsage = Number(claim.usage_count || 0);
+  const next3d = Number(claim.export3d_count || 0);
+  const errorResponse = await persistUsage(context, nextUsage, next3d, true);
   if (errorResponse) return errorResponse;
 
   if (context.plan === "free" && context.usageLimit !== null && nextUsage === context.usageLimit && context.user.email) {

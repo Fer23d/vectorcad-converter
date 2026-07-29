@@ -25,11 +25,19 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 
 async function syncPublicRole(userId, email) {
   const now = new Date().toISOString();
+  const { error: roleError } = await supabase.from("user_roles").upsert({
+    user_id: userId,
+    role: "ADMIN",
+  }, { onConflict: "user_id" });
+  if (roleError && roleError.code !== "42P01" && roleError.code !== "PGRST205") {
+    console.error(`Falha ao sincronizar user_roles: ${roleError.message}`);
+    process.exit(1);
+  }
+
   await supabase.from("profiles").upsert({
     user_id: userId,
     name: "Admin",
     surname: "vetorcad",
-    admin_role: "SUPER_ADMIN",
     updated_at: now,
   }, { onConflict: "user_id" }).then(({ error }) => {
     if (error && error.code !== "42P01" && error.code !== "42703" && error.code !== "PGRST205") {
@@ -40,7 +48,6 @@ async function syncPublicRole(userId, email) {
   await supabase.from("users").upsert({
     id: userId,
     email,
-    admin_role: "SUPER_ADMIN",
     updated_at: now,
   }, { onConflict: "id" }).then(({ error }) => {
     if (error && error.code !== "42P01" && error.code !== "42703" && error.code !== "PGRST205") {
@@ -61,8 +68,8 @@ if (existing) {
   const { error } = await supabase.auth.admin.updateUserById(existing.id, {
     password: adminPassword,
     email_confirm: true,
-    app_metadata: { ...(existing.app_metadata || {}), role: "SUPER_ADMIN" },
-    user_metadata: { ...(existing.user_metadata || {}), role: "SUPER_ADMIN" },
+    app_metadata: { ...(existing.app_metadata || {}) },
+    user_metadata: { ...(existing.user_metadata || {}) },
   });
 
   if (error) {
@@ -79,8 +86,8 @@ const { data, error } = await supabase.auth.admin.createUser({
   email: adminEmail,
   password: adminPassword,
   email_confirm: true,
-  app_metadata: { role: "SUPER_ADMIN" },
-  user_metadata: { role: "SUPER_ADMIN", first_name: "Admin", last_name: "vetorcad" },
+  app_metadata: {},
+  user_metadata: { first_name: "Admin", last_name: "vetorcad" },
 });
 
 if (error) {

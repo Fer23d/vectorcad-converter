@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
-import { mercadoPagoRequest, paymentStatusToPlan } from "@/lib/mercadopago";
+import { mercadoPagoRequest, paymentStatusToPlan, verifyMercadoPagoWebhookSignature } from "@/lib/mercadopago";
 import { getBillingPlan } from "@/lib/billing";
 import { sendPaymentApprovedEmail } from "@/lib/resend";
 
@@ -139,6 +139,9 @@ async function upsertProAccess(input: {
 }
 
 export async function POST(request: Request) {
+  if (Number(request.headers.get("content-length") || 0) > 1024 * 1024) {
+    return NextResponse.json({ error: "Payload de webhook excede o limite seguro." }, { status: 413 });
+  }
   const url = new URL(request.url);
   const body = await request.json().catch(() => ({}));
   const topic = url.searchParams.get("topic") || url.searchParams.get("type") || body.type || body.topic;
@@ -147,6 +150,17 @@ export async function POST(request: Request) {
   if (!id) {
     return NextResponse.json({ ok: true, ignored: "missing_id" });
   }
+
+  if (!verifyMercadoPagoWebhookSignature(request, String(id))) {
+    return NextResponse.json({ error: "Assinatura de webhook inválida." }, { status: 401 });
+  }
+
+  if (!isSupabaseAdminConfigured) return NextResponse.json({ error: "Supabase admin não configurado." }, { status: 500 });
+  const adminClient = createSupabaseAdminClient();
+  const eventId = `${String(topic || "unknown")}::${String(id)}`;
+  const { error: eventInsertError } = await adminClient.from("payment_webhook_events").insert({ event_id: eventId });
+  if (eventInsertError?.code === "23505") return NextResponse.json({ ok: true, ignored: "replay" });
+  if (eventInsertError) return NextResponse.json({ error: "Não foi possível registrar o webhook." }, { status: 500 });
 
   try {
     if (topic === "subscription_preapproval" || topic === "preapproval") {
@@ -171,6 +185,7 @@ export async function POST(request: Request) {
       });
     }
 
+    await adminClient.from("payment_webhook_events").update({ processed_at: new Date().toISOString() }).eq("event_id", eventId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Erro no webhook." }, { status: 500 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
@@ -20,6 +20,7 @@ import { scaleDocument } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { routeDocumentGeometry } from "@/lib/exporters/export-entity-router";
+import { sanitizeSvg } from "@/lib/security/safe-svg";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData, EditorViewMode } from "@/types/project";
 
@@ -586,7 +587,9 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
         form.append("image", sourceBlob, fileName || "vectorcad-image");
         form.append("mode", imageQuality === "ai-enhance-4k" ? "4x" : imageQuality === "ai-enhance-2x" ? "2x" : "3x");
         setMessage("Melhorando resolução no servidor...");
-        const response = await fetch("/api/image/enhance", { method: "POST", body: form });
+        const { data: sessionData } = await supabase?.auth.getSession() || { data: { session: null } };
+        if (!sessionData.session) throw new Error("AUTH_REQUIRED");
+        const response = await fetch("/api/image/enhance", { method: "POST", headers: { Authorization: `Bearer ${sessionData.session.access_token}` }, body: form });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.imageDataUrl) throw new Error(result.error || "AI_ENHANCE_SERVER_FAILED");
         const enhancedImage = new Image();
@@ -790,6 +793,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
 
   const finalDoc = doc ? scaleDocument(doc, realWidth, realHeight, unit) : null;
   const svg = finalDoc ? generateSvg(finalDoc) : "";
+  const safeSvg = useMemo(() => (svg ? sanitizeSvg(svg).svg : ""), [svg]);
   const isPersistedVersion = Boolean(projectId) && persistenceStatus === "saved" && projectVersion === savedProjectVersion;
   const canOpenStandalone3d = Boolean(finalDoc) && isPersistedVersion;
   const standalone3dBlockedMessage = persistenceStatus === "saving"
@@ -966,7 +970,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   };
   const pathCount = doc?.paths.length || 0, pointCount = doc?.paths.reduce((n, p) => n + p.points.length, 0) || 0;
   if (viewMode === "fullscreen-3d") {
-    return <Internal3DOnlyView document={finalDoc} svg={svg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
+    return <Internal3DOnlyView document={finalDoc} svg={safeSvg} fileName={fileName} unit={unit} onBack={() => setViewMode("editor")} />;
   }
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
@@ -1201,7 +1205,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
           <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} onPointerDown={isEraserMode ? handleEraserPointerDown : undefined} onPointerMove={isEraserMode ? handleEraserPointerMove : undefined} onPointerUp={isEraserMode ? handleEraserPointerUp : undefined} onPointerCancel={isEraserMode ? handleEraserPointerUp : undefined} onPointerLeave={isEraserMode ? handleEraserPointerLeave : undefined} style={{ touchAction: isEraserMode ? "none" : undefined }} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full ${isEraserMode ? "cursor-crosshair" : ""}`} />
-            {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: svg }} />}
+            {activeView === "vector" && <div className="h-full w-full bg-white" dangerouslySetInnerHTML={{ __html: safeSvg }} />}
             {!isEraserMode && activeView === "vector" && <VectorInspectionOverlay doc={doc} showContours={showPreviewContours} showLayers={showPreviewLayers} onSelect={(path, index) => setSelectedPreviewPath({ path, index })} />}
             {!isEraserMode && activeView === "vector" && showPreviewTexts && <div className="pointer-events-none absolute inset-0">{detectedTexts.map((text, index) => <button key={`${text.text}-${index}`} type="button" className="pointer-events-auto absolute border border-[#ff8a3d] bg-[#ff8a3d]/10 text-[8px] text-[#c95d27]" style={{ left: text.x, top: text.y, width: Math.max(8, text.width), height: Math.max(8, text.height) }} title={`${text.text} · confiança ${Math.round(text.confidence * 100)}%`}><span className="absolute left-0 top-full whitespace-nowrap bg-white px-1">{text.text}</span></button>)}</div>}
             {!isEraserMode && showAiOverlay && aiAnalysis && <><AiAnalysisOverlay elements={aiAnalysis.elements || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiElement} onSelect={index => { setSelectedAiElement(index); const selected = aiAnalysis.elements?.[index]; const textIndex = selected ? aiAnalysis.texts.findIndex(text => text.value === selected.name && text.position.x === selected.position.x && text.position.y === selected.position.y) : -1; setSelectedAiText(textIndex >= 0 ? textIndex : null); }} /><DimensionOverlay dimensions={aiAnalysis.detectedDimensions || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiDimension} onSelect={setSelectedAiDimension} /></>}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
+import { normalizeAdminRole } from "@/lib/admin";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getUserEffectivePlan } from "@/lib/effective-plan";
 
@@ -23,12 +24,14 @@ export async function GET(request: Request) {
     { data: appUsersData, error: appUsersError },
     { data: companiesData, error: companiesError },
     { data: logsData, error: logsError },
+    { data: rolesData, error: rolesError },
   ] = await Promise.all([
     adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
     adminClient.from("users").select("id,email,company,company_id,plan,is_premium"),
     adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("name", { ascending: true }),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
+    adminClient.from("user_roles").select("user_id,role"),
   ]);
 
   if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 });
@@ -38,6 +41,8 @@ export async function GET(request: Request) {
   }
 
   const appUsersById = new Map((appUsersError ? [] : appUsersData || []).map((appUser) => [appUser.id, appUser]));
+  if (rolesError) return NextResponse.json({ error: rolesError.message }, { status: 500 });
+  const rolesByUserId = new Map((rolesData || []).map((row) => [row.user_id, normalizeAdminRole(row.role)]));
   const companyRecords = companiesError ? [] : companiesData || [];
   const companyById = new Map(companyRecords.map((company) => [company.id, company]));
   const companyByName = new Map(companyRecords.map((company) => [company.name, company]));
@@ -67,7 +72,7 @@ export async function GET(request: Request) {
       userPlan: effective.individualPlan,
       plan: effective.plan,
       planSource: effective.source,
-      role: String(user.app_metadata?.role || user.user_metadata?.role || "USER"),
+      role: rolesByUserId.get(user.id) || "USER",
       is_premium: premium,
       premium,
       created_at: user.created_at,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeCompany, normalizeCompanyPlan } from "@/lib/access-control";
 import { requireAdmin } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { secureLogger } from "@/lib/security/logger";
 
 async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdminClient>, adminId: string, action: string, targetType: string, targetId: string, metadata: Record<string, unknown> = {}) {
   const { error } = await adminClient.from("admin_logs").insert([{ admin_id: adminId, action, target_type: targetType, target_id: targetId, metadata }]);
@@ -19,7 +20,6 @@ export async function POST(request: Request) {
     if ("response" in adminAuth) return adminAuth.response;
 
     const body = await request.json().catch(() => ({}));
-    console.log("[admin/companies] request body", body);
 
     const name = normalizeCompany(typeof body.name === "string" ? body.name : null);
     const plan = normalizeCompanyPlan(typeof body.plan === "string" ? body.plan : "free");
@@ -35,8 +35,6 @@ export async function POST(request: Request) {
       .select("id,name,plan,created_at,updated_at")
       .single();
 
-    console.log("[admin/companies] supabase insert", { data, error });
-
     if (error) {
       if (isMissingCompaniesTable(error)) {
         return NextResponse.json({
@@ -51,7 +49,7 @@ export async function POST(request: Request) {
     try {
       await logAdminAction(adminClient, user.id, "company.create", "company", data.id, { name, plan });
     } catch (logError) {
-      console.error("[admin/companies] failed to write admin log", logError);
+      secureLogger.error("[admin/companies] failed to write admin log", { code: logError instanceof Error ? logError.message : "UNKNOWN_ERROR" });
     }
 
     return NextResponse.json({
@@ -64,7 +62,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[admin/companies] unexpected error", error);
+    secureLogger.error("[admin/companies] unexpected error", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : "Erro inesperado ao criar empresa.",

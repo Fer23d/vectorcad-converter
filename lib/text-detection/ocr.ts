@@ -418,7 +418,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
       const syntheticText = syntheticResult.data.text?.trim() || syntheticWords.map((word) => word.text).join(" ").trim();
       const syntheticConfidence = syntheticWords.length ? syntheticWords.reduce((total, word) => total + word.confidence / 100, 0) / syntheticWords.length : 0;
       syntheticOcr.push({ language, rawText: syntheticText, confidence: syntheticConfidence });
-      console.info("[vetorcad][OCR][synthetic] resultado bruto", { language, rawText: syntheticText, confidence: Number(syntheticConfidence.toFixed(3)), width: syntheticImage.width, height: syntheticImage.height, version: syntheticResult.data.version || "indisponível" });
+      console.info("[vetorcad][OCR][synthetic] resultado bruto", { language, rawTextLength: syntheticText.length, confidence: Number(syntheticConfidence.toFixed(3)), width: syntheticImage.width, height: syntheticImage.height, version: syntheticResult.data.version || "indisponível" });
     }
     await worker.reinitialize("por+eng", 1);
     console.info("[vetorcad][OCR][worker] modelos carregados", { languages: workerLanguages, version: "será reportada pelo resultado OCR", syntheticResults: syntheticOcr.length });
@@ -431,7 +431,7 @@ export async function detectText(image: ImageData, originalImage: ImageData = im
     const directConfidence = directWords.length ? directWords.reduce((total, word) => total + word.confidence / 100, 0) / directWords.length : 0;
     const directOcr = { rawText: directResult.data.text?.trim() || directWords.map((word) => word.text).join(" ").trim(), confidence: directConfidence, psm: directPsm };
     const workerVersion = directResult.data.version || "indisponível";
-    console.info("[vetorcad][OCR] OCR direto bruto", { rawText: directOcr.rawText, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
+    console.info("[vetorcad][OCR] OCR direto bruto", { rawTextLength: directOcr.rawText.length, confidence: Number(directConfidence.toFixed(3)), version: workerVersion });
     const wordCandidates: DetectedText[] = directWords.flatMap((word) => {
       const text = normalizeCandidateText(word.text);
       if (!hasMinimumTextContent(text)) return [];

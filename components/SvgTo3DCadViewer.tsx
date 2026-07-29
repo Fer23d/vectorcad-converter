@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Camera, Download, Grid3X3, Maximize2, RotateCcw, Sparkles } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -22,6 +22,7 @@ import type { CadEntity, CadPoint } from "@/types/cad-geometry";
 import type { ArchitectureCandidate } from "@/types/architectural-geometry";
 import type { WallGraph } from "@/types/architecture-topology";
 import type { VectorDocument } from "@/types/vector";
+import { sanitizeSvg } from "@/lib/security/safe-svg";
 
 const styles = ["industrial", "cad_clean", "wood", "neon", "plastic"] as const;
 type ModelStyle = (typeof styles)[number];
@@ -859,7 +860,8 @@ function modelGeometryStats(model: THREE.Group) {
   return { vertexCount, renderableCount };
 }
 
-export function SvgTo3DCadViewer({ svg, document, fileName, unit }: SvgTo3DCadViewerProps) {
+export function SvgTo3DCadViewer({ svg: rawSvg, document, fileName, unit }: SvgTo3DCadViewerProps) {
+  const svg = useMemo(() => (rawSvg ? sanitizeSvg(rawSvg).svg : ""), [rawSvg]);
   const mount = useRef<HTMLDivElement>(null);
   const state = useRef<ThreeState | null>(null);
   const frame = useRef<number | null>(null);

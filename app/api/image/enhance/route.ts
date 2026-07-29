@@ -1,5 +1,7 @@
 import sharp from "sharp";
 import { NextResponse } from "next/server";
+import { requireAuthenticatedUser } from "@/lib/security/request";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,6 +24,11 @@ function modeScale(mode: EnhanceMode) {
 export async function POST(request: Request) {
   const started = Date.now();
   try {
+    const auth = await requireAuthenticatedUser(request);
+    if ("response" in auth) return auth.response;
+    const limit = await consumeRateLimit(`enhance:${auth.user.id}`, 30, 60 * 60 * 1000);
+    if (!limit.allowed) return jsonError("Muitas operações de melhoria de imagem. Aguarde e tente novamente.", 429);
+    if (Number(request.headers.get("content-length") || 0) > MAX_FILE_BYTES + 2 * 1024 * 1024) return jsonError("Payload excede o limite seguro.", 413);
     const form = await request.formData();
     const file = form.get("image");
     const requestedMode = String(form.get("mode") || "3x");
@@ -47,7 +54,7 @@ export async function POST(request: Request) {
     const output = await sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" })
       .rotate()
       .resize({ width: outputWidth, height: outputHeight, fit: "inside", withoutEnlargement: false, kernel: "lanczos3" })
-      .sharpen(mode === "4x" ? 1.2 : mode === "3x" ? 1 : 0.8, 1, 2)
+      .sharpen({ sigma: mode === "4x" ? 1.2 : mode === "3x" ? 1 : 0.8, m1: 1, m2: 2 })
       .png({ compressionLevel: 9, adaptiveFiltering: true })
       .toBuffer();
 

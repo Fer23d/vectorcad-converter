@@ -3,6 +3,7 @@ import { logAiAnalysisDiagnostics, mergeAiAnalyses, MockProvider, offsetAiAnalys
 import { VisionObjectDetector } from "@/lib/ai/vision-object-detector";
 import { createSupabaseAuthServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
 import type { DetectedText, VectorDocument } from "@/types/vector";
+import { consumeRateLimit } from "@/lib/security/rate-limit";
 
 const MAX_IMAGE_DATA_URL_LENGTH = 16 * 1024 * 1024;
 const MAX_VISION_REGIONS = 6;
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
   const authClient = createSupabaseAuthServerClient(token);
   const { data, error } = await authClient.auth.getUser(token);
   if (error || !data.user) return NextResponse.json({ error: "Sessão inválida." }, { status: 401 });
+  const limit = await consumeRateLimit(`vision:${data.user.id}`, 20, 60 * 60 * 1000);
+  if (!limit.allowed) return NextResponse.json({ error: "Muitas análises Vision AI. Aguarde e tente novamente." }, { status: 429 });
 
   const body = await request.json().catch(() => null) as {
     imageDataUrl?: unknown;

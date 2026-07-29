@@ -1,5 +1,6 @@
 import { normalizeCompanyPlan } from "@/lib/access-control";
 import { getBillingPlan, type BillablePlan } from "@/lib/billing";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 const MERCADOPAGO_API_BASE = "https://api.mercadopago.com";
 
@@ -52,4 +53,25 @@ export function paymentStatusToPlan(status?: string | null, requestedPlan?: stri
 
 export function getMercadoPagoPlan(plan: BillablePlan) {
   return getBillingPlan(plan);
+}
+
+export function verifyMercadoPagoWebhookSignature(request: Request, dataId: string) {
+  const secret = cleanEnv(process.env.MERCADOPAGO_WEBHOOK_SECRET);
+  const signature = request.headers.get("x-signature") || "";
+  const requestId = request.headers.get("x-request-id") || "";
+  if (!secret || !signature || !requestId || !dataId) return false;
+
+  const parts = Object.fromEntries(signature.split(",").map((part) => {
+    const [key, ...value] = part.trim().split("=");
+    return [key, value.join("=")];
+  }));
+  const timestamp = Number(parts.ts);
+  const receivedHash = parts.v1 || "";
+  if (!Number.isFinite(timestamp) || !receivedHash || Math.abs(Date.now() - timestamp * 1000) > 5 * 60 * 1000) return false;
+
+  const manifest = `id:${dataId};request-id:${requestId};ts:${parts.ts};`;
+  const expectedHash = createHmac("sha256", secret).update(manifest).digest("hex");
+  const received = Buffer.from(receivedHash, "hex");
+  const expected = Buffer.from(expectedHash, "hex");
+  return received.length === expected.length && timingSafeEqual(received, expected);
 }

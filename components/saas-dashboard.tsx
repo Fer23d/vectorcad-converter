@@ -11,7 +11,7 @@ import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
-import { persistProjectImagesToStorage } from "@/lib/supabase/storage";
+import { persistProjectImagesToStorage, refreshProjectImagesFromStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
@@ -204,7 +204,15 @@ export function SaasDashboard() {
       return;
     }
 
-    setProjects((data || []) as CadProject[]);
+    const refreshedProjects = await Promise.all((data || []).map(async (project) => {
+      const typedProject = project as CadProject;
+      try {
+        return { ...typedProject, data: await refreshProjectImagesFromStorage(typedProject.data) };
+      } catch {
+        return typedProject;
+      }
+    }));
+    setProjects(refreshedProjects);
     setStatus(data?.length ? "Projetos carregados. Editor pronto para uso." : "Editor pronto. Crie um projeto para salvar seu workspace.");
   }, []);
 
@@ -311,17 +319,24 @@ export function SaasDashboard() {
     }
 
     const project = data as CadProject;
-    setActiveProject(project);
-    editorProjectId.current = project.id;
+    let projectData = project.data;
+    try {
+      projectData = await refreshProjectImagesFromStorage(project.data);
+    } catch {
+      // Keep the project usable if an optional legacy image cannot be refreshed.
+    }
+    const hydratedProject = { ...project, data: projectData };
+    setActiveProject(hydratedProject);
+    editorProjectId.current = hydratedProject.id;
     editorCallbackSeen.current = null;
     ignoreNextEditorSnapshot.current = false;
-    currentProjectDataRef.current = project.data;
-    currentDocumentRevisionRef.current = project.data?.documentRevision || 0;
-    setCurrentDocumentRevision(project.data?.documentRevision || 0);
+    currentProjectDataRef.current = hydratedProject.data;
+    currentDocumentRevisionRef.current = hydratedProject.data?.documentRevision || 0;
+    setCurrentDocumentRevision(hydratedProject.data?.documentRevision || 0);
     setProjectSaveState("saved");
     projectChangeVersionRef.current = 0;
     setProjectChangeVersion(0);
-    setSavedProjectVersion(project.data?.documentRevision || 0);
+    setSavedProjectVersion(hydratedProject.data?.documentRevision || 0);
     setActiveTab("editor");
     setStatus(`Projeto aberto: ${project.name}`);
   }, [user]);

@@ -1,6 +1,4 @@
-import { IMAGE_COORDINATE_SYSTEM, coordinateUnitFromDocumentUnit, transformEntity, transformPoint } from "@/lib/geometry/coordinate-transform";
 import type { CadEntity, CadPoint } from "@/types/cad-geometry";
-import type { CoordinateSystem } from "@/types/coordinate-system";
 import type { VectorDocument, VectorPath } from "@/types/vector";
 
 export type RoutedExportGeometry =
@@ -24,38 +22,20 @@ function sourcePathId(entity: CadEntity) {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function legacyTargetSystem(document: VectorDocument): CoordinateSystem {
-  return {
-    id: `export-${document.unit}-${document.width}x${document.height}`,
-    origin: { x: 0, y: 0 },
-    scale: {
-      x: document.width / Math.max(document.sourceWidth, Number.EPSILON),
-      y: document.height / Math.max(document.sourceHeight, Number.EPSILON),
-    },
-    rotation: 0,
-    unit: coordinateUnitFromDocumentUnit(document.unit),
-    precision: 6,
-    createdFrom: "manual",
-  };
-}
-
 /**
- * Documents upgraded by the canonical coordinate-system phase already contain
- * geometry in their target coordinate space. Legacy documents are transformed
- * only at export time, preserving their stored representation.
+ * Geometry in legacy VectorDocuments is already stored in document space.
+ * Keep it unchanged at export time; applying width/sourceWidth again would
+ * distort extents and break existing projects. Explicit coordinate systems
+ * are likewise assumed to have already been applied by the document pipeline.
  */
 export function normalizeCadEntityForExport(entity: CadEntity, document: VectorDocument): CadEntity {
-  if (document.coordinateSystem) return entity;
-  return transformEntity(entity, legacyTargetSystem(document), { from: IMAGE_COORDINATE_SYSTEM });
+  void document;
+  return entity;
 }
 
 export function normalizePathForExport(path: VectorPath, document: VectorDocument): VectorPath {
-  if (document.coordinateSystem) return path;
-  const target = legacyTargetSystem(document);
-  return {
-    ...path,
-    points: path.points.map(point => transformPoint(point, target, { from: IMAGE_COORDINATE_SYSTEM })),
-  };
+  void document;
+  return path;
 }
 
 /** Returns true only when an entity has sufficient data for a native export. */
