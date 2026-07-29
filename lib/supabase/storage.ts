@@ -19,9 +19,26 @@ function extensionForMime(mime: string) {
 }
 
 async function dataUrlToBlob(dataUrl: string) {
-  const response = await fetch(dataUrl);
-  if (!response.ok) throw new Error("PROJECT_IMAGE_DATA_UNAVAILABLE");
-  return response.blob();
+  const separator = dataUrl.indexOf(",");
+  const header = separator >= 0 ? dataUrl.slice(0, separator) : "";
+  const payload = separator >= 0 ? dataUrl.slice(separator + 1) : "";
+  if (!/^data:[^;,]+(?:;[^;,]+)*;base64$/i.test(header) || !payload) {
+    throw new Error("PROJECT_IMAGE_DATA_UNAVAILABLE");
+  }
+
+  const mime = header.slice(5).split(";")[0] || "application/octet-stream";
+  let binary: string;
+  try {
+    binary = atob(payload.replace(/\s/g, ""));
+  } catch {
+    throw new Error("PROJECT_IMAGE_DATA_UNAVAILABLE");
+  }
+
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mime });
 }
 
 export async function uploadProjectImageToStorage(projectId: string, dataUrl: string, type: ProjectImageType) {
