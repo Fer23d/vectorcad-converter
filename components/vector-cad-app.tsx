@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, ExternalLink, FileImage, Layers3, Maximize2, MousePointer2, RotateCcw, ScanLine, Settings2, Sparkles, Upload, WandSparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
+import { useResizableVerticalPanel } from "@/components/hooks/use-resizable-vertical-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
@@ -30,6 +31,8 @@ const CONTROLS_MIN_WIDTH = 260;
 const CAD_MIN_WIDTH = 260;
 const PREVIEW_MIN_WIDTH = 300;
 const RESIZER_TOTAL_WIDTH = 16;
+const PREVIEW_DEFAULT_HEIGHT = 560;
+const PREVIEW_MIN_HEIGHT = 260;
 const defaultProcessing: ProcessingSettings = { brightness: 0, contrast: 125, threshold: 160, adaptiveThreshold: false, blurRadius: 1, morphologyRadius: 1, openingRadius: 0, minComponentArea: 8, invert: false, removeNoise: true, smooth: true, edgeDetect: false };
 const defaultVector: VectorSettings = { mode: "logo", outputMode: "smooth", simplification: 1.8, minArea: 12, smoothIterations: 1, closePaths: true, joinDistance: 2, recognitionProfile: "default" };
 const presets: Record<string, { processing: Partial<ProcessingSettings>; vector: Partial<VectorSettings> }> = {
@@ -256,8 +259,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const updateCadSize = useCallback((size: number) => { cadSize.current = size; }, []);
   const maxControlsWidth = useCallback(() => Math.max(CONTROLS_MIN_WIDTH, window.innerWidth - PREVIEW_MIN_WIDTH - cadSize.current - RESIZER_TOTAL_WIDTH), []);
   const maxCadWidth = useCallback(() => Math.max(CAD_MIN_WIDTH, window.innerWidth - PREVIEW_MIN_WIDTH - controlsSize.current - RESIZER_TOTAL_WIDTH), []);
+  const maxPreviewHeight = useCallback(() => Math.max(PREVIEW_MIN_HEIGHT, window.innerHeight - 64 - 230), []);
   const panel = useResizablePanel({ initialSize: 280, minSize: CONTROLS_MIN_WIDTH, maxSize: maxControlsWidth, storageKey: "vectorcad-controls-width", edge: "left", onSizeChange: updateControlsSize });
   const cadPanel = useResizablePanel({ initialSize: 270, minSize: CAD_MIN_WIDTH, maxSize: maxCadWidth, storageKey: "vectorcad-cad-width", edge: "right", onSizeChange: updateCadSize });
+  const verticalPanel = useResizableVerticalPanel({ initialSize: PREVIEW_DEFAULT_HEIGHT, minSize: PREVIEW_MIN_HEIGHT, maxSize: maxPreviewHeight, storageKey: "vectorcad-preview-height" });
   const viewer = useZoomPan("vectorcad-preview-zoom");
 
   const cancelCadProcessing = useCallback(() => {
@@ -1196,12 +1201,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       <button type="button" aria-label="Redimensionar painel de controles" title="Arraste para redimensionar" onPointerDown={panel.startResize} className={`panel-resizer ${panel.resizing ? "is-resizing" : ""}`}><span /></button>
 
       <div className="preview-panel flex min-w-0 flex-col overflow-hidden">
+        <div className="editor-preview-stage flex min-h-0 flex-col" style={{ height: `${verticalPanel.size}px` }}>
         <div className="border-b border-[#26312c] bg-[#0d1210] px-4 py-3">
           <div className="flex gap-1 rounded-lg bg-[#151c19] p-1">{(["original", "processed", "vector"] as const).map(v => <button key={v} onClick={() => setActiveView(v)} className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase ${activeView === v ? "bg-[#334039] text-white" : "text-[#7f8e86]"}`}>{v === "original" ? "Original" : v === "processed" ? "Processada" : "Vetor"}</button>)}</div>
           <div className="flex flex-wrap items-center gap-2"><button title="Diminuir zoom" onClick={viewer.zoomOut} className="rounded border border-[#34413b] p-1.5"><ZoomOut size={14} /></button><span className="w-11 text-center text-[10px]">{Math.round(viewer.zoom * 100)}%</span><button title="Aumentar zoom" onClick={viewer.zoomIn} className="rounded border border-[#34413b] p-1.5"><ZoomIn size={14} /></button><button title="Ajustar à tela" onClick={() => viewer.fit(previewViewport.current, doc?.sourceWidth || 0, doc?.sourceHeight || 0)} className="flex items-center gap-1 rounded border border-[#34413b] px-2 py-1.5 text-[9px]"><Maximize2 size={13} /> Ajustar</button><button title="Zoom 100%" onClick={viewer.reset} className="rounded border border-[#34413b] px-2 py-1.5 text-[9px]">100%</button><button type="button" title="Borracha" onClick={() => { setIsEraserMode(value => !value); if (!isEraserMode) setActiveView("processed"); }} className={`flex items-center gap-1 rounded border px-2 py-1.5 text-[9px] font-bold ${isEraserMode ? "border-[#b7f34a] bg-[#b7f34a] text-[#0a120c]" : "border-[#34413b] text-[#aab8b0]"}`}><Eraser size={13} /> Borracha</button>{isEraserMode && <label className="flex items-center gap-1 text-[9px] text-[#aab8b0]" title="Tamanho da borracha"><input type="range" min="1" max="100" value={eraserSize} onChange={event => setEraserSize(Number(event.target.value))} className="w-20 accent-[#b7f34a]" />{eraserSize}px</label>}</div>
         </div>
           {activeView === "vector" && <div className="mt-3 flex flex-wrap items-center gap-2 text-[9px]"><button type="button" onClick={() => setShowPreviewContours(value => !value)} className={`rounded border px-2 py-1 ${showPreviewContours ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Contours</button><button type="button" onClick={() => setShowPreviewLayers(value => !value)} className={`rounded border px-2 py-1 ${showPreviewLayers ? "border-[#54a9ff] text-[#54a9ff]" : "border-[#34413b] text-[#7f8e86]"}`}>Layers</button><span className="rounded border border-[#34413b] px-2 py-1 text-[#aab8b0]">Scale: {unit}</span><button type="button" onClick={() => setShowAiOverlay(value => !value)} className={`rounded border px-2 py-1 ${showAiOverlay ? "border-[#b7f34a] text-[#b7f34a]" : "border-[#34413b] text-[#7f8e86]"}`}>Overlay inteligente</button><button type="button" onClick={() => setShowPreviewTexts(value => !value)} className={`rounded border px-2 py-1 ${showPreviewTexts ? "border-[#ff8a3d] text-[#ff8a3d]" : "border-[#34413b] text-[#7f8e86]"}`}>Textos</button></div>}
-        <div ref={previewViewport} onPointerDown={isEraserMode ? undefined : viewer.onPointerDown} onPointerMove={isEraserMode ? undefined : viewer.onPointerMove} onPointerUp={isEraserMode ? undefined : viewer.onPointerUp} onPointerCancel={isEraserMode ? undefined : viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex min-h-0 items-center justify-center overflow-hidden p-6 ${isEraserMode ? "cursor-crosshair" : viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
+        <div ref={previewViewport} onPointerDown={isEraserMode ? undefined : viewer.onPointerDown} onPointerMove={isEraserMode ? undefined : viewer.onPointerMove} onPointerUp={isEraserMode ? undefined : viewer.onPointerUp} onPointerCancel={isEraserMode ? undefined : viewer.onPointerCancel} onWheel={viewer.onWheel} className={`checker preview-viewport relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-6 ${isEraserMode ? "cursor-crosshair" : viewer.zoom > 1 ? viewer.panning ? "cursor-grabbing" : "cursor-grab" : "cursor-default"}`}>
           <div style={{ transform: `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom})`, transformOrigin: "center", width: `${doc?.sourceWidth || 1}px`, height: `${doc?.sourceHeight || 1}px` }} className="preview-content relative shrink-0 overflow-hidden bg-white shadow-2xl">
             <canvas ref={originalCanvas} className={`${activeView === "original" ? "block" : "hidden"} h-full w-full`} />
             <canvas ref={processedCanvas} onPointerDown={isEraserMode ? handleEraserPointerDown : undefined} onPointerMove={isEraserMode ? handleEraserPointerMove : undefined} onPointerUp={isEraserMode ? handleEraserPointerUp : undefined} onPointerCancel={isEraserMode ? handleEraserPointerUp : undefined} onPointerLeave={isEraserMode ? handleEraserPointerLeave : undefined} style={{ touchAction: isEraserMode ? "none" : undefined }} className={`${activeView === "processed" ? "block" : "hidden"} h-full w-full ${isEraserMode ? "cursor-crosshair" : ""}`} />
@@ -1211,11 +1217,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
             {!isEraserMode && showAiOverlay && aiAnalysis && <><AiAnalysisOverlay elements={aiAnalysis.elements || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiElement} onSelect={index => { setSelectedAiElement(index); const selected = aiAnalysis.elements?.[index]; const textIndex = selected ? aiAnalysis.texts.findIndex(text => text.value === selected.name && text.position.x === selected.position.x && text.position.y === selected.position.y) : -1; setSelectedAiText(textIndex >= 0 ? textIndex : null); }} /><DimensionOverlay dimensions={aiAnalysis.detectedDimensions || []} threshold={aiConfidenceThreshold} selectedIndex={selectedAiDimension} onSelect={setSelectedAiDimension} /></>}
           </div>
         </div>
+        </div>
+        <button type="button" aria-label="Redimensionar altura do preview" title="Arraste para redimensionar. Duplo clique restaura a altura padrão." onPointerDown={verticalPanel.startResize} onDoubleClick={verticalPanel.reset} className={`editor-horizontal-resizer ${verticalPanel.resizing ? "is-resizing" : ""}`}><span /></button>
+        <div className="editor-technical-summary">
         <div className="flex items-center gap-3 border-t border-[#26312c] bg-[#101613] px-4 py-2 text-[10px] text-[#93a098]"><MousePointer2 size={12} /><span className="truncate">{message}</span><span className="ml-auto shrink-0 text-[#b7f34a]">{pathCount} caminhos · {pointCount} pontos</span></div>
         <div className="border-t border-[#26312c] bg-[#101613] px-4 py-3">
           <div className="grid grid-cols-2 gap-2 text-[10px] sm:grid-cols-4"><Stat label="Linhas" value={pathCount} /><Stat label="Objetos detectados" value={aiAnalysis?.elements?.length || 0} /><Stat label="Redução de ruído" value={`${cleanupStats.reductionPercent}%`} /><Stat label="Confiança média" value={aiAnalysis ? `${Math.round(aiAnalysis.confidence * 100)}%` : "Informação não disponível"} /></div>
           <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => exportFile("svg")} className="rounded-lg bg-white px-3 py-2 text-[10px] font-black text-[#111713]">Exportar SVG</button><button type="button" onClick={() => exportFile("dxf")} className="rounded-lg bg-[#b7f34a] px-3 py-2 text-[10px] font-black text-[#0a120c]">Exportar DXF</button><span className="self-center text-[9px] text-[#829087]">Hover para inspecionar · clique para selecionar</span></div>
           {selectedPreviewPath && <div className="mt-2 rounded-lg border border-[#3a5140] bg-[#18221b] p-2 text-[10px] leading-4 text-[#c4d0c9]"><b className="text-[#b7f34a]">Objeto selecionado</b><br />Tipo: {selectedPreviewPath.path.closed ? "Curva/contorno fechado" : "Linha/polilinha"}<br />Layer: {selectedPreviewPath.path.layer}<br />Pontos: {selectedPreviewPath.path.points.length}<br />Dimensão: Informação não disponível<button type="button" onClick={() => setSelectedPreviewPath(null)} className="ml-3 text-[#b7f34a]">Fechar</button></div>}
+        </div>
         </div>
       </div>
 
