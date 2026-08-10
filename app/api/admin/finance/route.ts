@@ -59,6 +59,7 @@ export async function GET(request: Request) {
   }
   const activeSubscriptions = [...latestSubscriptionByUser.values()].filter((subscription) => isActiveStatus(subscription.status));
   const cancelledSubscriptions = subscriptions.filter((subscription) => ["cancelled", "canceled"].includes(String(subscription.status || "").toLowerCase())).length;
+  const projectUserIds = new Set(projects.map((project) => project.user_id));
   const plans = new Map<CompanyPlan, PlanUsage>(planIds.map((plan) => [plan, { plan, users: 0, subscriptions: 0, revenue: 0, estimatedRevenue: 0, projects: 0, dailyUsage: 0, daily3d: 0 }]));
   for (const user of authUsers) {
     const subscription = latestSubscriptionByUser.get(user.id);
@@ -94,10 +95,20 @@ export async function GET(request: Request) {
     const month = growthByKey.get(monthKey(user.created_at));
     if (month) month.users += 1;
   }
+  const revenueSeries = growth.map((item) => ({ ...item, revenue: subscriptions.filter((subscription) => monthKey(subscription.created_at || "") === item.key).reduce((total, subscription) => total + Number(subscription.amount || 0), 0) }));
+  const recentUsers = [...authUsers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 8).map((user) => ({ id: user.id, email: user.email || "sem e-mail", created_at: user.created_at, last_sign_in_at: user.last_sign_in_at || null, plan: normalizeCompanyPlan(latestSubscriptionByUser.get(user.id)?.plan || usersById.get(user.id)?.plan || profilesById.get(user.id)?.plan || "free") }));
+  const currentMonth = revenueSeries[revenueSeries.length - 1]?.revenue || 0;
+  const previousMonth = revenueSeries[revenueSeries.length - 2]?.revenue || 0;
+  const newRevenueGrowth = previousMonth > 0 ? Math.round(((currentMonth - previousMonth) / previousMonth) * 100) : null;
   return NextResponse.json({
     metrics: { totalUsers: authUsers.length, activeSubscriptions: activeSubscriptions.length, mrr, estimatedRevenue, cancellations: cancelledSubscriptions, currency: "BRL" },
     plans: planIds.map((plan) => plans.get(plan)),
     growth,
-    availability: { subscriptions: !subscriptionsResult.error, usage: Boolean(users.length || profiles.length), projects: !projectsResult.error, paymentHistory: false },
+    revenueSeries,
+    recentUsers,
+    funnel: { registered: authUsers.length, active: authUsers.filter((user) => Boolean(user.last_sign_in_at)).length, createdProject: projectUserIds.size, usedAi: null, subscribed: activeSubscriptions.length },
+    newRevenueGrowth,
+    averageTicket: activeSubscriptions.length ? mrr / activeSubscriptions.length : 0,
+    availability: { subscriptions: !subscriptionsResult.error, usage: Boolean(users.length || profiles.length), projects: !projectsResult.error, paymentHistory: false, aiUsage: false, churn: false, planGrowth: false },
   });
 }
