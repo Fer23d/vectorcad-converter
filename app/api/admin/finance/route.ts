@@ -80,15 +80,22 @@ export async function GET(request: Request) {
     }
 
     const now = new Date();
-    const growth = Array.from({ length: 12 }, (_, index) => { const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (11 - index), 1)); const key = monthKey(date.toISOString()); return { key, label: monthLabel(key), users: 0 }; });
+    const growth = Array.from({ length: 12 }, (_, index) => { const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (11 - index), 1)); const key = monthKey(date.toISOString()); return { key, label: monthLabel(key), users: 0, projects: 0, subscriptions: 0 }; });
     const growthByKey = new Map(growth.map((item) => [item.key, item]));
     for (const user of authUsers) { const month = growthByKey.get(monthKey(user.created_at)); if (month) month.users += 1; }
+    for (const project of projects) { const month = growthByKey.get(monthKey(project.created_at || "")); if (month) month.projects += 1; }
+    for (const subscription of subscriptions) { const month = growthByKey.get(monthKey(subscription.created_at || "")); if (month) month.subscriptions += 1; }
     const revenueSeries = growth.map((item) => ({ ...item, revenue: subscriptions.filter((subscription) => monthKey(subscription.created_at || "") === item.key).reduce((total, subscription) => total + Number(subscription.amount || 0), 0) }));
     const currentMonth = revenueSeries[revenueSeries.length - 1]?.revenue || 0;
     const previousMonth = revenueSeries[revenueSeries.length - 2]?.revenue || 0;
     const newRevenueGrowth = previousMonth > 0 ? Math.round(((currentMonth - previousMonth) / previousMonth) * 100) : null;
     const projectUserIds = new Set(projects.map((project) => project.user_id));
     const recentUsers = [...authUsers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 8).map((user) => ({ id: user.id, email: user.email || "sem e-mail", created_at: user.created_at, last_sign_in_at: user.last_sign_in_at || null, plan: resolutions.get(user.id)?.plan || "free", planSource: resolutions.get(user.id)?.source || "DEFAULT" }));
+    const recentActivity = [
+      ...authUsers.map((user) => ({ id: `user-${user.id}`, kind: "USER_CREATED", label: "Novo usuário", detail: user.email || "Usuário sem e-mail", createdAt: user.created_at })),
+      ...subscriptions.map((subscription) => ({ id: `subscription-${subscription.user_id}-${subscription.created_at}`, kind: ["cancelled", "canceled"].includes(String(subscription.status || "").toLowerCase()) ? "SUBSCRIPTION_CANCELLED" : "SUBSCRIPTION_CREATED", label: ["cancelled", "canceled"].includes(String(subscription.status || "").toLowerCase()) ? "Assinatura cancelada" : "Assinatura criada", detail: normalizeCompanyPlan(subscription.plan), createdAt: subscription.updated_at || subscription.created_at || "" })),
+      ...projects.map((project) => ({ id: `project-${project.user_id}-${project.created_at}`, kind: "PROJECT_CREATED", label: "Projeto criado", detail: "Projeto CAD", createdAt: project.created_at || "" })),
+    ].filter((event) => Boolean(event.createdAt)).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, 12);
 
     return NextResponse.json({
       metrics: { totalUsers: authUsers.length, activeSubscriptions, mrr, estimatedRevenue, cancellations: [...latestSubscriptions.values()].filter((subscription) => ["cancelled", "canceled"].includes(String(subscription.status || "").toLowerCase())).length, currency: "BRL" },
@@ -96,6 +103,7 @@ export async function GET(request: Request) {
       growth,
       revenueSeries,
       recentUsers,
+      recentActivity,
       funnel: { registered: authUsers.length, active: authUsers.filter((user) => Boolean(user.last_sign_in_at)).length, createdProject: projectUserIds.size, usedAi: null, subscribed: activeSubscriptions },
       newRevenueGrowth,
       averageTicket: activeSubscriptions ? mrr / activeSubscriptions : 0,
