@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeCompany, normalizeCompanyPlan, planHasPremiumAccess } from "@/lib/access-control";
 import { normalizeAdminRole } from "@/lib/admin";
 import { requireAdmin } from "@/lib/admin-auth";
-import { getUserEffectivePlan } from "@/lib/effective-plan";
+import { buildAdminPlanIndex, listAllAuthUsers, type AdminBillingUserRow, type AdminCompanyRow, type AdminMembershipRow, type AdminProfileRow, type AdminSubscriptionRow } from "@/lib/admin-plan-resolution";
 
 function isMissingRelation(error: { code?: string; message?: string }) {
   const message = error.message?.toLowerCase() || "";
@@ -19,14 +19,12 @@ export async function GET(request: Request) {
   const adminLastName = String(adminUser.user_metadata?.last_name || "").trim();
   const adminName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Administrador vetorcad";
   const [
-    { data: usersData, error: usersError },
     { data: projectsData, error: projectsError },
     { data: appUsersData, error: appUsersError },
     { data: companiesData, error: companiesError },
     { data: logsData, error: logsError },
     { data: rolesData, error: rolesError },
   ] = await Promise.all([
-    adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
     adminClient.from("users").select("id,email,company,company_id,plan,is_premium"),
     adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("name", { ascending: true }),
@@ -34,30 +32,41 @@ export async function GET(request: Request) {
     adminClient.from("user_roles").select("user_id,role"),
   ]);
 
-  if (usersError) return NextResponse.json({ error: usersError.message }, { status: 500 });
   if (projectsError) return NextResponse.json({ error: projectsError.message }, { status: 500 });
+  if (appUsersError) return NextResponse.json({ error: appUsersError.message }, { status: 500 });
   if (companiesError && !isMissingRelation(companiesError)) {
     return NextResponse.json({ error: companiesError.message }, { status: 500 });
   }
 
-  const appUsersById = new Map((appUsersError ? [] : appUsersData || []).map((appUser) => [appUser.id, appUser]));
+  const [authUsers, { data: profilesData, error: profilesError }, { data: membershipsData, error: membershipsError }, { data: subscriptionsData, error: subscriptionsError }] = await Promise.all([
+    listAllAuthUsers(adminClient),
+    adminClient.from("profiles").select("user_id,plan,is_premium,company,company_id"),
+    adminClient.from("companies_users").select("user_id,company_id,company_name,plan_grant"),
+    adminClient.from("subscriptions").select("user_id,plan,status,amount,created_at,updated_at"),
+  ]);
+  if (profilesError) return NextResponse.json({ error: profilesError.message }, { status: 500 });
+  if (membershipsError) return NextResponse.json({ error: membershipsError.message }, { status: 500 });
+  if (subscriptionsError) return NextResponse.json({ error: subscriptionsError.message }, { status: 500 });
+
+  const appUsersById = new Map((appUsersData || []).map((appUser) => [appUser.id, appUser]));
   if (rolesError) return NextResponse.json({ error: rolesError.message }, { status: 500 });
   const rolesByUserId = new Map((rolesData || []).map((row) => [row.user_id, normalizeAdminRole(row.role)]));
   const companyRecords = companiesError ? [] : companiesData || [];
   const companyById = new Map(companyRecords.map((company) => [company.id, company]));
   const companyByName = new Map(companyRecords.map((company) => [company.name, company]));
 
-  const users = await Promise.all(usersData.users.map(async (user) => {
+  const { resolutions, integrity } = buildAdminPlanIndex({
+    authUsers,
+    profiles: (profilesData || []) as AdminProfileRow[],
+    billingUsers: (appUsersData || []) as AdminBillingUserRow[],
+    memberships: (membershipsData || []) as AdminMembershipRow[],
+    companies: companyRecords as AdminCompanyRow[],
+    subscriptions: (subscriptionsData || []) as AdminSubscriptionRow[],
+  });
+
+  const users = authUsers.map((user) => {
     const appUser = appUsersById.get(user.id);
-    const effective = await getUserEffectivePlan(adminClient, user.id, {
-      user,
-      profile: {
-        company: appUser?.company || String(user.user_metadata?.company || "") || null,
-        company_id: appUser?.company_id || String(user.user_metadata?.company_id || "") || null,
-        plan: appUser?.plan || String(user.user_metadata?.plan || "free"),
-        is_premium: Boolean(appUser?.is_premium || user.user_metadata?.is_premium),
-      },
-    });
+    const effective = resolutions.get(user.id)!;
 
     const companyRecord = effective.companyId ? companyById.get(effective.companyId) : effective.company ? companyByName.get(effective.company) : null;
     const companyPlan = normalizeCompanyPlan(companyRecord?.plan || effective.companyPlan || null);
@@ -66,7 +75,7 @@ export async function GET(request: Request) {
     return {
       id: user.id,
       email: user.email || appUser?.email || "sem e-mail",
-      company: effective.company,
+      company: effective.company || appUser?.company || null,
       company_id: effective.companyId,
       companyPlan,
       userPlan: effective.individualPlan,
@@ -78,7 +87,7 @@ export async function GET(request: Request) {
       created_at: user.created_at,
       last_sign_in_at: user.last_sign_in_at || null,
     };
-  }));
+  });
 
   const userCompanyById = new Map(users.map((user) => [user.id, user.company]));
   const projects = (projectsData || []).map((project) => ({
@@ -169,6 +178,7 @@ export async function GET(request: Request) {
     projects,
     filteredUsers,
     filteredProjects,
+    integrity,
     activeCompanyFilter: requestedCompany || "all",
   });
 }

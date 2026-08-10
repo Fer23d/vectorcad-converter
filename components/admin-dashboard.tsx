@@ -40,6 +40,18 @@ type AdminOverview = {
   filteredUsers?: AdminUser[];
   filteredProjects?: AdminProject[];
   activeCompanyFilter?: string;
+  integrity?: {
+    authWithoutProfile: number;
+    authWithoutPlan: number;
+    authWithoutBillingUser: number;
+    billingUsersWithoutAuth: number;
+    profilesWithoutAuth: number;
+    subscriptionsWithoutUser: number;
+    planDivergences: number;
+    duplicateAuthIds: number;
+    duplicateBillingIds: number;
+    duplicateProfileUserIds: number;
+  };
 };
 
 type AdminCompany = {
@@ -573,6 +585,8 @@ export function AdminDashboard() {
       </div>
 
       <AdminFinance adminToken={adminToken} />
+
+      {overview.integrity && <section className="mt-6 rounded-3xl border border-[#26312c] bg-[#101613] p-5"><h2 className="text-sm font-black uppercase tracking-[.14em]">Integridade dos dados</h2><div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4"><div>Usuários sem perfil: <b>{overview.integrity.authWithoutProfile}</b></div><div>Usuários sem plano: <b>{overview.integrity.authWithoutPlan}</b></div><div>Assinaturas sem usuário: <b>{overview.integrity.subscriptionsWithoutUser}</b></div><div>Divergências de plano: <b>{overview.integrity.planDivergences}</b></div></div></section>}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
