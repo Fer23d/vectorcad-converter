@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, BarChart3, CreditCard, DollarSign, FolderOpen, TrendingUp, UsersRound } from "lucide-react";
+import { useAdminRealtime } from "@/hooks/use-admin-realtime";
 
 type PlanSummary = { plan: string; users: number; subscriptions: number; revenue: number; estimatedRevenue: number; projects: number; dailyUsage: number; daily3d: number };
 type Integrity = { authWithoutProfile: number; authWithoutPlan: number; authWithoutBillingUser: number; billingUsersWithoutAuth: number; profilesWithoutAuth: number; subscriptionsWithoutUser: number; planDivergences: number; duplicateAuthIds: number; duplicateBillingIds: number; duplicateProfileUserIds: number };
@@ -30,6 +31,15 @@ export function AdminFinance({ adminToken }: { adminToken: string }) {
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Não foi possível carregar o financeiro."));
   }, [adminToken]);
+  const refreshFinance = useCallback(async () => {
+    if (!adminToken) return;
+    const response = await fetch("/api/admin/finance", { headers: { Authorization: `Bearer ${adminToken}` } });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "NÃ£o foi possÃ­vel atualizar o financeiro.");
+    setData(payload as FinanceData);
+    setError("");
+  }, [adminToken]);
+  useAdminRealtime(refreshFinance, Boolean(adminToken));
   const maxUsers = useMemo(() => Math.max(1, ...(data?.plans || []).map((item) => item.users)), [data]);
   const maxGrowth = useMemo(() => Math.max(1, ...(data?.growth || []).map((item) => item.users)), [data]);
   const maxRevenue = useMemo(() => Math.max(1, ...(data?.revenueSeries || []).map((item) => item.revenue)), [data]);

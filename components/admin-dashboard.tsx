@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
 import type { AdminRole } from "@/lib/admin";
 import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { AdminFinance } from "@/components/admin-finance";
+import { useAdminRealtime } from "@/hooks/use-admin-realtime";
 
 type AdminOverview = {
   role?: AdminRole;
@@ -152,6 +153,21 @@ export function AdminDashboard() {
     setToastMessage(text);
     window.setTimeout(() => setToastMessage(""), 2600);
   };
+
+  const refreshOverview = useCallback(async () => {
+    if (!adminToken) return;
+    const query = companyFilter !== "all" ? `?company=${encodeURIComponent(companyFilter)}` : "";
+    const response = await fetch(`/api/admin/overview${query}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "NÃ£o foi possÃ­vel atualizar o painel admin.");
+    setOverview(payload as AdminOverview);
+    setBackendFilteredUsers(payload.filteredUsers || null);
+    setBackendFilteredProjects(payload.filteredProjects || null);
+  }, [adminToken, companyFilter]);
+
+  useAdminRealtime(refreshOverview, Boolean(adminToken));
 
   useEffect(() => {
     const client = supabase;
