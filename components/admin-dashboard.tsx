@@ -6,6 +6,7 @@ import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, Folder
 import type { AdminRole } from "@/lib/admin";
 import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { AdminFinance } from "@/components/admin-finance";
 
 type AdminOverview = {
   role?: AdminRole;
@@ -570,6 +571,8 @@ export function AdminDashboard() {
         <StatCard icon={<Activity size={20} />} label="Usuários ativos" value={overview.stats.activeUsers} />
         <StatCard icon={<ShieldCheck size={20} />} label="Usuários SM&A" value={overview.stats.smaUsers} />
       </div>
+
+      <AdminFinance adminToken={adminToken} />
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5 xl:col-span-2">
