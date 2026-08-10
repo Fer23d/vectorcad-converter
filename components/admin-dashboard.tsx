@@ -8,6 +8,7 @@ import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { AdminFinance } from "@/components/admin-finance";
 import { useAdminRealtime } from "@/hooks/use-admin-realtime";
+import { AdminDashboardSkeleton } from "@/components/admin-loading-skeleton";
 
 type AdminOverview = {
   role?: AdminRole;
@@ -553,9 +554,7 @@ export function AdminDashboard() {
   };
 
   if (loading) {
-    return <main className="grid min-h-screen place-items-center bg-[#080c0b] text-[#e8efeb]">
-      <div className="text-xs uppercase tracking-[.18em] text-[#b7f34a]">{message}</div>
-    </main>;
+    return <AdminDashboardSkeleton message={message} />;
   }
 
   if (!overview) {
@@ -916,7 +915,7 @@ function UserList({ users, empty, actionLabel, actionIcon, actionTone = "default
 }
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
-  return <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
+  return <div className="admin-card-enter rounded-3xl border border-[#26312c] bg-[#101613] p-5 transition duration-300 hover:-translate-y-1 hover:border-[#b7f34a]/50 hover:shadow-[0_12px_40px_rgba(183,243,74,.08)]">
     <div className="flex items-center justify-between">
       <div className="text-[#b7f34a]">{icon}</div>
       <span className="rounded-full bg-[#111915] px-2 py-1 text-[10px] uppercase text-[#8c9a93]">admin</span>

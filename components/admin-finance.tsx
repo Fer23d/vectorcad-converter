@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, BarChart3, CreditCard, DollarSign, FolderOpen, TrendingUp, UsersRound } from "lucide-react";
 import { useAdminRealtime } from "@/hooks/use-admin-realtime";
+import { AdminFinanceSkeleton } from "@/components/admin-loading-skeleton";
 
 export type PlanSummary = { plan: string; users: number; subscriptions: number; revenue: number; estimatedRevenue: number; projects: number; dailyUsage: number; daily3d: number };
 export type Integrity = { authWithoutProfile: number; authWithoutPlan: number; authWithoutBillingUser: number; billingUsersWithoutAuth: number; profilesWithoutAuth: number; subscriptionsWithoutUser: number; planDivergences: number; duplicateAuthIds: number; duplicateBillingIds: number; duplicateProfileUserIds: number };
@@ -24,11 +25,46 @@ const planLabels: Record<string, string> = { free: "Free", plus: "Plus", pro: "P
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function Card({ label, value, icon }: { label: string; value: string | number; icon: React.ReactNode }) {
-  return <div className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4"><div className="flex items-center justify-between text-[#b7f34a]"><span className="text-[10px] font-black uppercase tracking-[.12em] text-[#829087]">{label}</span>{icon}</div><div className="mt-3 text-2xl font-black text-[#e8efeb]">{value}</div></div>;
+  return <div className="admin-card-enter rounded-2xl border border-[#27352f] bg-[#0c110f] p-4 transition duration-300 hover:-translate-y-1 hover:border-[#b7f34a]/50 hover:shadow-[0_12px_40px_rgba(183,243,74,.08)]"><div className="flex items-center justify-between text-[#b7f34a]"><span className="text-[10px] font-black uppercase tracking-[.12em] text-[#829087]">{label}</span>{icon}</div><div className="mt-3 text-2xl font-black text-[#e8efeb]">{value}</div></div>;
 }
 
 function Bar({ value, max, color = "#b7f34a" }: { value: number; max: number; color?: string }) {
   return <div className="h-2 overflow-hidden rounded-full bg-[#253229]"><div className="h-full rounded-full" style={{ width: `${max ? Math.max(value ? 3 : 0, (value / max) * 100) : 0}%`, backgroundColor: color }} /></div>;
+}
+
+function formatAdminDate(value: string | null | undefined) {
+  if (!value) return "Indisponível";
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value)).replace(" de ", " ").replace(" de ", " ");
+}
+
+function csvValue(value: unknown) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function downloadFinanceCsv(data: FinanceData) {
+  const rows = [
+    ["Tipo", "Identificador", "Plano", "Valor", "Data", "Status"],
+    ...data.plans.map((item) => ["Plano", item.plan, item.users, item.revenue, "", ""]),
+    ...data.recentUsers.map((user) => ["Usuário", user.email, user.plan, "", user.created_at, user.last_sign_in_at ? "Ativo" : "Sem acesso"]),
+    ...data.recentActivity.map((event) => [event.kind, event.detail, "", "", event.createdAt, event.label]),
+  ];
+  const csv = rows.map((row) => row.map(csvValue).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `vetorcad-financeiro-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function printFinanceReport(data: FinanceData) {
+  const report = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
+  if (!report) return;
+  const planRows = data.plans.map((item) => `<tr><td>${planLabels[item.plan] || item.plan}</td><td>${item.users}</td><td>${item.subscriptions}</td><td>${money.format(item.revenue)}</td></tr>`).join("");
+  report.document.write(`<!doctype html><html><head><title>Relatório financeiro VetorCAD</title><style>body{font:14px Arial;color:#17221b;padding:32px}h1{color:#263d2d}table{border-collapse:collapse;width:100%;margin-top:20px}td,th{border:1px solid #ccd7cf;padding:8px;text-align:left}small{color:#637267}</style></head><body><h1>Relatório financeiro VetorCAD</h1><p><b>MRR:</b> ${money.format(data.metrics.mrr)} &nbsp; <b>Usuários:</b> ${data.metrics.totalUsers} &nbsp; <b>Pagantes:</b> ${data.metrics.activeSubscriptions}</p><small>Gerado em ${formatAdminDate(new Date().toISOString())}</small><table><thead><tr><th>Plano</th><th>Usuários</th><th>Assinaturas</th><th>Receita</th></tr></thead><tbody>${planRows}</tbody></table></body></html>`);
+  report.document.close();
+  report.focus();
+  report.print();
 }
 
 function FinanceAnalytics({ data }: { data: FinanceData }) {
@@ -42,7 +78,7 @@ function FinanceAnalytics({ data }: { data: FinanceData }) {
     { key: "subscriptions", title: "Novas assinaturas", color: "#d69cff", max: maxSubscriptions },
   ] as const;
 
-  return <>
+  return <><div className="mt-4 flex flex-wrap items-center justify-end gap-2"><button type="button" onClick={() => downloadFinanceCsv(data)} className="rounded-xl border border-[#34413b] px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Exportar CSV</button><button type="button" onClick={() => printFinanceReport(data)} className="rounded-xl bg-[#b7f34a] px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-[#09120d] transition hover:brightness-110">Exportar PDF</button></div>
     <section className="mt-5 rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
       <h3 className="text-xs font-black uppercase tracking-[.12em] text-[#b7f34a]">Distribuição da base</h3>
       <div className="mt-4 grid gap-3 md:grid-cols-3">{data.plans.filter((item) => ["free", "pro", "empresarial"].includes(item.plan)).map((item) => { const share = data.metrics.totalUsers ? Math.round((item.users / data.metrics.totalUsers) * 100) : 0; return <div key={item.plan} className="rounded-xl border border-[#27352f] bg-[#101613] p-3"><div className="flex justify-between text-xs font-black"><span>{planLabels[item.plan] || item.plan}</span><span className="text-[#b7f34a]">{share}%</span></div><div className="mt-2"><Bar value={item.users} max={maxUsers} /></div><div className="mt-2 text-[11px] text-[#829087]">{item.users} usuários</div></div>; })}</div>
@@ -72,6 +108,8 @@ export function AdminFinance({ adminToken }: { adminToken: string }) {
     return () => window.clearTimeout(timer);
   }, [refreshFinance]);
   useAdminRealtime(refreshFinance, Boolean(adminToken));
+
+  if (!data && !error) return <section className="mt-6 rounded-3xl border border-[#b7f34a]/30 bg-[#101613] p-5"><AdminFinanceSkeleton /></section>;
 
   return <section className="mt-6 rounded-3xl border border-[#b7f34a]/30 bg-[#101613] p-5 shadow-[0_0_60px_rgba(183,243,74,.05)]"><div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between"><div><div className="flex items-center gap-2 text-[#b7f34a]"><BarChart3 size={18} /><h2 className="text-sm font-black uppercase tracking-[.14em]">Financeiro</h2></div><p className="mt-1 text-xs text-[#7c8b83]">Métricas calculadas exclusivamente a partir dos registros atuais do SaaS.</p></div><span className="text-[10px] font-bold uppercase tracking-[.12em] text-[#829087]">Acesso restrito a ADMIN</span></div>
     {error && <div className="mt-4 rounded-xl border border-[#6a3636] bg-[#241313] p-3 text-xs text-[#ffb0b0]">{error}</div>}
