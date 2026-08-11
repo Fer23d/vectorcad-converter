@@ -15,6 +15,8 @@ export async function POST(request: Request) {
   const name = normalizeText(body?.name, 120);
   const email = normalizeText(body?.email, 254).toLowerCase();
   const message = normalizeText(body?.message, 5000);
+  const company = normalizeText(body?.company, 160);
+  const subject = normalizeText(body?.subject, 80) || "Dúvidas gerais";
   const honeypot = normalizeText(body?.website, 200);
 
   if (honeypot) return NextResponse.json({ ok: true });
@@ -25,7 +27,7 @@ export async function POST(request: Request) {
   if (!limit.allowed) return NextResponse.json({ error: "Muitas mensagens enviadas. Aguarde alguns minutos e tente novamente." }, { status: 429 });
 
   try {
-    const result = await sendContactEmail({ name, email, message });
+    const result = await sendContactEmail({ name, email, message: `Assunto: ${subject}\nEmpresa: ${company || "Não informado"}\n\n${message}` });
     return NextResponse.json({ ok: true, id: result?.id });
   } catch (error) {
     console.error("[contact] email delivery failed", { code: error instanceof Error ? error.message : "UNKNOWN_ERROR" });
