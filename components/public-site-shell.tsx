@@ -7,7 +7,7 @@ const navItems = [
   { href: "/blog", label: "Blog" },
   { href: "/sobre", label: "Sobre" },
   { href: "/contato", label: "Contato" },
-  { href: "/grupo-shiftcore", label: "Grupo Shiftcore" },
+  { href: "https://www.shiftcore.com.br/", label: "Grupo Shiftcore" },
 ];
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -25,7 +25,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
           </Link>
           <nav className="hidden items-center gap-2 md:flex">
             {navItems.map((item) => (
-              <Link key={item.href} href={item.href} className="rounded-full px-4 py-2 text-xs font-bold text-[#b8c8c0] transition hover:bg-[#111915] hover:text-[#b7f34a]">
+              <Link key={item.href} href={item.href} target={item.href.startsWith("http") ? "_blank" : undefined} rel={item.href.startsWith("http") ? "noopener noreferrer" : undefined} className="rounded-full px-4 py-2 text-xs font-bold text-[#b8c8c0] transition hover:bg-[#111915] hover:text-[#b7f34a]">
                 {item.label}
               </Link>
             ))}
@@ -46,7 +46,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
             </div>
             <div className="mx-auto hidden h-16 w-px bg-[#304238] md:block" aria-hidden="true" />
             <div className="max-w-xs">
-              <a href="https://gruposhiftcore.com.br" target="_blank" rel="noreferrer" className="text-sm font-black tracking-[.08em] text-[#b7f34a] hover:underline">Grupo Shiftcore ↗</a>
+              <a href="https://www.shiftcore.com.br/" target="_blank" rel="noopener noreferrer" className="text-sm font-black tracking-[.08em] text-[#b7f34a] hover:underline">Grupo Shiftcore</a>
               <p className="mt-2 text-xs leading-5">Tecnologia, inovação e soluções inteligentes.</p>
             </div>
           </div>
@@ -57,7 +57,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
               <Link href="/blog" className="hover:text-[#b7f34a]">Blog</Link>
               <Link href="/sobre" className="hover:text-[#b7f34a]">Sobre</Link>
               <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
-              <Link href="/grupo-shiftcore" className="hover:text-[#b7f34a]">Grupo Shiftcore</Link>
+              <a href="https://www.shiftcore.com.br/" target="_blank" rel="noopener noreferrer" className="hover:text-[#b7f34a]">Grupo Shiftcore</a>
             </div>
             <div className="grid justify-items-center gap-2">
               <div className="font-black text-[#edf5f0]">Legal</div>
