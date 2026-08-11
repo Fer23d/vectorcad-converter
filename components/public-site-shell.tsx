@@ -7,7 +7,7 @@ const navItems = [
   { href: "/blog", label: "Blog" },
   { href: "/sobre", label: "Sobre" },
   { href: "/contato", label: "Contato" },
-  { href: "https://www.shiftcore.com.br/", label: "Grupo Shiftcore" },
+  { href: "/grupo-shiftcore", label: "Grupo Shiftcore" },
 ];
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -57,12 +57,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
               <Link href="/blog" className="hover:text-[#b7f34a]">Blog</Link>
               <Link href="/sobre" className="hover:text-[#b7f34a]">Sobre</Link>
               <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
-              <a href="https://www.shiftcore.com.br/" target="_blank" rel="noreferrer" className="hover:text-[#b7f34a]">Grupo Shiftcore</a>
-            </div>
-            <div className="grid justify-items-center gap-2">
-              <div className="font-black text-[#edf5f0]">Empresa</div>
-              <a href="https://www.shiftcore.com.br/" target="_blank" rel="noreferrer" className="hover:text-[#b7f34a]">Grupo Shiftcore</a>
-              <a href="https://www.shiftcore.com.br/" target="_blank" rel="noreferrer" className="hover:text-[#b7f34a]">Sobre nós</a>
+              <Link href="/grupo-shiftcore" className="hover:text-[#b7f34a]">Grupo Shiftcore</Link>
             </div>
             <div className="grid justify-items-center gap-2">
               <div className="font-black text-[#edf5f0]">Legal</div>
