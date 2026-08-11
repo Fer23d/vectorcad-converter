@@ -7,6 +7,7 @@ const navItems = [
   { href: "/blog", label: "Blog" },
   { href: "/sobre", label: "Sobre" },
   { href: "/contato", label: "Contato" },
+  { href: "/grupo-shiftcore", label: "Grupo Shiftcore" },
 ];
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
@@ -45,7 +46,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
             </div>
             <div className="mx-auto hidden h-16 w-px bg-[#304238] md:block" aria-hidden="true" />
             <div className="max-w-xs">
-              <div className="text-sm font-black tracking-[.08em] text-[#b7f34a]">Grupo ShiftCore</div>
+              <a href="https://gruposhiftcore.com.br" target="_blank" rel="noreferrer" className="text-sm font-black tracking-[.08em] text-[#b7f34a] hover:underline">Grupo Shiftcore ↗</a>
               <p className="mt-2 text-xs leading-5">Tecnologia, inovação e soluções inteligentes.</p>
             </div>
           </div>
@@ -56,6 +57,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
               <Link href="/blog" className="hover:text-[#b7f34a]">Blog</Link>
               <Link href="/sobre" className="hover:text-[#b7f34a]">Sobre</Link>
               <Link href="/contato" className="hover:text-[#b7f34a]">Contato</Link>
+              <Link href="/grupo-shiftcore" className="hover:text-[#b7f34a]">Grupo Shiftcore</Link>
             </div>
             <div className="grid justify-items-center gap-2">
               <div className="font-black text-[#edf5f0]">Legal</div>
