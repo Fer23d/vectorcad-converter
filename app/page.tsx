@@ -99,6 +99,14 @@ export default function Home() {
 
       <FAQSection />
 
+      <section className="relative overflow-hidden border-y border-[#1c2822] bg-[#080d0a]">
+        <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(183,243,74,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(183,243,74,.08)_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div className="relative mx-auto flex max-w-7xl flex-col gap-8 px-4 py-16 md:flex-row md:items-center md:justify-between lg:px-8 lg:py-20">
+          <div className="admin-card-enter max-w-3xl"><div className="text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">Ecossistema VectorCAD</div><h2 className="mt-4 text-3xl font-black tracking-[-.04em] md:text-5xl">Desenvolvido pelo Grupo Shiftcore</h2><p className="mt-4 text-lg leading-8 text-[#b8c8c0]">O VectorCAD faz parte do ecossistema de produtos desenvolvidos pelo Grupo Shiftcore, uma empresa focada na criação de softwares inteligentes, soluções digitais e tecnologias aplicadas à engenharia.</p></div>
+          <a href="https://www.shiftcore.com.br/" target="_blank" rel="noreferrer" className="admin-card-enter inline-flex shrink-0 items-center justify-center rounded-2xl border border-[#b7f34a]/50 bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] transition hover:-translate-y-1 hover:brightness-105">Conhecer Grupo Shiftcore <span className="ml-2">↗</span></a>
+        </div>
+      </section>
+
       <section className="border-t border-[#1c2822] bg-[#0a0f0d]">
         <div className="mx-auto max-w-7xl px-4 py-16 lg:px-8">
           <div className="mb-8 flex items-end justify-between gap-4">
