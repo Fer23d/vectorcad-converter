@@ -11,7 +11,7 @@ export type CadProjectData = {
   sourceOriginalDataUrl?: string;
   processedImageDataUrl?: string;
   projectImageStoragePaths?: Partial<Record<"source" | "source-original" | "processed", string>>;
-  sourceFormat?: "raster" | "tiff";
+  sourceFormat?: "raster" | "tiff" | "pdf";
   fileName?: string;
   processing?: import("@/types/vector").ProcessingSettings;
   imageQuality?: import("@/types/vector").ImageQuality;

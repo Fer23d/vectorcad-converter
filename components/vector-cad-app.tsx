@@ -12,6 +12,7 @@ import type { CadCleanMetrics } from "@/lib/image-processing/cad-clean";
 import { isAiEnhanceQuality, type AiEnhanceMetrics } from "@/lib/image-processing/ai-enhance";
 import { imageQualityAnalyzer, type ImageQualityAnalysis } from "@/lib/image-processing/image-quality-analyzer";
 import { decodeTiffDataUrl, isTiffFile, processTiff, rasterToPngDataUrl, type TiffRaster } from "@/lib/image-processing/tiff";
+import { renderPdfFirstPage } from "@/lib/document-processing/pdf";
 import { detectText, type OcrDiagnostic } from "@/lib/text-detection/ocr";
 import { type AiDetectedElement, type AiFeedback, type AiTextElement, type VectorCadAiAnalysis } from "@/lib/ai/vectorcad-ai";
 import type { RecognizedDimension } from "@/lib/ai/dimension-recognition";
@@ -26,7 +27,7 @@ import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, Proces
 import type { CadProjectData, EditorViewMode } from "@/types/project";
 
 const MAX_FILE = 30 * 1024 * 1024;
-const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/x-tiff"];
+const ACCEPTED = ["image/png", "image/jpeg", "image/webp", "image/tiff", "image/x-tiff", "application/pdf"];
 const CONTROLS_MIN_WIDTH = 260;
 const CAD_MIN_WIDTH = 260;
 const PREVIEW_MIN_WIDTH = 300;
@@ -180,7 +181,7 @@ function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { 
 export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, persistenceStatus = "saved", projectVersion = 0, savedProjectVersion = 0 }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; persistenceStatus?: "saved" | "saving" | "dirty" | "error"; projectVersion?: number; savedProjectVersion?: number }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
-  const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff">(initialData?.sourceFormat || "raster");
+  const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff" | "pdf">(initialData?.sourceFormat || "raster");
   const [sourceImageDataUrl, setSourceImageDataUrl] = useState(initialData?.sourceImageDataUrl || "");
   const [processedPreview, setProcessedPreview] = useState("");
   const [processedImage, setProcessedImage] = useState("");
@@ -499,6 +500,37 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     if (!file) return;
     setAiAnalysis(null);
     setAiStatus("");
+    if (file.name.toLowerCase().endsWith(".pdf") || file.type === "application/pdf") {
+      if (file.size > MAX_FILE) return setMessage("O arquivo PDF excede o limite de 30 MB.");
+      const allowed = await consumeUsage("vectorize");
+      if (!allowed) return;
+      try {
+        setManualProcessedImage(null);
+        setProcessedImage("");
+        const rendered = await renderPdfFirstPage(file, setMessage);
+        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const preview = new Image();
+          preview.onload = () => resolve(preview);
+          preview.onerror = () => reject(new Error("PDF_PREVIEW_FAILED"));
+          preview.src = rendered.dataUrl;
+        });
+        setMessage("Preparando arquivo para CAD...");
+        setSourceImageDataUrl(rendered.dataUrl);
+        setSourceOriginalDataUrl("");
+        setSourceFormat("pdf");
+        setSourceRaster(null);
+        setSource(image);
+        setFileName(file.name);
+        setRealHeight(Number((100 * rendered.height / rendered.width).toFixed(2)));
+        setMessage("Processando primeira página do PDF...");
+        return;
+      } catch (error) {
+        setMessage(error instanceof Error && error.message === "PDF_TOO_LARGE"
+          ? "O arquivo PDF excede o limite de 30 MB."
+          : "Não foi possível ler este PDF. Verifique se o arquivo está íntegro.");
+        return;
+      }
+    }
     if (file && isTiffFile(file)) {
       if (!file || file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 30 MB.");
       const allowed = await consumeUsage("vectorize");
@@ -539,7 +571,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       return;
     }
     if (!file) return;
-    if (!ACCEPTED.includes(file.type)) return setMessage("Formato inválido. Envie PNG, JPG, JPEG, WEBP, TIF ou TIFF.");
+    if (!ACCEPTED.includes(file.type)) return setMessage("Formato inválido. Envie PDF, PNG, JPG, JPEG, WEBP, TIF ou TIFF.");
     if (file.size > MAX_FILE) return setMessage("O arquivo excede o limite de 30 MB.");
     const allowed = await consumeUsage("vectorize");
     if (!allowed) return;
@@ -1257,7 +1289,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
         </div>
       </div>
     </footer>
-    <input ref={input} type="file" accept=".png,.jpg,.jpeg,.webp,.tif,.tiff,image/png,image/jpeg,image/webp,image/tiff" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
+    <input ref={input} type="file" accept=".pdf,application/pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,image/png,image/jpeg,image/webp,image/tiff" className="hidden" onChange={e => loadFile(e.target.files?.[0])} />
     {upgradeModal && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-3xl border border-[#b7f34a]/40 bg-[#101613] p-6 text-center shadow-2xl shadow-black/50">
         <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><Sparkles size={22} /></div>
