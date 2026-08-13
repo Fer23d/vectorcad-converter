@@ -658,9 +658,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     if (!activeSource && !activeRaster) return;
     const sourceWidth = activeRaster?.width || activeSource?.width || 0;
     const sourceHeight = activeRaster?.height || activeSource?.height || 0;
-    // TIFF optimization keeps more source detail for contour extraction while
-    // retaining a bounded canvas size for large scans.
-    const max = sourceFormat === "tiff" && tiffOptimizationEnabled ? 1600 : 720;
+    // Keep the existing limits for raster images and optimized TIFFs. PDFs get
+    // the same higher working limit as optimized TIFFs so technical details
+    // survive the raster-to-ImageData step without making the browser unbounded.
+    const max = sourceFormat === "pdf" || sourceFormat === "tiff" && tiffOptimizationEnabled ? 1600 : 720;
     const scale = Math.min(1, max / Math.max(sourceWidth, sourceHeight));
     const w = Math.max(1, Math.round(sourceWidth * scale)), h = Math.max(1, Math.round(sourceHeight * scale));
     const oc = originalCanvas.current!, pc = processedCanvas.current!;
