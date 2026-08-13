@@ -7,7 +7,7 @@ const navItems = [
   { href: "/blog", label: "Blog" },
   { href: "/sobre", label: "Sobre" },
   { href: "/contato", label: "Contato" },
-  { href: "https://www.shiftcore.com.br/", label: "Grupo Shiftcore" },
+  { href: "/grupo-shiftcore", label: "Grupo Shiftcore" },
 ];
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
