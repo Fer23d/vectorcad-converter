@@ -9,12 +9,12 @@ export function PublicHeroElegant() {
         <div className={styles.hero}>
           <div className="mb-7 flex items-center gap-3">
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#b7f34a] text-sm font-black text-[#07100a] shadow-[0_0_28px_rgba(183,243,74,.18)]">VC</span>
-            <div><div className="text-sm font-black tracking-[.12em] text-[#edf5f0]">VectorCAD</div><div className="text-[10px] uppercase tracking-[.22em] text-[#7f9188]">Intelligent engineering workspace</div></div>
+            <div><div className="text-sm font-black tracking-[.12em] text-[#edf5f0]">VetorCAD</div><div className="text-[10px] uppercase tracking-[.22em] text-[#7f9188]">Intelligent engineering workspace</div></div>
           </div>
-          <span className="inline-flex rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-[11px] font-black uppercase tracking-[.16em] text-[#b7f34a]">VectorCAD Converter</span>
+          <span className="inline-flex rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-[11px] font-black uppercase tracking-[.16em] text-[#b7f34a]">VetorCAD Converter</span>
           <h1 className="mt-7 max-w-2xl text-5xl font-black leading-[1.02] tracking-[-.06em] text-[#f1f7f3] md:text-7xl">A inteligencia aplicada aos seus projetos de engenharia.</h1>
           <p className="mt-7 max-w-xl text-lg leading-8 text-[#aebeb6]">Transforme desenhos tecnicos em informacao organizada, vetores editaveis e decisoes mais rapidas para o seu time.</p>
-          <div className="mt-9 flex flex-wrap items-center gap-4"><Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] shadow-[0_0_30px_rgba(183,243,74,.14)] transition duration-300 hover:-translate-y-0.5 hover:brightness-105">Teste o VectorCAD</Link><Link href="/sobre" className="text-sm font-bold text-[#b8c8c0] transition hover:text-[#b7f34a]">Conheca a plataforma <span aria-hidden="true">→</span></Link></div>
+          <div className="mt-9 flex flex-wrap items-center gap-4"><Link href="/signup" className="rounded-2xl bg-[#b7f34a] px-6 py-4 text-sm font-black text-[#07100a] shadow-[0_0_30px_rgba(183,243,74,.14)] transition duration-300 hover:-translate-y-0.5 hover:brightness-105">Teste o VetorCAD</Link><Link href="/sobre" className="text-sm font-bold text-[#b8c8c0] transition hover:text-[#b7f34a]">Conheca a plataforma <span aria-hidden="true">→</span></Link></div>
           <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-xs font-bold text-[#819188]"><span><span className="mr-2 text-[#b7f34a]">●</span>OCR e analise visual</span><span><span className="mr-2 text-[#b7f34a]">●</span>SVG e DXF editaveis</span><span><span className="mr-2 text-[#b7f34a]">●</span>Workspace para engenharia</span></div>
         </div>
 
