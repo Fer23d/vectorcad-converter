@@ -62,14 +62,14 @@ export function LandingSection() {
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#b7f34a] shadow-[0_0_10px_#b7f34a]" /> vetorcad Converter
             </div>
-            <h1 className="max-w-xl text-4xl font-black leading-[1.05] tracking-[-.055em] text-[#f2f8f4] sm:text-5xl lg:text-6xl">Transforme imagens em vetores para CAD, CNC e corte laser</h1>
-            <p className="mt-6 max-w-xl text-base leading-7 text-[#b8c8c0] sm:text-lg">Converta PNG, JPG, WEBP, TIF e TIFF em SVG e DXF editáveis com pré-processamento de imagem e vetorização por contorno.</p>
+            <h1 className="max-w-xl text-4xl font-black leading-[1.05] tracking-[-.055em] text-[#f2f8f4] sm:text-5xl lg:text-6xl">Transforme imagens e PDFs em vetores para CAD, CNC e corte laser</h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-[#b8c8c0] sm:text-lg">Converta PNG, JPG, WEBP, TIF, TIFF e PDFs técnicos em SVG e DXF editáveis com pré-processamento de imagem e vetorização por contorno.</p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <CTAButton>Comece a vetorização</CTAButton>
               <span className="text-sm text-[#8ea098]">Do desenho ao arquivo CAD editável.</span>
             </div>
             <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-bold uppercase tracking-[.12em] text-[#81958a]">
-              <span>PNG / JPG / TIFF</span><span>SVG + DXF</span><span>Escala técnica</span>
+              <span>PNG / JPG / TIFF / PDF</span><span>SVG + DXF</span><span>PDF técnico suportado</span>
             </div>
           </div>
           <div className="lg:pt-4"><SVGPreview scrollProgress={scrollProgress} /></div>

@@ -7,7 +7,7 @@ import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
   title: "VetorCAD Converter | Conversão de desenhos técnicos para CAD",
-  description: "Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.",
+  description: "Transforme imagens, PDFs e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.",
   alternates: { canonical: "https://vetorcad.com.br/" },
 };
 
@@ -19,7 +19,7 @@ const benefits = [
 ];
 
 const steps = [
-  { title: "1. Envie a imagem", text: "Use PNG, JPG, JPEG, WEBP, TIF ou TIFF com boa resolução e contraste." },
+  { title: "1. Envie a imagem ou PDF", text: "Use PNG, JPG, JPEG, WEBP, TIF, TIFF ou PDF técnico com boa resolução e contraste." },
   { title: "2. Limpe o desenho", text: "Ajuste brilho, contraste, limiar, ruído e bordas antes da vetorização." },
   { title: "3. Gere o vetor", text: "Transforme áreas da imagem em paths, contornos e polilinhas editáveis." },
   { title: "4. Exporte para CAD", text: "Baixe SVG ou DXF com escala correta para abrir em softwares técnicos." },
@@ -36,7 +36,7 @@ export default function Home() {
           <div className="max-w-3xl">
             <span className="inline-flex rounded-full border border-[#b7f34a]/40 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">VetorCAD Converter</span>
               <h2 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] md:text-5xl">VetorCAD Converter: conversão CAD profissional</h2>
-            <p className="mt-5 text-lg leading-8 text-[#b8c8c0]">Transforme imagens e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.</p>
+            <p className="mt-5 text-lg leading-8 text-[#b8c8c0]">Transforme imagens, PDFs e desenhos técnicos em arquivos CAD editáveis com reconhecimento inteligente de textos, anotações e elementos do projeto.</p>
           </div>
           <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <article className="rounded-3xl border border-[#304238] bg-[#070b09] p-5">
@@ -59,7 +59,7 @@ export default function Home() {
           <div className="mt-10 rounded-3xl border border-[#304238] bg-[#070b09] p-6">
             <h3 className="text-xl font-black">Como funciona</h3>
             <div className="mt-6 grid gap-3 text-center text-sm font-bold text-[#c3d0ca] md:grid-cols-5">
-              {["Imagem do projeto", "Processamento inteligente", "Reconhecimento de textos", "Análise dos elementos", "Arquivo CAD editável"].map((step, index) => <div key={step} className="flex items-center justify-center gap-3"><span className="flex-1 rounded-2xl border border-[#304238] bg-[#111915] px-4 py-4">{step}</span>{index < 4 && <span className="hidden text-xl text-[#b7f34a] md:inline">→</span>}</div>)}
+              {["Imagem ou PDF do projeto", "Processamento inteligente", "Reconhecimento de textos", "Análise dos elementos", "Arquivo CAD editável"].map((step, index) => <div key={step} className="flex items-center justify-center gap-3"><span className="flex-1 rounded-2xl border border-[#304238] bg-[#111915] px-4 py-4">{step}</span>{index < 4 && <span className="hidden text-xl text-[#b7f34a] md:inline">→</span>}</div>)}
             </div>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-4">

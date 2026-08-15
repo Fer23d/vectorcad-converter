@@ -259,6 +259,53 @@ export const blogArticles: BlogArticle[] = [
       },
     ],
   },
+  {
+    slug: "converter-pdf-para-dxf",
+    title: "Como converter PDF para DXF usando o VetorCAD",
+    description: "Transforme plantas e desenhos técnicos em PDF em arquivos CAD editáveis usando o VetorCAD.",
+    date: "2026-08-15",
+    readTime: "6 min",
+    category: "PDF para CAD",
+    metaTitle: "Converter PDF para DXF | VetorCAD",
+    metaDescription: "Transforme plantas e desenhos técnicos em PDF em arquivos CAD editáveis usando o VetorCAD.",
+    keywords: ["converter pdf para dxf", "pdf para cad", "planta pdf para autocad", "vetorizacao pdf"],
+    sections: [
+      {
+        heading: "PDF técnico no fluxo de engenharia",
+        body: [
+          "Profissionais de engenharia e projetos recebem muitos desenhos, plantas e documentos em PDF. Converter esse material manualmente pode consumir horas e gerar retrabalho.",
+          "O VetorCAD agora aceita arquivos PDF tecnicos e prepara a primeira pagina para o fluxo de conversao CAD existente.",
+        ],
+      },
+      {
+        heading: "Como funciona a conversao",
+        body: [
+          "O arquivo PDF e validado e sua primeira pagina e renderizada como imagem. Em seguida, o documento passa pelo pre-processamento, vetorizacao por contorno e revisao no editor.",
+          "Depois da analise, o resultado pode ser exportado para SVG ou DXF, mantendo uma base editavel para os proximos fluxos CAD.",
+        ],
+      },
+      {
+        heading: "PDF escaneado, plantas e desenhos de engenharia",
+        body: [
+          "PDFs escaneados podem conter plantas arquitetonicas, diagramas industriais e desenhos tecnicos antigos. A qualidade da digitalizacao, o contraste e a resolucao influenciam diretamente o resultado.",
+          "Com uma entrada mais limpa e uma revisao no editor, o VetorCAD ajuda a reduzir o redesenho manual e acelerar a preparacao de arquivos para CAD, CNC e documentacao tecnica.",
+        ],
+      },
+      {
+        heading: "Produtividade com revisao tecnica",
+        body: [
+          "A conversão automática não elimina a revisao profissional. Ela cria uma base vetorial mais organizada para que o usuario confira escala, contornos e detalhes antes de exportar.",
+          "Esse fluxo reduz retrabalho e concentra o tempo da equipe nas decisoes de engenharia, em vez da repeticao de tarefas de redesenho.",
+        ],
+      },
+      {
+        heading: "Conclusao",
+        body: [
+          "Com o suporte a PDF, o VetorCAD amplia os formatos de entrada para projetos tecnicos e aproxima documentos legados de um fluxo CAD editavel.",
+        ],
+      },
+    ],
+  },
 ];
 
 export function getArticle(slug: string) {

@@ -4,7 +4,7 @@ import { PublicSiteShell } from "@/components/public-site-shell";
 import { blogArticles } from "@/lib/public-content";
 
 export const metadata: Metadata = {
-  title: "Blog vetorcad | Guias de SVG, DXF, CAD e CNC",
+  title: "Blog vetorcad | Guias de PDF, SVG, DXF, CAD e CNC",
   description: "Artigos sobre vetorização, conversão de imagem para DXF, SVG para corte laser, CAD/CAM e preparação de arquivos técnicos.",
   alternates: { canonical: "https://vetorcad.com.br/blog" },
 };
@@ -15,7 +15,7 @@ export default function BlogPage() {
       <section className="mx-auto max-w-7xl px-4 py-16 lg:px-8">
         <div className="max-w-3xl">
           <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Blog técnico</div>
-          <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Artigos sobre imagem, vetor e CAD</h1>
+          <h1 className="mt-4 text-4xl font-black tracking-[-.04em] md:text-6xl">Artigos sobre imagem, PDF, vetor e CAD</h1>
           <p className="mt-5 text-lg leading-8 text-[#aebeb6]">Guias preparados para quem precisa transformar imagens em arquivos editáveis, reduzir retrabalho e entender melhor os limites da vetorização automática.</p>
         </div>
         <div className="mt-12 grid gap-5 md:grid-cols-3">
