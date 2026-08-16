@@ -16,8 +16,12 @@ const questions = [
     answer: "Sim. A exportação usa entidades editáveis, como polilinhas e layers, pensadas para importação em AutoCAD e fluxos CAD/CAM.",
   },
   {
+    question: "O VetorCAD aceita arquivos PDF?",
+    answer: "Sim. O VetorCAD aceita PDFs técnicos, incluindo plantas, desenhos e documentos usados em engenharia, preparando o arquivo para o fluxo de conversão CAD com exportação para formatos editáveis.",
+  },
+  {
     question: "Qual imagem gera melhor resultado?",
-    answer: "Imagens com fundo simples, alto contraste, poucas sombras e bordas bem definidas geram vetores mais limpos. PNG, JPG e TIFF em boa resolução são ótimos pontos de partida.",
+    answer: "Imagens e PDFs com alto contraste, poucas sombras e bordas bem definidas geram vetores mais limpos. PNG, JPG, WEBP, TIFF e PDF em boa resolução são ótimos pontos de partida.",
   },
   {
     question: "Consigo usar para corte a laser?",

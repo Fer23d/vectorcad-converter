@@ -69,7 +69,7 @@ export function LandingSection() {
               <span className="text-sm text-[#8ea098]">Do desenho ao arquivo CAD editável.</span>
             </div>
             <div className="mt-9 flex flex-wrap gap-x-6 gap-y-3 text-xs font-bold uppercase tracking-[.12em] text-[#81958a]">
-              <span>PNG / JPG / TIFF / PDF</span><span>SVG + DXF</span><span>PDF técnico suportado</span>
+              <span>PNG / JPG / WEBP / TIFF / PDF</span><span>SVG + DXF</span><span>PDF técnico suportado</span>
             </div>
           </div>
           <div className="lg:pt-4"><SVGPreview scrollProgress={scrollProgress} /></div>
