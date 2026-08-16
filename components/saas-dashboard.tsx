@@ -11,6 +11,7 @@ import { UsageMeter } from "@/components/usage-meter";
 import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
+import { SubscriptionCard, type UserSubscription } from "@/components/subscription-card";
 import { persistProjectImagesToStorage, refreshProjectImagesFromStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
@@ -116,6 +117,8 @@ export function SaasDashboard() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
+  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+  const [subscriptionCancelling, setSubscriptionCancelling] = useState(false);
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsMessage, setTermsMessage] = useState("");
   const [onboardingSaving, setOnboardingSaving] = useState(false);
@@ -303,6 +306,18 @@ export function SaasDashboard() {
     setProfileLoading(false);
     refreshUsage(currentUser);
   }, [refreshUsage]);
+
+  const loadSubscription = useCallback(async (currentUser: User) => {
+    if (!supabase) return;
+    const { data } = await supabase
+      .from("subscriptions")
+      .select("id,plan,status,amount,currency,payment_provider,external_id,created_at,updated_at")
+      .eq("user_id", currentUser.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setSubscription((data as UserSubscription | null) || null);
+  }, []);
 
   const openProject = useCallback(async (projectId: string) => {
     if (!supabase || !user) return;
@@ -621,6 +636,7 @@ export function SaasDashboard() {
         }
         loadProjects(data.user.id);
         loadProfile(data.user);
+        loadSubscription(data.user);
         refreshUsage(data.user);
       }
       else router.replace("/login");
@@ -649,13 +665,14 @@ export function SaasDashboard() {
         }
         loadProjects(session.user.id);
         loadProfile(session.user);
+        loadSubscription(session.user);
         refreshUsage(session.user);
       }
       else router.replace("/login");
     });
 
     return () => listener.subscription.unsubscribe();
-  }, [loadProfile, loadProjects, refreshUsage, router]);
+  }, [loadProfile, loadProjects, loadSubscription, refreshUsage, router]);
 
   useEffect(() => {
     const client = supabase;
@@ -799,6 +816,30 @@ export function SaasDashboard() {
     setProfile(nextProfile);
     setProfileCompany(nextProfile.company || "");
     setProfileMessage("Perfil atualizado com sucesso.");
+  };
+
+  const cancelSubscription = async () => {
+    if (!supabase || !subscription || subscriptionCancelling) return;
+    if (!window.confirm("Cancelar sua assinatura? O acesso pago será encerrado conforme as regras do Mercado Pago.")) return;
+    setSubscriptionCancelling(true);
+    setProfileMessage("");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setSubscriptionCancelling(false);
+      setProfileMessage("Sessão expirada. Faça login novamente.");
+      return;
+    }
+    const response = await fetch("/api/payment/cancel", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    const payload = await response.json().catch(() => ({}));
+    setSubscriptionCancelling(false);
+    if (!response.ok) {
+      setProfileMessage(payload.error || "Não foi possível cancelar a assinatura.");
+      return;
+    }
+    setSubscription((current) => current ? { ...current, status: "cancelled", updated_at: new Date().toISOString() } : current);
+    setProfile((current) => current ? { ...current, plan: "free", is_premium: false, payment_status: "cancelled" } : current);
+    setProfileMessage("Assinatura cancelada. Seu plano será atualizado para FREE.");
   };
 
   const sortedProjects = useMemo(() => [...projects].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [projects]);
@@ -1024,6 +1065,17 @@ export function SaasDashboard() {
               usage={profile?.usage_count_today || 0}
               limit={planConfig.usageLimit}
               onUpgrade={() => router.push("/pricing")}
+            />
+            <SubscriptionCard
+              plan={planConfig}
+              subscription={subscription}
+              usage={profile?.usage_count_today || 0}
+              usageLimit={planConfig.usageLimit}
+              export3d={profile?.export3d_count_today || 0}
+              export3dLimit={planConfig.export3dLimit}
+              companyAccess={profile?.companyPlan === "empresarial"}
+              cancelling={subscriptionCancelling}
+              onCancel={() => { void cancelSubscription(); }}
             />
             <OnboardingChecklist
               emailConfirmed={Boolean(user.email_confirmed_at)}
