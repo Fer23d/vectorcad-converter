@@ -16,6 +16,8 @@ const MAX_PDF_PIXELS = 16_000_000;
 const IMAGE_LOAD_TIMEOUT_MS = 15_000;
 const COMPRESSION_TIMEOUT_MS = 15_000;
 
+type PdfRaster = { data: Uint8Array; width: number; height: number };
+
 function ascii(value: string) {
   return new TextEncoder().encode(value);
 }
@@ -133,6 +135,34 @@ function canvasForPdf(source: HTMLCanvasElement) {
   return resized;
 }
 
+function prepareTechnicalRaster(image: ImageData): PdfRaster {
+  const rgb = new Uint8Array(image.width * image.height * 3);
+  let darkPixels = 0;
+  let alphaPixels = 0;
+
+  for (let source = 0, target = 0; source < image.data.length; source += 4) {
+    const alpha = image.data[source + 3] / 255;
+    const red = Math.round(image.data[source] * alpha + 255 * (1 - alpha));
+    const green = Math.round(image.data[source + 1] * alpha + 255 * (1 - alpha));
+    const blue = Math.round(image.data[source + 2] * alpha + 255 * (1 - alpha));
+    const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    if (luminance < 128) darkPixels += 1;
+    if (alpha < 1) alphaPixels += 1;
+    rgb[target++] = red;
+    rgb[target++] = green;
+    rgb[target++] = blue;
+  }
+
+  // CAD previews can be thresholded with a dark background. Invert only when
+  // the raster is predominantly dark, preserving normal photos and scans.
+  const pixelCount = Math.max(1, image.width * image.height);
+  if (darkPixels / pixelCount > 0.55 && alphaPixels / pixelCount < 0.2) {
+    for (let index = 0; index < rgb.length; index += 1) rgb[index] = 255 - rgb[index];
+  }
+
+  return { data: rgb, width: image.width, height: image.height };
+}
+
 async function createPdfFromCanvas(source: HTMLCanvasElement, options: PdfOptions, onProgress?: (progress: PdfExportProgress) => void) {
   onProgress?.("preparing");
   const canvas = canvasForPdf(source);
@@ -140,15 +170,10 @@ async function createPdfFromCanvas(source: HTMLCanvasElement, options: PdfOption
   if (!context) throw new Error("PDF_CANVAS_UNAVAILABLE");
   onProgress?.("creating");
   const rgba = context.getImageData(0, 0, canvas.width, canvas.height);
-  const rgb = new Uint8Array(canvas.width * canvas.height * 3);
-  for (let source = 0, target = 0; source < rgba.data.length; source += 4) {
-    rgb[target++] = rgba.data[source];
-    rgb[target++] = rgba.data[source + 1];
-    rgb[target++] = rgba.data[source + 2];
-  }
-  const compressed = await deflate(rgb);
+  const raster = prepareTechnicalRaster(rgba);
+  const compressed = await deflate(raster.data);
   onProgress?.("finishing");
-  return new Blob([makePdf({ data: rgb, width: canvas.width, height: canvas.height }, options.pageSize, options.orientation, compressed)], { type: "application/pdf" });
+  return new Blob([makePdf(raster, options.pageSize, options.orientation, compressed)], { type: "application/pdf" });
 }
 
 /** Creates a single-page PDF directly from the processed canvas. */
