@@ -22,6 +22,7 @@ import { scaleDocument } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { routeDocumentGeometry } from "@/lib/exporters/export-entity-router";
+import { exportImageToPdf, type PdfOrientation, type PdfPageSize } from "@/lib/exporters/pdf";
 import { sanitizeSvg } from "@/lib/security/safe-svg";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData, EditorViewMode } from "@/types/project";
@@ -239,6 +240,10 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [eraserSize, setEraserSize] = useState(20);
   const [usageInfo, setUsageInfo] = useState<UsageInfo | null>(null);
   const [upgradeModal, setUpgradeModal] = useState("");
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+  const [pdfPageSize, setPdfPageSize] = useState<PdfPageSize>("A4");
+  const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>("portrait");
+  const [pdfExporting, setPdfExporting] = useState(false);
   const hydrating = useRef(true);
   const skipLocalSave = useRef(true);
   const documentRevisionRef = useRef(initialData?.documentRevision || 0);
@@ -937,6 +942,33 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
     link.remove();
     setMessage("Imagem tratada baixada com sucesso.");
   };
+  const handleExportPdf = async () => {
+    const imageDataUrl = aiEnhancedPreview || processedImage || processedPreview;
+    if (!imageDataUrl) {
+      setMessage("Processe uma imagem antes de exportar para PDF.");
+      return;
+    }
+    setPdfExporting(true);
+    setMessage("Gerando PDF com a imagem tratada...");
+    try {
+      const blob = await exportImageToPdf(imageDataUrl, { pageSize: pdfPageSize, orientation: pdfOrientation });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "vetorcad-export.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setPdfExportOpen(false);
+      setMessage("PDF exportado com sucesso.");
+    } catch (error) {
+      console.error("[vetorcad][export] pdf failed", { message: error instanceof Error ? error.message : "unknown_error" });
+      setMessage("Não foi possível gerar o PDF. Tente novamente com a imagem processada disponível.");
+    } finally {
+      setPdfExporting(false);
+    }
+  };
   const generate3d = async () => {
     if (!finalDoc || !svg) return setMessage("Vetorize uma imagem antes de gerar o modelo 3D.");
     const allowed = await consumeUsage("export3d");
@@ -1273,7 +1305,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
         </Section>
         <Section title="Resumo do vetor" icon={<Layers3 size={14} />}><Stat label="Caminhos" value={pathCount} /><Stat label="Pontos editáveis" value={pointCount} /><Stat label="Layer principal" value="CONTOURS" /><Stat label="Dimensão" value={`${realWidth} × ${realHeight} ${unit}`} /><Stat label="Redução CAD" value={`${cleanupStats.reductionPercent}%`} /><div className="mt-2 text-[9px] text-[#829087]">Antes: {cleanupStats.beforePoints} pontos · Depois: {cleanupStats.afterPoints} pontos · {cleanupStats.beforePaths} → {cleanupStats.afterPaths} caminhos</div></Section>
         <div className="mt-5 rounded-xl border border-[#38483f] bg-[#151e19] p-3 text-[10px] leading-5 text-[#aab7b0]"><b className="text-[#b7f34a]">Contornos contínuos</b><br />O DXF usa LWPOLYLINEs editáveis, suavizadas e organizadas em layers.</div>
-        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
+        <div className="mt-5 grid gap-2"><button onClick={() => exportFile("dxf")} className="flex items-center justify-center gap-2 rounded-lg bg-[#b7f34a] py-3 text-xs font-black text-[#0a120c]"><Download size={15} /> Exportar DXF</button><button onClick={() => exportFile("svg")} className="flex items-center justify-center gap-2 rounded-lg bg-white py-3 text-xs font-black text-[#111713]"><Download size={15} /> Exportar SVG</button><button onClick={exportPng} className="flex items-center justify-center gap-2 rounded-lg border border-[#3c4943] py-2.5 text-xs font-bold"><FileImage size={14} /> PNG preview</button><button type="button" onClick={handleDownloadImage} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-bold text-[#b7f34a] transition hover:bg-[#b7f34a] hover:text-[#0a120c]"><FileImage size={14} /> Baixar Imagem Tratada</button><button type="button" onClick={() => setPdfExportOpen(true)} className="flex items-center justify-center gap-2 rounded-lg border border-[#54a9ff]/60 bg-[#111b25] py-2.5 text-xs font-bold text-[#8cc7ff] transition hover:border-[#8cc7ff] hover:bg-[#17283a]"><Download size={14} /> Exportar PDF</button><button onClick={generate3d} className="flex items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><Box size={14} /> Gerar modelo 3D</button></div>
         {show3d && <div className="relative mt-2"><button type="button" onClick={() => setShow3dOptions((value) => !value)} className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#b7f34a]/60 bg-[#182019] py-2.5 text-xs font-black text-[#b7f34a]"><ExternalLink size={14} /> Visualizar 3D</button>{show3dOptions && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-[#3b4d40] bg-[#101813] p-2 shadow-2xl shadow-black/50"><button type="button" onClick={() => { setViewMode("split-3d"); setShow3dOptions(false); }} className="w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D nesta tela</button>{canOpenStandalone3d ? <a href={`/projetos/${encodeURIComponent(projectId || "")}/3d`} target="_blank" rel="noopener noreferrer" onClick={() => console.info("[vetorcad][3D] opening persisted project", { projectId, persistenceStatus, projectVersion, savedProjectVersion, pathCount: finalDoc?.paths.length || 0, entityCount: finalDoc?.entities?.length || 0, architectureCount: finalDoc?.architectureEntities?.length || 0, topologyCount: finalDoc?.topology?.length || 0, coordinateSystemId: finalDoc?.coordinateSystem?.id || null })} className="mt-1 block w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</a> : <button type="button" onClick={() => setMessage(standalone3dBlockedMessage)} className="mt-1 w-full rounded-lg px-3 py-2 text-left text-[11px] font-bold text-[#dce8e1] transition hover:bg-[#243327] hover:text-[#b7f34a]">Abrir visualizador 3D em nova guia</button>}</div>}</div>}
       </aside>
     </section>}
@@ -1300,6 +1332,13 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
           <button type="button" onClick={() => setUpgradeModal("")} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a]">Agora não</button>
           <a href="/pricing" className="rounded-xl bg-[#b7f34a] px-4 py-3 text-xs font-black text-[#09120d] transition hover:brightness-105">Fazer upgrade</a>
         </div>
+      </div>
+    </div>}
+    {pdfExportOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl border border-[#54a9ff]/50 bg-[#101613] p-6 text-[#e8efeb] shadow-2xl shadow-black/50">
+        <div className="flex items-start justify-between gap-4"><div><div className="text-xs font-black uppercase tracking-[.18em] text-[#8cc7ff]">Exportação</div><h3 className="mt-2 text-2xl font-black">Exportar PDF</h3><p className="mt-2 text-sm leading-6 text-[#9caaa3]">A imagem tratada será centralizada e ajustada sem distorção.</p></div><button type="button" onClick={() => setPdfExportOpen(false)} className="rounded-lg px-2 text-xl text-[#829087] hover:text-white" aria-label="Fechar exportação PDF">×</button></div>
+        <div className="mt-6 grid gap-4"><label className="text-xs font-bold text-[#aab8b1]">Formato da página<select value={pdfPageSize} onChange={event => setPdfPageSize(event.target.value as PdfPageSize)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-3 py-3 text-sm text-[#e8efeb]"><option value="A4">A4 · 210 × 297 mm</option><option value="A3">A3 · 297 × 420 mm</option><option value="A2">A2 · 420 × 594 mm</option><option value="A1">A1 · 594 × 841 mm</option><option value="A0">A0 · 841 × 1189 mm</option></select></label><div><div className="text-xs font-bold text-[#aab8b1]">Orientação</div><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPdfOrientation("portrait")} className={`rounded-xl border px-3 py-3 text-xs font-black ${pdfOrientation === "portrait" ? "border-[#54a9ff] bg-[#17283a] text-[#8cc7ff]" : "border-[#34423c] text-[#9caaa3]"}`}>Retrato</button><button type="button" onClick={() => setPdfOrientation("landscape")} className={`rounded-xl border px-3 py-3 text-xs font-black ${pdfOrientation === "landscape" ? "border-[#54a9ff] bg-[#17283a] text-[#8cc7ff]" : "border-[#34423c] text-[#9caaa3]"}`}>Paisagem</button></div></div></div>
+        <div className="mt-6 flex gap-2"><button type="button" onClick={() => setPdfExportOpen(false)} disabled={pdfExporting} className="flex-1 rounded-xl border border-[#34423c] px-4 py-3 text-xs font-black text-[#d6e0da] disabled:opacity-50">Cancelar</button><button type="button" onClick={() => { void handleExportPdf(); }} disabled={pdfExporting} className="flex-1 rounded-xl bg-[#54a9ff] px-4 py-3 text-xs font-black text-[#07101a] disabled:cursor-wait disabled:opacity-60">{pdfExporting ? "Gerando..." : "Gerar PDF"}</button></div>
       </div>
     </div>}
   </main>;
