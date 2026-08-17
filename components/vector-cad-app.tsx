@@ -22,7 +22,7 @@ import { scaleDocument } from "@/lib/vectorize/contours";
 import { generateSvg } from "@/lib/exporters/svg";
 import { countDxfEntities, generateDxf } from "@/lib/exporters/dxf";
 import { routeDocumentGeometry } from "@/lib/exporters/export-entity-router";
-import { exportImageToPdf, type PdfOrientation, type PdfPageSize } from "@/lib/exporters/pdf";
+import { exportCanvasToPdf, exportImageToPdf, type PdfExportProgress, type PdfOrientation, type PdfPageSize } from "@/lib/exporters/pdf";
 import { sanitizeSvg } from "@/lib/security/safe-svg";
 import type { DetectedText, ImageQuality, LineProcessingMode, OutputMode, ProcessingSettings, Unit, VectorDocument, VectorMode, VectorSettings } from "@/types/vector";
 import type { CadProjectData, EditorViewMode } from "@/types/project";
@@ -244,6 +244,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
   const [pdfPageSize, setPdfPageSize] = useState<PdfPageSize>("A4");
   const [pdfOrientation, setPdfOrientation] = useState<PdfOrientation>("portrait");
   const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfExportStage, setPdfExportStage] = useState<PdfExportProgress | null>(null);
   const hydrating = useRef(true);
   const skipLocalSave = useRef(true);
   const documentRevisionRef = useRef(initialData?.documentRevision || 0);
@@ -949,9 +950,19 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       return;
     }
     setPdfExporting(true);
-    setMessage("Gerando PDF com a imagem tratada...");
+    setPdfExportStage("preparing");
+    setMessage("Preparando imagem...");
     try {
-      const blob = await exportImageToPdf(imageDataUrl, { pageSize: pdfPageSize, orientation: pdfOrientation });
+      const canvas = processedCanvas.current;
+      const blob = canvas && canvas.width > 0 && canvas.height > 0
+        ? await exportCanvasToPdf(canvas, { pageSize: pdfPageSize, orientation: pdfOrientation }, stage => {
+          setPdfExportStage(stage);
+          setMessage(stage === "preparing" ? "Preparando imagem..." : stage === "creating" ? "Criando PDF..." : "Finalizando arquivo...");
+        })
+        : await exportImageToPdf(imageDataUrl, { pageSize: pdfPageSize, orientation: pdfOrientation }, stage => {
+          setPdfExportStage(stage);
+          setMessage(stage === "preparing" ? "Preparando imagem..." : stage === "creating" ? "Criando PDF..." : "Finalizando arquivo...");
+        });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -967,6 +978,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       setMessage("Não foi possível gerar o PDF. Tente novamente com a imagem processada disponível.");
     } finally {
       setPdfExporting(false);
+      setPdfExportStage(null);
     }
   };
   const generate3d = async () => {
@@ -1338,7 +1350,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       <div className="w-full max-w-md rounded-3xl border border-[#54a9ff]/50 bg-[#101613] p-6 text-[#e8efeb] shadow-2xl shadow-black/50">
         <div className="flex items-start justify-between gap-4"><div><div className="text-xs font-black uppercase tracking-[.18em] text-[#8cc7ff]">Exportação</div><h3 className="mt-2 text-2xl font-black">Exportar PDF</h3><p className="mt-2 text-sm leading-6 text-[#9caaa3]">A imagem tratada será centralizada e ajustada sem distorção.</p></div><button type="button" onClick={() => setPdfExportOpen(false)} className="rounded-lg px-2 text-xl text-[#829087] hover:text-white" aria-label="Fechar exportação PDF">×</button></div>
         <div className="mt-6 grid gap-4"><label className="text-xs font-bold text-[#aab8b1]">Formato da página<select value={pdfPageSize} onChange={event => setPdfPageSize(event.target.value as PdfPageSize)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-3 py-3 text-sm text-[#e8efeb]"><option value="A4">A4 · 210 × 297 mm</option><option value="A3">A3 · 297 × 420 mm</option><option value="A2">A2 · 420 × 594 mm</option><option value="A1">A1 · 594 × 841 mm</option><option value="A0">A0 · 841 × 1189 mm</option></select></label><div><div className="text-xs font-bold text-[#aab8b1]">Orientação</div><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => setPdfOrientation("portrait")} className={`rounded-xl border px-3 py-3 text-xs font-black ${pdfOrientation === "portrait" ? "border-[#54a9ff] bg-[#17283a] text-[#8cc7ff]" : "border-[#34423c] text-[#9caaa3]"}`}>Retrato</button><button type="button" onClick={() => setPdfOrientation("landscape")} className={`rounded-xl border px-3 py-3 text-xs font-black ${pdfOrientation === "landscape" ? "border-[#54a9ff] bg-[#17283a] text-[#8cc7ff]" : "border-[#34423c] text-[#9caaa3]"}`}>Paisagem</button></div></div></div>
-        <div className="mt-6 flex gap-2"><button type="button" onClick={() => setPdfExportOpen(false)} disabled={pdfExporting} className="flex-1 rounded-xl border border-[#34423c] px-4 py-3 text-xs font-black text-[#d6e0da] disabled:opacity-50">Cancelar</button><button type="button" onClick={() => { void handleExportPdf(); }} disabled={pdfExporting} className="flex-1 rounded-xl bg-[#54a9ff] px-4 py-3 text-xs font-black text-[#07101a] disabled:cursor-wait disabled:opacity-60">{pdfExporting ? "Gerando..." : "Gerar PDF"}</button></div>
+        <div className="mt-6 flex gap-2"><button type="button" onClick={() => setPdfExportOpen(false)} disabled={pdfExporting} className="flex-1 rounded-xl border border-[#34423c] px-4 py-3 text-xs font-black text-[#d6e0da] disabled:opacity-50">Cancelar</button><button type="button" onClick={() => { void handleExportPdf(); }} disabled={pdfExporting} className="flex-1 rounded-xl bg-[#54a9ff] px-4 py-3 text-xs font-black text-[#07101a] disabled:cursor-wait disabled:opacity-60">{pdfExporting ? pdfExportStage === "preparing" ? "Preparando..." : pdfExportStage === "creating" ? "Criando PDF..." : "Finalizando..." : "Gerar PDF"}</button></div>
       </div>
     </div>}
   </main>;

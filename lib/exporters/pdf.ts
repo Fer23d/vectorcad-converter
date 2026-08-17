@@ -10,6 +10,11 @@ const PAGE_SIZES_MM: Record<PdfPageSize, [number, number]> = {
 };
 
 type PdfOptions = { pageSize: PdfPageSize; orientation: PdfOrientation };
+export type PdfExportProgress = "preparing" | "creating" | "finishing";
+
+const MAX_PDF_PIXELS = 16_000_000;
+const IMAGE_LOAD_TIMEOUT_MS = 15_000;
+const COMPRESSION_TIMEOUT_MS = 15_000;
 
 function ascii(value: string) {
   return new TextEncoder().encode(value);
@@ -28,11 +33,21 @@ function concatBytes(...parts: Uint8Array[]) {
 
 async function deflate(data: Uint8Array) {
   if (typeof CompressionStream === "undefined") return null;
-  const stream = new CompressionStream("deflate");
-  const writer = stream.writable.getWriter();
-  await writer.write(data as unknown as ArrayBuffer);
-  await writer.close();
-  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  try {
+    const stream = new CompressionStream("deflate");
+    const writer = stream.writable.getWriter();
+    const result = await Promise.race([
+      (async () => {
+        await writer.write(data as unknown as ArrayBuffer);
+        await writer.close();
+        return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+      })(),
+      new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("PDF_COMPRESSION_TIMEOUT")), COMPRESSION_TIMEOUT_MS)),
+    ]);
+    return result;
+  } catch {
+    return null;
+  }
 }
 
 function makePdf(imageData: { data: Uint8Array; width: number; height: number }, pageSize: PdfPageSize, orientation: PdfOrientation, compressed: Uint8Array | null) {
@@ -82,23 +97,48 @@ function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("PDF_IMAGE_UNAVAILABLE"));
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("PDF_IMAGE_TIMEOUT"));
+    }, IMAGE_LOAD_TIMEOUT_MS);
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      image.onload = null;
+      image.onerror = null;
+    };
+    image.onload = () => {
+      cleanup();
+      resolve(image);
+    };
+    image.onerror = () => {
+      cleanup();
+      reject(new Error("PDF_IMAGE_UNAVAILABLE"));
+    };
     image.src = src;
   });
 }
 
-/** Creates a single-page PDF from the current raster image without changing its processing resolution. */
-export async function exportImageToPdf(imageSource: string, options: PdfOptions) {
-  const image = await loadImage(imageSource);
-  const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth || image.width;
-  canvas.height = image.naturalHeight || image.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
+function canvasForPdf(source: HTMLCanvasElement) {
+  const pixels = source.width * source.height;
+  if (pixels <= MAX_PDF_PIXELS) return source;
+  const scale = Math.sqrt(MAX_PDF_PIXELS / pixels);
+  const resized = document.createElement("canvas");
+  resized.width = Math.max(1, Math.floor(source.width * scale));
+  resized.height = Math.max(1, Math.floor(source.height * scale));
+  const context = resized.getContext("2d");
   if (!context) throw new Error("PDF_CANVAS_UNAVAILABLE");
   context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0);
+  context.fillRect(0, 0, resized.width, resized.height);
+  context.drawImage(source, 0, 0, resized.width, resized.height);
+  return resized;
+}
+
+async function createPdfFromCanvas(source: HTMLCanvasElement, options: PdfOptions, onProgress?: (progress: PdfExportProgress) => void) {
+  onProgress?.("preparing");
+  const canvas = canvasForPdf(source);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("PDF_CANVAS_UNAVAILABLE");
+  onProgress?.("creating");
   const rgba = context.getImageData(0, 0, canvas.width, canvas.height);
   const rgb = new Uint8Array(canvas.width * canvas.height * 3);
   for (let source = 0, target = 0; source < rgba.data.length; source += 4) {
@@ -107,5 +147,26 @@ export async function exportImageToPdf(imageSource: string, options: PdfOptions)
     rgb[target++] = rgba.data[source + 2];
   }
   const compressed = await deflate(rgb);
+  onProgress?.("finishing");
   return new Blob([makePdf({ data: rgb, width: canvas.width, height: canvas.height }, options.pageSize, options.orientation, compressed)], { type: "application/pdf" });
+}
+
+/** Creates a single-page PDF directly from the processed canvas. */
+export function exportCanvasToPdf(canvas: HTMLCanvasElement, options: PdfOptions, onProgress?: (progress: PdfExportProgress) => void) {
+  return createPdfFromCanvas(canvas, options, onProgress);
+}
+
+/** Fallback for callers that only have an image URL. */
+export async function exportImageToPdf(imageSource: string, options: PdfOptions, onProgress?: (progress: PdfExportProgress) => void) {
+  onProgress?.("preparing");
+  const image = await loadImage(imageSource);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("PDF_CANVAS_UNAVAILABLE");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0);
+  return createPdfFromCanvas(canvas, options, onProgress);
 }
