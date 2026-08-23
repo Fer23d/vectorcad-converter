@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { sendPasswordResetEmail } from "@/lib/resend";
 import { createSupabaseAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/server";
 import { consumeRateLimit, requestAddress } from "@/lib/security/rate-limit";
+import { secureLogger } from "@/lib/security/logger";
+import { recordSecurityEvent } from "@/lib/security/security-events";
 
 const PASSWORD_RESET_REDIRECT_TO = "https://vetorcad.com.br/reset-password";
+const GENERIC_RESET_MESSAGE = "Se esse e-mail estiver cadastrado, enviaremos um link de recuperação.";
+const RESET_RATE_LIMIT_MESSAGE = "Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.";
 
 function cleanEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -20,6 +25,10 @@ function maskEmail(email: string) {
   return `${name.slice(0, 2)}***@${domain || "***"}`;
 }
 
+function hashIdentifier(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function recoveryLinkSummary(actionLink: string) {
   try {
     const parsedUrl = new URL(actionLink);
@@ -29,7 +38,6 @@ function recoveryLinkSummary(actionLink: string) {
       generatedLinkHostname: parsedUrl.hostname,
       generatedLinkPathname: parsedUrl.pathname,
       redirectPathname: redirectUrl?.pathname || null,
-      redirectTo,
       linkType: parsedUrl.searchParams.get("type") || "recovery",
       hasToken: parsedUrl.searchParams.has("token"),
       hasTokenHash: parsedUrl.searchParams.has("token_hash"),
@@ -53,9 +61,19 @@ function recoveryLinkSummary(actionLink: string) {
   }
 }
 
+async function recordResetEvent(request: Request, email: string, success: boolean, reason: string) {
+  await recordSecurityEvent({
+    eventType: success ? "PASSWORD_RESET_REQUESTED" : "PASSWORD_RESET_FAILED",
+    success,
+    ip: requestAddress(request),
+    userAgent: request.headers.get("user-agent"),
+    metadata: { reason, emailHash: hashIdentifier(email) },
+  });
+}
+
 export async function POST(request: Request) {
   if (!isSupabaseAdminConfigured) {
-    console.error("[password-reset] Supabase admin is not configured", {
+    secureLogger.error("[password-reset] Supabase admin is not configured", {
       hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       hasSupabaseUrl: Boolean(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL),
     });
@@ -65,16 +83,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const email = cleanEmail(body.email);
   if (!email || !email.includes("@")) {
-    return NextResponse.json({ error: "Informe um email valido." }, { status: 400 });
+    await recordResetEvent(request, email || "invalid", false, "INVALID_INPUT");
+    return NextResponse.json({ ok: true, message: GENERIC_RESET_MESSAGE });
   }
 
-  const emailLimit = await consumeRateLimit(`password-reset:email:${email}`, 3, 60 * 60 * 1000);
-  const ipLimit = await consumeRateLimit(`password-reset:ip:${requestAddress(request)}`, 10, 60 * 60 * 1000);
-  if (!emailLimit.allowed || !ipLimit.allowed) return NextResponse.json({ error: "Muitas solicitações. Aguarde antes de tentar novamente." }, { status: 429 });
+  const emailLimit = await consumeRateLimit(`auth:password-reset:email:${encodeURIComponent(email)}`, 3, 60 * 60 * 1000, { failureMode: "closed" });
+  const ipLimit = await consumeRateLimit(`auth:password-reset:ip:${requestAddress(request)}`, 10, 60 * 60 * 1000, { failureMode: "closed" });
+  if (!emailLimit.allowed || !ipLimit.allowed) {
+    await recordResetEvent(request, email, false, !emailLimit.allowed ? "EMAIL_RATE_LIMIT" : "IP_RATE_LIMIT");
+    return NextResponse.json({ error: RESET_RATE_LIMIT_MESSAGE }, { status: 429 });
+  }
 
   const redirectTo = PASSWORD_RESET_REDIRECT_TO;
   const adminClient = createSupabaseAdminClient();
-  console.info("[password-reset] request received", { email: maskEmail(email), redirectTo });
+  secureLogger.info("[password-reset] request received", { email: maskEmail(email), redirectPathname: "/reset-password" });
 
   // Supabase resetPasswordForEmail sends through Supabase mailer. For Resend branding,
   // we generate the secure recovery link server-side and deliver it with Resend.
@@ -85,14 +107,15 @@ export async function POST(request: Request) {
   });
 
   if (error || !data.properties?.action_link) {
-    console.error("[password-reset] failed to generate Supabase recovery link", {
+    secureLogger.error("[password-reset] failed to generate Supabase recovery link", {
       email: maskEmail(email),
-      message: error?.message || "missing_action_link",
+      code: error?.code || "missing_action_link",
     });
-    return NextResponse.json({ error: error?.message || "Não foi possível gerar link de recuperação." }, { status: 500 });
+    await recordResetEvent(request, email, false, error?.code || "SUPABASE_RECOVERY_LINK_FAILED");
+    return NextResponse.json({ ok: true, message: GENERIC_RESET_MESSAGE });
   }
 
-  console.info("[password-reset] Supabase recovery link generated", recoveryLinkSummary(data.properties.action_link));
+  secureLogger.info("[password-reset] Supabase recovery link generated", recoveryLinkSummary(data.properties.action_link));
 
   try {
     await sendPasswordResetEmail({
@@ -101,13 +124,15 @@ export async function POST(request: Request) {
       resetUrl: data.properties.action_link,
     });
 
-    console.info("[password-reset] recovery email sent", { email: maskEmail(email) });
-    return NextResponse.json({ ok: true });
+    secureLogger.info("[password-reset] recovery email sent", { email: maskEmail(email) });
+    await recordResetEvent(request, email, true, "REQUEST_ACCEPTED");
+    return NextResponse.json({ ok: true, message: GENERIC_RESET_MESSAGE });
   } catch (sendError) {
-    console.error("[password-reset] failed to send Resend email", {
+    secureLogger.error("[password-reset] failed to send Resend email", {
       email: maskEmail(email),
-      message: sendError instanceof Error ? sendError.message : "unknown_error",
+      code: sendError instanceof Error ? sendError.name : "unknown_error",
     });
-    return NextResponse.json({ error: sendError instanceof Error ? sendError.message : "Não foi possível enviar e-mail." }, { status: 500 });
+    await recordResetEvent(request, email, false, "RESEND_SEND_FAILED");
+    return NextResponse.json({ ok: true, message: GENERIC_RESET_MESSAGE });
   }
 }

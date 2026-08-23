@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase/client";
 
 const RECOVERY_TIMEOUT_MS = 9000;
 const RECOVERY_LOG_PREFIX = "[password-recovery]";
+const MIN_PASSWORD_LENGTH = 8;
 
 function recoveryLog(message: string, details?: Record<string, unknown>) {
   if (process.env.NODE_ENV !== "production") {
@@ -43,7 +44,7 @@ function friendlyUpdateError(value?: string | null) {
   }
 
   if (lowerMessage.includes("password") || lowerMessage.includes("weak")) {
-    return "A senha não atende aos requisitos de segurança. Use pelo menos 6 caracteres e evite senhas muito simples.";
+    return "A senha não atende aos requisitos de segurança. Use pelo menos 8 caracteres e evite senhas muito simples.";
   }
 
   return message || "Não foi possível salvar a nova senha.";
@@ -135,6 +136,7 @@ export function ResetPasswordForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasRecoverySession, setHasRecoverySession] = useState(false);
+  const [changeBlockedUntil, setChangeBlockedUntil] = useState<number | null>(null);
   const [message, setMessage] = useState("Validando link de recuperação...");
 
   useEffect(() => {
@@ -261,17 +263,29 @@ export function ResetPasswordForm() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!changeBlockedUntil) return;
+    const timer = window.setTimeout(() => setChangeBlockedUntil(null), Math.max(0, changeBlockedUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [changeBlockedUntil]);
+
   const canSubmit = useMemo(() => {
-    return hasRecoverySession && !loading && !saving && password.length >= 6 && password === confirmPassword;
-  }, [confirmPassword, hasRecoverySession, loading, password, saving]);
+    const blocked = Boolean(changeBlockedUntil);
+    return hasRecoverySession && !loading && !saving && !blocked && password.length >= MIN_PASSWORD_LENGTH && password === confirmPassword;
+  }, [changeBlockedUntil, confirmPassword, hasRecoverySession, loading, password, saving]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const client = supabase;
     if (!client) return;
 
-    if (password.length < 6) {
-      setMessage("A nova senha precisa ter pelo menos 6 caracteres.");
+    if (changeBlockedUntil && changeBlockedUntil > Date.now()) {
+      setMessage("Muitas tentativas de alteração de senha. Aguarde alguns minutos antes de tentar novamente.");
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setMessage("A nova senha precisa ter pelo menos 8 caracteres.");
       return;
     }
 
@@ -289,15 +303,30 @@ export function ResetPasswordForm() {
       return;
     }
 
-    const { error } = await client.auth.updateUser({ password });
+    const response = await fetch("/api/auth/password-change", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password, confirmPassword }),
+    });
+    const payload = await response.json().catch(() => ({}));
     setSaving(false);
 
-    if (error) {
-      setMessage(friendlyUpdateError(error.message));
+    if (!response.ok) {
+      if (response.status === 429) {
+        setChangeBlockedUntil(Date.now() + 10 * 60 * 1000);
+      }
+      setMessage(friendlyUpdateError(payload.error));
       return;
     }
 
     await client.auth.signOut();
+    setPassword("");
+    setConfirmPassword("");
+    setHasRecoverySession(false);
+    setChangeBlockedUntil(null);
     setMessage("Senha atualizada com sucesso. Redirecionando para login...");
     setTimeout(() => router.replace("/login"), 900);
   };
@@ -322,7 +351,7 @@ export function ResetPasswordForm() {
 
         <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Nova senha
           <div className="relative mt-2">
-            <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} type={showPassword ? "text" : "password"} placeholder="Digite a nova senha" required minLength={6} disabled={loading || !hasRecoverySession} />
+            <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} type={showPassword ? "text" : "password"} placeholder="Digite a nova senha" required minLength={MIN_PASSWORD_LENGTH} disabled={loading || !hasRecoverySession} />
             <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-[#8d9a93] transition hover:bg-[#17221c] hover:text-[#b7f34a]">
               {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
@@ -330,7 +359,7 @@ export function ResetPasswordForm() {
         </label>
 
         <label className="mb-5 block text-xs font-bold text-[#aab8b1]">Confirmar senha
-          <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20" type={showPassword ? "text" : "password"} placeholder="Repita a nova senha" required minLength={6} disabled={loading || !hasRecoverySession} />
+          <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="mt-2 w-full rounded-xl border border-[#34423c] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none transition placeholder:text-[#56645d] focus:border-[#b7f34a] focus:ring-2 focus:ring-[#b7f34a]/20" type={showPassword ? "text" : "password"} placeholder="Repita a nova senha" required minLength={MIN_PASSWORD_LENGTH} disabled={loading || !hasRecoverySession} />
         </label>
 
         <button disabled={!canSubmit} className="w-full rounded-xl bg-[#b7f34a] py-3.5 text-sm font-black text-[#09120d] shadow-lg shadow-[#b7f34a]/10 transition hover:brightness-105 disabled:opacity-60">
