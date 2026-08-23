@@ -691,6 +691,14 @@ export function SaasDashboard() {
 
   const signOut = async () => {
     if (!supabase) return;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (accessToken) {
+      await fetch("/api/auth/session", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }).catch(() => undefined);
+    }
     await supabase.auth.signOut();
     setUser(null);
     setActiveProject(null);

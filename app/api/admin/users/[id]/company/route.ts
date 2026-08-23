@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeCompany, planHasPremiumAccess } from "@/lib/access-control";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminWithMFA } from "@/lib/admin-auth";
 import { getUserEffectivePlan } from "@/lib/effective-plan";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { secureLogger } from "@/lib/security/logger";
@@ -38,7 +38,7 @@ async function upsertPublicUserCompany(adminClient: ReturnType<typeof createSupa
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const adminAuth = await requireAdmin(request);
+  const adminAuth = await requireAdminWithMFA(request);
   if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeCompany, normalizeCompanyPlan } from "@/lib/access-control";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminWithMFA } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 import { secureLogger } from "@/lib/security/logger";
 
@@ -16,7 +16,7 @@ function isMissingCompaniesTable(error: { code?: string; message?: string }) {
 
 export async function POST(request: Request) {
   try {
-    const adminAuth = await requireAdmin(request);
+    const adminAuth = await requireAdminWithMFA(request);
     if ("response" in adminAuth) return adminAuth.response;
 
     const body = await request.json().catch(() => ({}));

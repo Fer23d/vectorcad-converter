@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeCompanyPlan } from "@/lib/access-control";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminWithMFA } from "@/lib/admin-auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 function isUuid(value: string) {
@@ -13,7 +13,7 @@ async function logAdminAction(adminClient: ReturnType<typeof createSupabaseAdmin
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const adminAuth = await requireAdmin(request);
+  const adminAuth = await requireAdminWithMFA(request);
   if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;
@@ -42,7 +42,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const adminAuth = await requireAdmin(request);
+  const adminAuth = await requireAdminWithMFA(request);
   if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;

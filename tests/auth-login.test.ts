@@ -6,9 +6,11 @@ const recordSecurityEvent = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   isSupabaseServerConfigured: true,
+  isSupabaseAdminConfigured: false,
   createSupabaseAuthServerClient: () => ({
     auth: { signInWithPassword },
   }),
+  createSupabaseAdminClient: vi.fn(),
 }));
 
 vi.mock("@/lib/security/rate-limit", () => ({

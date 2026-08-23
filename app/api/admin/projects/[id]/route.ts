@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdminWithMFA } from "@/lib/admin-auth";
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const adminAuth = await requireAdmin(request);
+  const adminAuth = await requireAdminWithMFA(request);
   if ("response" in adminAuth) return adminAuth.response;
 
   const { id } = await params;

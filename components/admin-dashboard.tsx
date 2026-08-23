@@ -185,6 +185,23 @@ export function AdminDashboard() {
       }
 
       setAdminToken(session.access_token);
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: session.access_token }),
+      }).catch(() => undefined);
+
+      const mfaResponse = await fetch("/api/auth/mfa/status", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (mfaResponse.ok) {
+        const mfaPayload = await mfaResponse.json().catch(() => ({}));
+        if (!mfaPayload.mfaSatisfied) {
+          router.replace("/mfa/setup");
+          return;
+        }
+      }
+
       const response = await fetch("/api/admin/overview", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });

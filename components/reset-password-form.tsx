@@ -322,6 +322,10 @@ export function ResetPasswordForm() {
       return;
     }
 
+    await fetch("/api/auth/session", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+    }).catch(() => undefined);
     await client.auth.signOut();
     setPassword("");
     setConfirmPassword("");

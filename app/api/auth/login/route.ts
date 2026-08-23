@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { normalizeEmail } from "@/lib/auth/email-domain";
+import { getUserRole, isAdminRole } from "@/lib/admin";
 import { consumeRateLimit, requestAddress, type RateLimitDecision } from "@/lib/security/rate-limit";
 import { recordSecurityEvent } from "@/lib/security/security-events";
-import { createSupabaseAuthServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 const GENERIC_LOGIN_ERROR = "Não foi possível entrar. Verifique os dados e tente novamente.";
 const LOCKED_LOGIN_ERROR = "Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente.";
@@ -94,6 +95,44 @@ function loginBlocked(decisions: RateLimitDecision[]) {
   return decisions.find((decision) => !decision.allowed);
 }
 
+async function adminMfaRequirement(userId: string, authClient: ReturnType<typeof createSupabaseAuthServerClient>) {
+  if (!isSupabaseAdminConfigured) return { isAdmin: false, required: false };
+  const adminClient = createSupabaseAdminClient();
+  const { data: roleRow } = await adminClient.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
+  const role = getUserRole(roleRow?.role);
+  if (!isAdminRole(role)) return { isAdmin: false, required: false };
+
+  const [aalResult, factorResult] = await Promise.all([
+    authClient.auth.mfa.getAuthenticatorAssuranceLevel(),
+    authClient.auth.mfa.listFactors(),
+  ]);
+  const verifiedFactors = (factorResult.data?.all || []).filter((factor) => factor.factor_type === "totp" && factor.status === "verified").length;
+  const currentLevel = aalResult.data?.currentLevel || "aal1";
+  const required = currentLevel !== "aal2";
+
+  if (required) {
+    await recordSecurityEvent({
+      eventType: "MFA_REQUIRED",
+      success: false,
+      userId,
+      metadata: {
+        reason: verifiedFactors > 0 ? "ADMIN_CHALLENGE_REQUIRED" : "ADMIN_SETUP_REQUIRED",
+        currentLevel,
+        nextLevel: aalResult.data?.nextLevel || null,
+        verifiedFactors,
+      },
+    });
+  }
+
+  return {
+    isAdmin: true,
+    required,
+    setupRequired: verifiedFactors === 0,
+    challengeRequired: verifiedFactors > 0 && required,
+    currentLevel,
+  };
+}
+
 export async function POST(request: Request) {
   if (!isSupabaseServerConfigured) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 500 });
@@ -157,6 +196,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     user: { id: data.user.id, email: data.user.email, email_confirmed_at: data.user.email_confirmed_at },
+    mfa: await adminMfaRequirement(data.user.id, authClient),
     session: {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,

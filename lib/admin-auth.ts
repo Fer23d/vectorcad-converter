@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole } from "@/lib/admin";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { recordSecurityEvent } from "@/lib/security/security-events";
 
 export { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole };
 
@@ -57,4 +58,85 @@ export async function requireAdmin(request: Request) {
     token,
     user,
   };
+}
+
+type AdminAuthContext = Exclude<Awaited<ReturnType<typeof requireAdmin>>, { response: NextResponse }>;
+
+function hasVerifiedTotpFactor(factors: unknown) {
+  if (!Array.isArray(factors)) return false;
+  return factors.some((factor) => {
+    if (!factor || typeof factor !== "object") return false;
+    const row = factor as { factor_type?: unknown; status?: unknown };
+    return row.factor_type === "totp" && row.status === "verified";
+  });
+}
+
+async function hasAnyAdminWithVerifiedMfa(adminClient: AdminAuthContext["adminClient"]) {
+  const { data: roleRows, error: roleError } = await adminClient
+    .from("user_roles")
+    .select("user_id,role")
+    .eq("role", ADMIN_ROLES.ADMIN);
+
+  if (roleError) {
+    return { ok: false, error: roleError.message, hasAdminWithMfa: false };
+  }
+
+  for (const row of roleRows || []) {
+    if (!row.user_id) continue;
+    const { data, error } = await adminClient.auth.admin.mfa.listFactors({ userId: row.user_id });
+    if (error) return { ok: false, error: error.message, hasAdminWithMfa: false };
+    if (hasVerifiedTotpFactor(data?.factors)) {
+      return { ok: true, hasAdminWithMfa: true };
+    }
+  }
+
+  return { ok: true, hasAdminWithMfa: false };
+}
+
+export async function requireAdminWithMFA(request: Request) {
+  const adminAuth = await requireAdmin(request);
+  if ("response" in adminAuth) return adminAuth;
+
+  const bootstrap = await hasAnyAdminWithVerifiedMfa(adminAuth.adminClient);
+  if (!bootstrap.ok) {
+    return { response: NextResponse.json({ error: "Não foi possível validar a configuração MFA administrativa." }, { status: 500 }) };
+  }
+
+  if (!bootstrap.hasAdminWithMfa) {
+    await recordSecurityEvent({
+      eventType: "MFA_REQUIRED",
+      success: false,
+      userId: adminAuth.user.id,
+      metadata: { reason: "ADMIN_MFA_BOOTSTRAP_REQUIRED" },
+    });
+    return {
+      response: NextResponse.json({
+        error: "Configure MFA antes de executar operações administrativas críticas.",
+        code: "MFA_BOOTSTRAP_REQUIRED",
+      }, { status: 403 }),
+    };
+  }
+
+  const authClient = createSupabaseAuthServerClient(adminAuth.token);
+  const { data, error } = await authClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || data.currentLevel !== "aal2") {
+    await recordSecurityEvent({
+      eventType: "MFA_REQUIRED",
+      success: false,
+      userId: adminAuth.user.id,
+      metadata: {
+        reason: error ? "AAL_LOOKUP_FAILED" : "AAL2_REQUIRED",
+        currentLevel: data?.currentLevel || null,
+        nextLevel: data?.nextLevel || null,
+      },
+    });
+    return {
+      response: NextResponse.json({
+        error: "Confirme o MFA para executar esta ação administrativa.",
+        code: "MFA_REQUIRED",
+      }, { status: 403 }),
+    };
+  }
+
+  return adminAuth;
 }

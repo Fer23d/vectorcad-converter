@@ -153,6 +153,16 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       return;
     }
 
+    const bridgeResponse = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: payload.session.access_token }),
+    });
+    if (!bridgeResponse.ok) {
+      setMessage("Sessão validada, mas não foi possível proteger a navegação. Tente novamente.");
+      return;
+    }
+
     if (!payload.user?.email_confirmed_at) {
       storePendingVerification(normalizedEmail);
       router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
@@ -160,6 +170,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     }
 
     setMessage("Login realizado.");
+    if (payload.mfa?.required) {
+      router.replace("/mfa/setup");
+      return;
+    }
     router.replace("/dashboard");
   };
 
