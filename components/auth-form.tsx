@@ -119,21 +119,41 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       return;
     }
 
-    const { data, error } = await client.auth.signInWithPassword({ email: normalizedEmail, password });
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail, password }),
+    });
+    const payload = await response.json().catch(() => ({}));
     setLoading(false);
 
-    if (error) {
-      if (error.message.toLowerCase().includes("email not confirmed")) {
+    if (!response.ok) {
+      if (payload.code === "EMAIL_NOT_CONFIRMED") {
         storePendingVerification(normalizedEmail);
         router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
         return;
       }
 
-      setMessage(authMessage(error.message));
+      setMessage(authMessage(payload.error || "Não foi possível entrar. Verifique os dados e tente novamente."));
       return;
     }
 
-    if (!data.user?.email_confirmed_at) {
+    if (!payload.session?.access_token || !payload.session?.refresh_token) {
+      setMessage("Não foi possível iniciar a sessão. Tente novamente.");
+      return;
+    }
+
+    const { error: sessionError } = await client.auth.setSession({
+      access_token: payload.session.access_token,
+      refresh_token: payload.session.refresh_token,
+    });
+
+    if (sessionError) {
+      setMessage(authMessage(sessionError.message));
+      return;
+    }
+
+    if (!payload.user?.email_confirmed_at) {
       storePendingVerification(normalizedEmail);
       router.replace(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`);
       return;
