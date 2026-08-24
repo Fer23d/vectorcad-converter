@@ -23,7 +23,11 @@ vi.mock("@/lib/security/security-events", () => ({
 }));
 
 function decision(allowed = true) {
-  return { allowed, remaining: allowed ? 1 : 0, retryAfterSeconds: allowed ? 0 : 60, backend: "shared", degraded: false };
+  return { allowed, remaining: allowed ? 1 : 0, retryAfterSeconds: allowed ? 0 : 60, backend: "shared", degraded: false, reason: allowed ? "RATE_LIMIT_OK" : "RATE_LIMIT_EXCEEDED" };
+}
+
+function unavailableDecision() {
+  return { allowed: false, remaining: 0, retryAfterSeconds: 60, backend: "unavailable", degraded: true, reason: "RATE_LIMIT_BACKEND_UNAVAILABLE", status: 502 };
 }
 
 function loginRequest(body: Record<string, unknown>) {
@@ -95,6 +99,18 @@ describe("auth login hardening endpoint", () => {
     expect(body.error).toBe("Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente.");
     expect(signInWithPassword).not.toHaveBeenCalled();
     expect(recordSecurityEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "ACCOUNT_LOCKED", success: false }));
+  });
+
+  it("returns a service error when the rate limit backend is unavailable", async () => {
+    consumeRateLimit.mockResolvedValueOnce(unavailableDecision()).mockResolvedValueOnce(decision(true));
+
+    const { response, body } = await postLogin({ email: "user@example.com", password: "valid-length" });
+
+    expect(response.status).toBe(503);
+    expect(body.code).toBe("RATE_LIMIT_BACKEND_UNAVAILABLE");
+    expect(body.error).toBe("Serviço de segurança temporariamente indisponível. Tente novamente em alguns minutos.");
+    expect(signInWithPassword).not.toHaveBeenCalled();
+    expect(recordSecurityEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "RATE_LIMIT_BACKEND_UNAVAILABLE", success: false }));
   });
 
   it("blocks abusive failed attempts by email", async () => {

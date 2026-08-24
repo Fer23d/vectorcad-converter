@@ -12,6 +12,7 @@ const originalEnvironment = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   if (originalEnvironment.nodeEnv === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = originalEnvironment.nodeEnv;
   if (originalEnvironment.redisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -65,7 +66,7 @@ describe("security event infrastructure", () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
-    expect(decision).toMatchObject({ allowed: false, backend: "unavailable", degraded: true });
+    expect(decision).toMatchObject({ allowed: false, backend: "unavailable", degraded: true, reason: "RATE_LIMIT_BACKEND_UNAVAILABLE" });
   });
 
   it("uses Redis when configured and returns a shared decision", async () => {
@@ -74,14 +75,53 @@ describe("security event infrastructure", () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([{ result: 1 }, { result: 1 }]), { status: 200 })));
     const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
-    expect(decision).toMatchObject({ allowed: true, backend: "shared", degraded: false });
+    expect(decision).toMatchObject({ allowed: true, backend: "shared", degraded: false, reason: "RATE_LIMIT_OK" });
+  });
+
+  it("accepts the wrapped Upstash pipeline response format", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example.invalid";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ result: [{ result: "2" }, { result: 1 }] }), { status: 200 })));
+    const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
+    expect(decision).toMatchObject({ allowed: true, backend: "shared", reason: "RATE_LIMIT_OK" });
+  });
+
+  it("distinguishes a real exceeded limit from backend failure", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example.invalid";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([{ result: 6 }, { result: 1 }]), { status: 200 })));
+    const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
+    expect(decision).toMatchObject({ allowed: false, backend: "shared", degraded: false, reason: "RATE_LIMIT_EXCEEDED" });
+  });
+
+  it("fails closed with backend unavailable for invalid Upstash payloads", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example.invalid";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ unexpected: true }), { status: 200 })));
+    const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
+    expect(decision).toMatchObject({ allowed: false, backend: "unavailable", degraded: true, reason: "RATE_LIMIT_BACKEND_UNAVAILABLE" });
+  });
+
+  it("fails closed with backend unavailable for Redis HTTP errors", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example.invalid";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "test-token";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("upstream error", { status: 502 })));
+    const decision = await consumeRateLimit(`auth-login:${Date.now()}`, 5, 60_000, { failureMode: "closed" });
+    expect(decision).toMatchObject({ allowed: false, backend: "unavailable", degraded: true, reason: "RATE_LIMIT_BACKEND_UNAVAILABLE", status: 502 });
   });
 
   it("keeps the event table private and service-role managed", () => {
     const sql = readFileSync(resolve(process.cwd(), "supabase/migrations/20260820120000_auth_security_events.sql"), "utf8");
+    const repairSql = readFileSync(resolve(process.cwd(), "supabase/migrations/20260823130000_auth_security_events_schema_cache.sql"), "utf8");
     expect(sql).toContain("alter table public.auth_security_events enable row level security");
     expect(sql).toContain("for insert to service_role");
     expect(sql).toContain("for select to service_role");
     expect(sql).not.toContain("to anon");
+    expect(repairSql).toContain("grant insert, select on public.auth_security_events to service_role");
+    expect(repairSql).toContain("notify pgrst, 'reload schema'");
   });
 });

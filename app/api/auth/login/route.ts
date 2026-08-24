@@ -8,6 +8,7 @@ import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAd
 
 const GENERIC_LOGIN_ERROR = "Não foi possível entrar. Verifique os dados e tente novamente.";
 const LOCKED_LOGIN_ERROR = "Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente.";
+const RATE_LIMIT_SERVICE_ERROR = "Serviço de segurança temporariamente indisponível. Tente novamente em alguns minutos.";
 const EMAIL_NOT_CONFIRMED_ERROR = "Confirme seu e-mail para acessar o VetorCAD.";
 
 const IP_ATTEMPT_LIMIT = 10;
@@ -92,7 +93,30 @@ async function hashIdentifier(value: string) {
 }
 
 function loginBlocked(decisions: RateLimitDecision[]) {
-  return decisions.find((decision) => !decision.allowed);
+  return decisions.find((decision) => !decision.allowed && decision.reason === "RATE_LIMIT_EXCEEDED");
+}
+
+function rateLimitUnavailable(decisions: RateLimitDecision[]) {
+  return decisions.find((decision) => !decision.allowed && decision.reason === "RATE_LIMIT_BACKEND_UNAVAILABLE");
+}
+
+async function rateLimitUnavailableResponse(request: Request, email: string, scope: string, decision: RateLimitDecision) {
+  await recordSecurityEvent({
+    eventType: "RATE_LIMIT_BACKEND_UNAVAILABLE",
+    success: false,
+    ip: requestAddress(request),
+    userAgent: request.headers.get("user-agent"),
+    metadata: {
+      scope,
+      backend: decision.backend,
+      status: decision.status || null,
+      emailHash: await hashIdentifier(email),
+    },
+  });
+  return NextResponse.json(
+    { error: RATE_LIMIT_SERVICE_ERROR, code: "RATE_LIMIT_BACKEND_UNAVAILABLE" },
+    { status: 503, headers: { "Retry-After": String(decision.retryAfterSeconds || 60) } },
+  );
 }
 
 async function adminMfaRequirement(userId: string, authClient: ReturnType<typeof createSupabaseAuthServerClient>) {
@@ -157,6 +181,11 @@ export async function POST(request: Request) {
 
   const ipLimit = await consumeRateLimit(keys.ip, IP_ATTEMPT_LIMIT, IP_ATTEMPT_WINDOW_MS, { failureMode: "closed" });
   const pairLimit = await consumeRateLimit(keys.pair, PAIR_ATTEMPT_LIMIT, PAIR_ATTEMPT_WINDOW_MS, { failureMode: "closed" });
+  const unavailableAttempt = rateLimitUnavailable([ipLimit, pairLimit]);
+  if (unavailableAttempt) {
+    return rateLimitUnavailableResponse(request, email, !ipLimit.allowed ? "IP_ATTEMPT" : "PAIR_ATTEMPT", unavailableAttempt);
+  }
+
   const blockedAttempt = loginBlocked([ipLimit, pairLimit]);
   if (blockedAttempt) {
     const target = !ipLimit.allowed ? "IP_LIMIT" : "PAIR_LIMIT";
@@ -170,6 +199,10 @@ export async function POST(request: Request) {
 
   if (error || !data.session || !data.user) {
     const emailLimit = await consumeRateLimit(keys.email, EMAIL_FAILURE_LIMIT, EMAIL_FAILURE_WINDOW_MS, { failureMode: "closed" });
+    if (!emailLimit.allowed && emailLimit.reason === "RATE_LIMIT_BACKEND_UNAVAILABLE") {
+      return rateLimitUnavailableResponse(request, email, "EMAIL_FAILURE", emailLimit);
+    }
+
     if (!emailLimit.allowed) {
       await createProgressiveLock(keys.emailLock, keys.emailOffense);
       await recordLoginFailure(request, email, "EMAIL_FAILURE_LIMIT", true);
