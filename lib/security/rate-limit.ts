@@ -13,6 +13,13 @@ export type RateLimitDecision = {
   status?: number;
 };
 
+type RateLimitDiagnostics = {
+  endpoint?: string;
+  responseType?: string;
+  responseBody?: unknown;
+  parserReason?: string;
+};
+
 const buckets = new Map<string, Bucket>();
 
 function consumeLocal(key: string, limit: number, windowMs: number): RateLimitDecision {
@@ -35,12 +42,51 @@ function rateLimitCategory(key: string) {
   return key.split(":")[0] || "unknown";
 }
 
-async function reportUnavailable(reason: string, key: string, status?: number) {
-  secureLogger.error("[rate-limit] shared backend unavailable", { category: rateLimitCategory(key), reason, backend: "upstash", status: status || null });
+function sanitizeResponseBody(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.length > 500 ? `[STRING:${value.length}] ${value.slice(0, 240)}` : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || value === null) return value;
+  if (Array.isArray(value)) return value.slice(0, 5).map((item) => sanitizeResponseBody(item));
+  if (!value || typeof value !== "object") return typeof value;
+  return Object.fromEntries(
+    Object.entries(value).slice(0, 12).map(([key, item]) => [
+      key,
+      /token|secret|password|authorization|email|ip|credential/i.test(key) ? "[REDACTED]" : sanitizeResponseBody(item),
+    ]),
+  );
+}
+
+function responseType(value: unknown) {
+  if (Array.isArray(value)) return "array";
+  if (value === null) return "null";
+  return typeof value;
+}
+
+async function reportUnavailable(reason: string, key: string, status?: number, diagnostics: RateLimitDiagnostics = {}) {
+  secureLogger.error("[rate-limit] shared backend unavailable", {
+    category: rateLimitCategory(key),
+    reason,
+    backend: "upstash",
+    status: status || null,
+    endpoint: diagnostics.endpoint || null,
+    responseType: diagnostics.responseType || null,
+    parserReason: diagnostics.parserReason || null,
+    responseBody: sanitizeResponseBody(diagnostics.responseBody),
+  });
   await recordSecurityEvent({
     eventType: "RATE_LIMIT_BACKEND_UNAVAILABLE",
     success: false,
-    metadata: { category: rateLimitCategory(key), reason, backend: "upstash", status: status || null, environment: process.env.NODE_ENV || "unknown" },
+    metadata: {
+      category: rateLimitCategory(key),
+      reason,
+      backend: "upstash",
+      status: status || null,
+      endpoint: diagnostics.endpoint || null,
+      responseType: diagnostics.responseType || null,
+      parserReason: diagnostics.parserReason || null,
+      environment: process.env.NODE_ENV || "unknown",
+    },
   });
 }
 
@@ -75,10 +121,22 @@ function upstashPipelineResults(value: unknown): Array<{ result?: unknown; error
 function parseIncrementResult(value: unknown) {
   const results = upstashPipelineResults(value);
   const first = results[0];
-  if (!first || first.error) throw new Error("RATE_LIMIT_STORE_INVALID");
+  if (!first) throw new Error("RATE_LIMIT_STORE_INVALID_EMPTY_PIPELINE");
+  if (first.error) throw new Error(`RATE_LIMIT_STORE_INVALID_PIPELINE_ERROR:${String(first.error).slice(0, 120)}`);
   const count = Number(first.result);
-  if (!Number.isFinite(count)) throw new Error("RATE_LIMIT_STORE_INVALID");
+  if (!Number.isFinite(count)) throw new Error(`RATE_LIMIT_STORE_INVALID_COUNT:${typeof first.result}`);
   return count;
+}
+
+function parseJsonResponse(text: string) {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    const error = new Error("RATE_LIMIT_STORE_INVALID_JSON") as Error & { responseBody?: string; responseType?: string };
+    error.responseBody = text;
+    error.responseType = "text";
+    throw error;
+  }
 }
 
 /** Uses Upstash Redis in production. The local fallback is development-only. */
@@ -98,24 +156,55 @@ export async function consumeRateLimit(key: string, limit: number, windowMs: num
     }
     return consumeLocal(key, limit, windowMs);
   }
+  const endpoint = `${config.url}/pipeline`;
   try {
-    const response = await fetch(`${config.url}/pipeline`, {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
       body: JSON.stringify([["INCR", key], ["PEXPIRE", key, windowMs, "NX"]]),
       cache: "no-store",
     });
-    if (!response.ok) {
-      const error = new Error("RATE_LIMIT_STORE_UNAVAILABLE") as Error & { status?: number };
-      error.status = response.status;
+    const responseText = await response.text();
+    let parsedBody: unknown;
+    try {
+      parsedBody = parseJsonResponse(responseText);
+    } catch (error) {
+      if (error && typeof error === "object") {
+        (error as RateLimitDiagnostics).endpoint = endpoint;
+        (error as Error & { status?: number }).status = response.status;
+      }
       throw error;
     }
-    const count = parseIncrementResult(await response.json());
+    if (!response.ok) {
+      const error = new Error("RATE_LIMIT_STORE_UNAVAILABLE") as Error & RateLimitDiagnostics & { status?: number };
+      error.status = response.status;
+      error.endpoint = endpoint;
+      error.responseType = responseType(parsedBody);
+      error.responseBody = parsedBody;
+      throw error;
+    }
+    let count: number;
+    try {
+      count = parseIncrementResult(parsedBody);
+    } catch (error) {
+      if (error && typeof error === "object") {
+        (error as RateLimitDiagnostics).endpoint = endpoint;
+        (error as RateLimitDiagnostics).responseType = responseType(parsedBody);
+        (error as RateLimitDiagnostics).responseBody = parsedBody;
+      }
+      throw error;
+    }
     const allowed = count <= limit;
     return { allowed, remaining: Math.max(0, limit - count), retryAfterSeconds: allowed ? 0 : Math.ceil(windowMs / 1000), backend: "shared", degraded: false, reason: allowed ? "RATE_LIMIT_OK" : "RATE_LIMIT_EXCEEDED" };
   } catch (error) {
     const status = error instanceof Error && "status" in error ? Number((error as { status?: unknown }).status) : undefined;
-    await reportUnavailable(error instanceof Error ? error.message : "RATE_LIMIT_STORE_UNAVAILABLE", key, Number.isFinite(status) ? status : undefined);
+    const diagnostics = error && typeof error === "object" ? error as RateLimitDiagnostics : {};
+    await reportUnavailable(error instanceof Error ? error.message : "RATE_LIMIT_STORE_UNAVAILABLE", key, Number.isFinite(status) ? status : undefined, {
+      endpoint: diagnostics.endpoint,
+      responseType: diagnostics.responseType,
+      responseBody: diagnostics.responseBody,
+      parserReason: error instanceof Error ? error.message : "UNKNOWN",
+    });
     if (process.env.NODE_ENV === "production") return failureDecision(failureMode, Number.isFinite(status) ? status : undefined);
     return consumeLocal(key, limit, windowMs);
   }
