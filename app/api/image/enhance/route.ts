@@ -1,4 +1,3 @@
-import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/security/request";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
@@ -37,6 +36,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return jsonError("Imagem não enviada.", 400);
     if (file.size <= 0 || file.size > MAX_FILE_BYTES) return jsonError("A imagem excede o limite seguro de 30 MB.", 413);
 
+    const { default: sharp } = await import("sharp");
     const buffer = Buffer.from(await file.arrayBuffer());
     const input = sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "warning" });
     const metadata = await input.metadata();
