@@ -135,6 +135,7 @@ export function SaasDashboard() {
   const [isUploading, setIsUploading] = useState(false);
   const currentProjectDataRef = useRef<CadProjectData | null>(null);
   const currentDocumentRevisionRef = useRef(0);
+  const currentUserIdRef = useRef<string | null>(null);
   const editorProjectId = useRef<string | null>(null);
   const editorCallbackSeen = useRef<string | null>(null);
   const ignoreNextEditorSnapshot = useRef(false);
@@ -625,6 +626,7 @@ export function SaasDashboard() {
 
     client.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      currentUserIdRef.current = data.user?.id || null;
       const name = metadataName(data.user);
       setProfileFirstName(name.firstName);
       setProfileLastName(name.lastName);
@@ -642,9 +644,27 @@ export function SaasDashboard() {
       else router.replace("/login");
     });
 
-    const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-      const name = metadataName(session?.user || null);
+    const { data: listener } = client.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user || null;
+      const nextUserId = nextUser?.id || null;
+      const sameUser = Boolean(nextUserId && currentUserIdRef.current === nextUserId);
+      const isPassiveSameSessionEvent = event === "TOKEN_REFRESHED"
+        || (sameUser && (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "USER_UPDATED"));
+
+      if (isPassiveSameSessionEvent) {
+        setUser(nextUser);
+        const name = metadataName(nextUser);
+        setProfileFirstName(name.firstName);
+        setProfileLastName(name.lastName);
+        if (nextUser && !nextUser.email_confirmed_at) {
+          router.replace(`/verify-email?email=${encodeURIComponent(nextUser.email || "")}`);
+        }
+        return;
+      }
+
+      currentUserIdRef.current = nextUserId;
+      setUser(nextUser);
+      const name = metadataName(nextUser);
       setProfileFirstName(name.firstName);
       setProfileLastName(name.lastName);
       setProfile(null);
@@ -658,15 +678,15 @@ export function SaasDashboard() {
       currentDocumentRevisionRef.current = 0;
       setCurrentDocumentRevision(0);
       setProjects([]);
-      if (session?.user) {
-        if (!session.user.email_confirmed_at) {
-          router.replace(`/verify-email?email=${encodeURIComponent(session.user.email || "")}`);
+      if (nextUser) {
+        if (!nextUser.email_confirmed_at) {
+          router.replace(`/verify-email?email=${encodeURIComponent(nextUser.email || "")}`);
           return;
         }
-        loadProjects(session.user.id);
-        loadProfile(session.user);
-        loadSubscription(session.user);
-        refreshUsage(session.user);
+        loadProjects(nextUser.id);
+        loadProfile(nextUser);
+        loadSubscription(nextUser);
+        refreshUsage(nextUser);
       }
       else router.replace("/login");
     });
