@@ -4,20 +4,23 @@ const adItems = Array.from({ length: 8 }, (_, index) => index);
 
 type AdSideBoxProps = {
   direction: "up" | "down";
+  size?: "default" | "large";
   className?: string;
 };
 
-export function AdSideBox({ direction, className = "" }: AdSideBoxProps) {
+export function AdSideBox({ direction, size = "default", className = "" }: AdSideBoxProps) {
+  const isLarge = size === "large";
+
   return (
-    <aside className={`ad-side-box group hidden h-[430px] overflow-hidden rounded-[1.75rem] border border-[#26382e] bg-[#0a100d]/85 p-3 shadow-2xl shadow-black/25 transition duration-300 hover:border-[#b7f34a]/45 hover:shadow-[0_0_26px_rgba(183,243,74,.08)] xl:block ${className}`} aria-label="Espaço publicitário">
-      <div className="relative h-full overflow-hidden rounded-[1.35rem] border border-[#1d2d24] bg-[linear-gradient(180deg,rgba(183,243,74,.07),transparent_26%,rgba(183,243,74,.04))]">
+    <aside className={`ad-side-box group hidden overflow-hidden rounded-[1.75rem] border border-[#26382e] bg-[#0a100d]/85 p-3 shadow-2xl shadow-black/25 transition duration-300 hover:border-[#b7f34a]/45 hover:shadow-[0_0_26px_rgba(183,243,74,.08)] min-[1320px]:block ${isLarge ? "h-[520px] w-full 2xl:h-[560px]" : "h-[430px]"} ${className}`} aria-label="Espaço publicitário">
+      <div className={`relative h-full overflow-hidden rounded-[1.35rem] border bg-[linear-gradient(180deg,rgba(183,243,74,.07),transparent_26%,rgba(183,243,74,.04))] ${isLarge ? "border-[#284332]" : "border-[#1d2d24]"}`}>
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-[#0a100d] to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-12 bg-gradient-to-t from-[#0a100d] to-transparent" />
-        <div className={`ad-side-box-track flex flex-col items-center gap-5 py-5 ${direction === "up" ? "ad-side-box-track-up" : "ad-side-box-track-down"}`}>
+        <div className={`ad-side-box-track flex flex-col items-center py-5 ${isLarge ? "gap-7" : "gap-5"} ${direction === "up" ? "ad-side-box-track-up" : "ad-side-box-track-down"}`}>
           {[0, 1].map((group) => (
-            <div key={group} className="flex flex-col items-center gap-5" aria-hidden={group === 1}>
+            <div key={group} className={`flex flex-col items-center ${isLarge ? "gap-7" : "gap-5"}`} aria-hidden={group === 1}>
               {adItems.map((item) => (
-                <a key={`${group}-${item}`} href={adMailto} className="writing-vertical text-center text-[10px] font-black uppercase tracking-[.28em] text-[#b7f34a]/80 transition duration-300 hover:text-[#eaffbf] focus:outline-none focus:ring-2 focus:ring-[#b7f34a]/40">
+                <a key={`${group}-${item}`} href={adMailto} className={`writing-vertical text-center font-black uppercase text-[#b7f34a]/80 transition duration-300 hover:text-[#eaffbf] focus:outline-none focus:ring-2 focus:ring-[#b7f34a]/40 ${isLarge ? "text-[11px] tracking-[.32em]" : "text-[10px] tracking-[.28em]"}`}>
                   ANUNCIE AQUI <span className="text-[#b7f34a]/35">•</span>
                 </a>
               ))}

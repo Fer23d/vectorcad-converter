@@ -58,7 +58,7 @@ export function LandingSection() {
     <section id="inicio" className="relative isolate overflow-hidden border-b border-[#1c2822] bg-[#070b09]">
       <ParallaxBackground />
       <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
-        <div className="grid items-center gap-5 xl:grid-cols-[92px_minmax(0,1fr)_92px] 2xl:grid-cols-[112px_minmax(0,1fr)_112px]">
+        <div className="grid items-center gap-5 min-[1320px]:[grid-template-columns:92px_minmax(0,1fr)_92px] 2xl:[grid-template-columns:112px_minmax(0,1fr)_112px]">
           <AdSideBox direction="up" />
           <div className="grid min-w-0 items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">
             <div className="max-w-2xl">
