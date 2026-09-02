@@ -5,6 +5,7 @@ import { ArrowLeft, Box, ChevronDown, ChevronUp, Crosshair, Download, Eraser, Ex
 import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useResizableVerticalPanel } from "@/components/hooks/use-resizable-vertical-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
+import { AdSideBox } from "@/components/ad-side-box";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad } from "@/lib/image-processing/process";
@@ -1068,8 +1069,12 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       <div className="mx-auto mb-5 flex w-fit items-center gap-2 rounded-full border border-[#3d513e] bg-[#162219] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-[#b7f34a]"><Sparkles size={12} /> Raster para CAD editável</div>
       <h1 className="mx-auto max-w-3xl text-4xl font-black tracking-[-.045em] text-white md:text-6xl">Transforme imagens e PDFs técnicos em <span className="text-[#b7f34a]">vetores para CAD</span></h1>
       <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#9faca6] md:text-base">Converta PNG, JPG, WEBP, TIFF e PDF em SVG e DXF editável para AutoCAD, corte laser, CNC e projetos técnicos.</p>
-      <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }} onClick={() => input.current?.click()} className={`mx-auto mt-10 max-w-3xl cursor-pointer rounded-2xl border border-dashed p-12 transition md:p-16 ${dragging ? "border-[#b7f34a] bg-[#17251a]" : "border-[#425148] bg-[#111714]/80 hover:border-[#829b83]"}`}>
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#b7f34a] text-[#08110b]"><Upload size={26} /></div><h2 className="mt-5 text-lg font-bold">Arraste sua imagem ou PDF técnico para cá</h2><p className="mt-2 text-xs text-[#829087]">PNG, JPG, JPEG, WEBP, TIF, TIFF ou PDF · Máximo 30 MB</p><button className="mt-6 rounded-lg bg-white px-5 py-2.5 text-xs font-black text-[#101512]">Enviar imagem ou PDF técnico</button>
+      <div className="mx-auto mt-10 grid max-w-6xl items-center gap-5 xl:grid-cols-[92px_minmax(0,1fr)_92px] 2xl:grid-cols-[112px_minmax(0,1fr)_112px]">
+        <AdSideBox direction="up" />
+        <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }} onClick={() => input.current?.click()} className={`min-w-0 cursor-pointer rounded-2xl border border-dashed p-12 transition md:p-16 ${dragging ? "border-[#b7f34a] bg-[#17251a]" : "border-[#425148] bg-[#111714]/80 hover:border-[#829b83]"}`}>
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#b7f34a] text-[#08110b]"><Upload size={26} /></div><h2 className="mt-5 text-lg font-bold">Arraste sua imagem ou PDF técnico para cá</h2><p className="mt-2 text-xs text-[#829087]">PNG, JPG, JPEG, WEBP, TIF, TIFF ou PDF · Máximo 30 MB</p><button className="mt-6 rounded-lg bg-white px-5 py-2.5 text-xs font-black text-[#101512]">Enviar imagem ou PDF técnico</button>
+        </div>
+        <AdSideBox direction="down" />
       </div>
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
