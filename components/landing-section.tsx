@@ -2,6 +2,7 @@
 
 import { CTAButton } from "@/components/cta-button";
 import { AdSideBox } from "@/components/ad-side-box";
+import { AdSlot } from "@/components/ads/ad-slot";
 import { FeatureCard } from "@/components/feature-card";
 import { ParallaxBackground } from "@/components/parallax-background";
 import { SVGPreview } from "@/components/svg-preview";
@@ -59,7 +60,9 @@ export function LandingSection() {
       <ParallaxBackground />
       <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
         <div className="grid items-center gap-5 min-[1320px]:[grid-template-columns:92px_minmax(0,1fr)_92px] 2xl:[grid-template-columns:112px_minmax(0,1fr)_112px]">
-          <AdSideBox direction="up" />
+          <AdSlot placement="public-home" provider="direct">
+            <AdSideBox direction="up" />
+          </AdSlot>
           <div className="grid min-w-0 items-center gap-12 lg:grid-cols-[.92fr_1.08fr] lg:gap-16">
             <div className="max-w-2xl">
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-xs font-black uppercase tracking-[.16em] text-[#b7f34a]">
@@ -79,7 +82,9 @@ export function LandingSection() {
               <SVGPreview scrollProgress={scrollProgress} />
             </div>
           </div>
-          <AdSideBox direction="down" />
+          <AdSlot placement="public-home" provider="direct">
+            <AdSideBox direction="down" />
+          </AdSlot>
         </div>
 
         <div className="mt-16 grid gap-4 sm:grid-cols-2 lg:mt-20 lg:grid-cols-4">

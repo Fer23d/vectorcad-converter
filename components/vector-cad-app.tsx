@@ -6,6 +6,8 @@ import { useResizablePanel } from "@/components/hooks/use-resizable-panel";
 import { useResizableVerticalPanel } from "@/components/hooks/use-resizable-vertical-panel";
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { AdSideBox } from "@/components/ad-side-box";
+import { AdSlot } from "@/components/ads/ad-slot";
+import type { AdProfile } from "@/lib/ads/visibility";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad } from "@/lib/image-processing/process";
@@ -180,7 +182,7 @@ function VectorInspectionOverlay({ doc, showContours, showLayers, onSelect }: { 
   </svg>;
 }
 
-export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, persistenceStatus = "saved", projectVersion = 0, savedProjectVersion = 0 }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; persistenceStatus?: "saved" | "saving" | "dirty" | "error"; projectVersion?: number; savedProjectVersion?: number }) {
+export function VectorCadApp({ onUsageChange, initialData, onProjectChange, projectId, persistenceStatus = "saved", projectVersion = 0, savedProjectVersion = 0, adProfile }: { onUsageChange?: (usage: UsageInfo) => void; initialData?: CadProjectData | null; onProjectChange?: (data: CadProjectData) => void; projectId?: string | null; persistenceStatus?: "saved" | "saving" | "dirty" | "error"; projectVersion?: number; savedProjectVersion?: number; adProfile?: AdProfile | null }) {
   const [source, setSource] = useState<HTMLImageElement | null>(null);
   const [sourceRaster, setSourceRaster] = useState<TiffRaster | null>(null);
   const [sourceFormat, setSourceFormat] = useState<"raster" | "tiff" | "pdf">(initialData?.sourceFormat || "raster");
@@ -1070,11 +1072,15 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
       <h1 className="mx-auto max-w-3xl text-4xl font-black tracking-[-.045em] text-white md:text-6xl">Transforme imagens e PDFs técnicos em <span className="text-[#b7f34a]">vetores para CAD</span></h1>
       <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-[#9faca6] md:text-base">Converta PNG, JPG, WEBP, TIFF e PDF em SVG e DXF editável para AutoCAD, corte laser, CNC e projetos técnicos.</p>
       <div className="mx-auto mt-10 grid max-w-[1400px] items-center gap-6 min-[1320px]:[grid-template-columns:160px_minmax(0,1fr)_160px] 2xl:[grid-template-columns:188px_minmax(0,1fr)_188px] 2xl:gap-8">
-        <AdSideBox direction="up" size="large" />
+        <AdSlot placement="editor-upload-free" provider="direct" profile={adProfile} route="/editor" hasSource={hasSource}>
+          <AdSideBox direction="up" size="large" />
+        </AdSlot>
         <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={e => { e.preventDefault(); setDragging(false); loadFile(e.dataTransfer.files[0]); }} onClick={() => input.current?.click()} className={`min-w-0 cursor-pointer rounded-2xl border border-dashed p-12 transition md:p-16 ${dragging ? "border-[#b7f34a] bg-[#17251a]" : "border-[#425148] bg-[#111714]/80 hover:border-[#829b83]"}`}>
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#b7f34a] text-[#08110b]"><Upload size={26} /></div><h2 className="mt-5 text-lg font-bold">Arraste sua imagem ou PDF técnico para cá</h2><p className="mt-2 text-xs text-[#829087]">PNG, JPG, JPEG, WEBP, TIF, TIFF ou PDF · Máximo 30 MB</p><button className="mt-6 rounded-lg bg-white px-5 py-2.5 text-xs font-black text-[#101512]">Enviar imagem ou PDF técnico</button>
         </div>
-        <AdSideBox direction="down" size="large" />
+        <AdSlot placement="editor-upload-free" provider="direct" profile={adProfile} route="/editor" hasSource={hasSource}>
+          <AdSideBox direction="down" size="large" />
+        </AdSlot>
       </div>
       <div className="mx-auto mt-8 grid max-w-3xl grid-cols-3 gap-3 text-left"><Feature icon={<ScanLine />} title="Contornos reais" text="Polilinhas editáveis" /><Feature icon={<Crosshair />} title="Escala precisa" text="mm, cm ou pixels" /><Feature icon={<Layers3 />} title="Layers CAD" text="Contours e Details" /></div>
     </section>}
