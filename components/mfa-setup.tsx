@@ -21,6 +21,19 @@ type EnrolledFactor = {
   qrCode: string;
 };
 
+export type MfaFactorSummary = {
+  id: string;
+  factor_type: string;
+  status: string;
+};
+
+type SafeMfaErrorDetails = {
+  name?: string;
+  code?: string;
+  status?: string;
+  message?: string;
+};
+
 async function sendMfaEvent(accessToken: string, eventType: string, reason?: string) {
   await fetch("/api/auth/mfa/event", {
     method: "POST",
@@ -29,7 +42,41 @@ async function sendMfaEvent(accessToken: string, eventType: string, reason?: str
   }).catch(() => undefined);
 }
 
-function safeSvgDataUrl(svg: string) {
+function redactMfaDiagnostic(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  return String(value)
+    .replace(/otpauth:\/\/[^\s"']+/gi, "[redacted-otp-url]")
+    .replace(/(?:access|refresh|mfa)?_?token["'\s:=]+[^\s"',}]+/gi, "token=[redacted]")
+    .replace(/secret["'\s:=]+[^\s"',}]+/gi, "secret=[redacted]")
+    .slice(0, 180);
+}
+
+export function safeMfaErrorDetails(error: unknown, fallback = "MFA_ERROR"): SafeMfaErrorDetails {
+  if (!error || typeof error !== "object") return { code: fallback };
+  const record = error as Record<string, unknown>;
+  return {
+    name: redactMfaDiagnostic(record.name),
+    code: redactMfaDiagnostic(record.code),
+    status: redactMfaDiagnostic(record.status),
+    message: redactMfaDiagnostic(record.message),
+  };
+}
+
+function safeMfaReason(error: unknown, fallback: string) {
+  const details = safeMfaErrorDetails(error, fallback);
+  return details.code || details.name || fallback;
+}
+
+function logMfaSetupError(stage: string, error: unknown, fallback: string) {
+  console.warn("[vetorcad][mfa]", { stage, ...safeMfaErrorDetails(error, fallback) });
+}
+
+export function findTotpFactor(factors: readonly MfaFactorSummary[], status: "verified" | "unverified") {
+  return factors.find((item) => item.factor_type === "totp" && item.status === status);
+}
+
+export function safeSvgDataUrl(svg: string) {
+  if (svg.startsWith("data:image/svg+xml")) return svg;
   return `data:image/svg+xml;utf-8,${encodeURIComponent(svg)}`;
 }
 
@@ -83,11 +130,45 @@ export function MfaSetup() {
     if (!client || !accessToken) return;
     setLoading(true);
     await sendMfaEvent(accessToken, "MFA_SETUP_STARTED");
+
+    const { data: factorsData, error: factorsError } = await client.auth.mfa.listFactors();
+    if (factorsError) {
+      setLoading(false);
+      logMfaSetupError("list-factors-before-enroll", factorsError, "LIST_FACTORS_FAILED");
+      await sendMfaEvent(accessToken, "MFA_SETUP_FAILED", safeMfaReason(factorsError, "LIST_FACTORS_FAILED"));
+      setMessage("Não foi possível validar fatores MFA existentes. Tente novamente.");
+      return;
+    }
+
+    const factors = factorsData?.all || [];
+    const verifiedFactor = findTotpFactor(factors, "verified");
+    if (verifiedFactor) {
+      setLoading(false);
+      setFactor(null);
+      setFactorId(verifiedFactor.id);
+      setStatus((current) => current ? { ...current, setupRequired: false, verifiedFactors: Math.max(current.verifiedFactors, 1) } : current);
+      await startChallenge(verifiedFactor.id);
+      return;
+    }
+
+    const unverifiedFactor = findTotpFactor(factors, "unverified");
+    if (unverifiedFactor) {
+      const { error: unenrollError } = await client.auth.mfa.unenroll({ factorId: unverifiedFactor.id });
+      if (unenrollError) {
+        setLoading(false);
+        logMfaSetupError("remove-unverified-factor", unenrollError, "UNVERIFIED_FACTOR_CLEANUP_FAILED");
+        await sendMfaEvent(accessToken, "MFA_SETUP_FAILED", safeMfaReason(unenrollError, "UNVERIFIED_FACTOR_CLEANUP_FAILED"));
+        setMessage("Existe uma configuração MFA pendente que não pôde ser reiniciada. Tente novamente.");
+        return;
+      }
+    }
+
     const { data, error } = await client.auth.mfa.enroll({ factorType: "totp", friendlyName: "VetorCAD Admin" });
     setLoading(false);
 
     if (error || !data?.id || !data.totp?.qr_code) {
-      await sendMfaEvent(accessToken, "MFA_SETUP_FAILED", error?.name || "ENROLL_FAILED");
+      logMfaSetupError("enroll", error || { message: "Missing TOTP enrollment data" }, "ENROLL_FAILED");
+      await sendMfaEvent(accessToken, "MFA_SETUP_FAILED", safeMfaReason(error, "ENROLL_FAILED"));
       setMessage("Não foi possível iniciar o MFA. Tente novamente.");
       return;
     }
@@ -122,19 +203,26 @@ export function MfaSetup() {
     const client = supabase;
     if (!client || !accessToken || !factorId || !challengeId || code.trim().length < 6) return;
     setLoading(true);
-    const { error } = await client.auth.mfa.verify({ factorId, challengeId, code: code.trim() });
+    const { data, error } = await client.auth.mfa.verify({ factorId, challengeId, code: code.trim() });
     setCode("");
     setLoading(false);
 
     if (error) {
-      await sendMfaEvent(accessToken, "MFA_FAILED", error.name || "VERIFY_FAILED");
+      logMfaSetupError("verify", error, "VERIFY_FAILED");
+      await sendMfaEvent(accessToken, "MFA_FAILED", safeMfaReason(error, "VERIFY_FAILED"));
       setMessage("Código inválido ou expirado. Tente novamente.");
       return;
     }
 
-    await sendMfaEvent(accessToken, factor ? "MFA_ENABLED" : "MFA_SUCCESS");
+    if (data?.access_token && data?.refresh_token) {
+      await client.auth.setSession({ access_token: data.access_token, refresh_token: data.refresh_token });
+      setAccessToken(data.access_token);
+    }
+
+    const verifiedAccessToken = data?.access_token || accessToken;
+    await sendMfaEvent(verifiedAccessToken, factor ? "MFA_ENABLED" : "MFA_SUCCESS");
     const { data: sessionData } = await client.auth.getSession();
-    const bridgeAccessToken = sessionData.session?.access_token || accessToken;
+    const bridgeAccessToken = data?.access_token || sessionData.session?.access_token || accessToken;
     await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

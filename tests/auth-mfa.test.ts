@@ -107,7 +107,7 @@ describe("admin MFA hardening", () => {
 
   it("allows an admin without MFA to start setup through the MFA status endpoint", async () => {
     const { route } = await loadMfaStatus({ setupRequired: true, aal: "aal1" });
-    const response = await route.GET(adminRequest());
+    const response = await route.GET(adminRequest()) as Response;
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -120,7 +120,7 @@ describe("admin MFA hardening", () => {
     const result = await requireAdminWithMFA(adminRequest());
 
     expect("response" in result).toBe(true);
-    if ("response" in result) expect(result.response.status).toBe(403);
+    if ("response" in result && result.response) expect(result.response.status).toBe(403);
   });
 
   it("allows critical admin operations when the admin session is AAL2", async () => {
@@ -135,7 +135,7 @@ describe("admin MFA hardening", () => {
     const result = await requireAdmin(adminRequest());
 
     expect("response" in result).toBe(true);
-    if ("response" in result) expect(result.response.status).toBe(403);
+    if ("response" in result && result.response) expect(result.response.status).toBe(403);
   });
 
   it("records MFA required without storing codes or secrets", async () => {
@@ -147,5 +147,41 @@ describe("admin MFA hardening", () => {
     expect(serialized).not.toContain("123456");
     expect(serialized).not.toContain("otpauth");
     expect(serialized).not.toContain("secret");
+  });
+
+  it("identifies pending unverified TOTP factors without selecting verified factors", async () => {
+    const { findTotpFactor } = await import("@/components/mfa-setup");
+    const factors = [
+      { id: "phone-1", factor_type: "phone", status: "unverified" },
+      { id: "totp-pending", factor_type: "totp", status: "unverified" },
+      { id: "totp-verified", factor_type: "totp", status: "verified" },
+    ];
+
+    expect(findTotpFactor(factors, "unverified")?.id).toBe("totp-pending");
+    expect(findTotpFactor(factors, "verified")?.id).toBe("totp-verified");
+  });
+
+  it("keeps Supabase MFA QR data URLs intact and wraps only raw SVG", async () => {
+    const { safeSvgDataUrl } = await import("@/components/mfa-setup");
+    const dataUrl = "data:image/svg+xml;utf-8,%3Csvg%3E%3C/svg%3E";
+
+    expect(safeSvgDataUrl(dataUrl)).toBe(dataUrl);
+    expect(safeSvgDataUrl("<svg></svg>")).toBe("data:image/svg+xml;utf-8,%3Csvg%3E%3C%2Fsvg%3E");
+  });
+
+  it("sanitizes MFA diagnostics without storing tokens, secrets or otpauth URLs", async () => {
+    const { safeMfaErrorDetails } = await import("@/components/mfa-setup");
+    const details = safeMfaErrorDetails({
+      name: "AuthApiError",
+      code: "mfa_factor_name_conflict",
+      status: 422,
+      message: "Failed with otpauth://totp/VetorCAD?secret=ABC123 and access_token=SECRET",
+    });
+    const serialized = JSON.stringify(details);
+
+    expect(details.code).toBe("mfa_factor_name_conflict");
+    expect(serialized).not.toContain("ABC123");
+    expect(serialized).not.toContain("SECRET");
+    expect(serialized).not.toContain("otpauth://");
   });
 });
