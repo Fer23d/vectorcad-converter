@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Box, KeyRound, ShieldCheck } from "lucide-react";
@@ -91,6 +91,22 @@ export function MfaSetup() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("Validando MFA administrativo...");
 
+  const refreshMfaStatus = useCallback(async (token: string) => {
+    const response = await fetch("/api/auth/mfa/status", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage(payload.error || "Não foi possível validar MFA.");
+      return null;
+    }
+
+    const nextStatus = payload as MfaStatus;
+    setStatus(nextStatus);
+    setMessage(nextStatus.mfaSatisfied ? "MFA confirmado. Acesso administrativo liberado." : "Configure ou confirme seu MFA para acessar o Admin.");
+    return nextStatus;
+  }, []);
+
   useEffect(() => {
     async function loadStatus() {
       const client = supabase;
@@ -107,23 +123,12 @@ export function MfaSetup() {
       }
 
       setAccessToken(session.access_token);
-      const response = await fetch("/api/auth/mfa/status", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setMessage(payload.error || "Não foi possível validar MFA.");
-        setLoading(false);
-        return;
-      }
-
-      setStatus(payload as MfaStatus);
-      setMessage(payload.mfaSatisfied ? "MFA confirmado. Acesso administrativo liberado." : "Configure ou confirme seu MFA para acessar o Admin.");
+      await refreshMfaStatus(session.access_token);
       setLoading(false);
     }
 
     loadStatus();
-  }, [router]);
+  }, [refreshMfaStatus, router]);
 
   const startSetup = async () => {
     const client = supabase;
@@ -263,6 +268,35 @@ export function MfaSetup() {
     window.setTimeout(() => router.replace("/login"), 900);
   };
 
+  const resetMfa = async () => {
+    const client = supabase;
+    if (!client || !accessToken) return;
+    const confirmed = window.confirm("Você está prestes a redefinir seu autenticador MFA. O acesso administrativo ficará pendente até configurar um novo dispositivo.");
+    if (!confirmed) return;
+
+    setLoading(true);
+    const response = await fetch("/api/auth/mfa/reset", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setLoading(false);
+      setMessage(payload.error || "Não foi possível redefinir o MFA administrativo.");
+      return;
+    }
+
+    setFactor(null);
+    setFactorId("");
+    setChallengeId("");
+    setCode("");
+    await refreshMfaStatus(accessToken);
+    setMessage("MFA redefinido. Gere um novo QR Code para configurar seu autenticador.");
+    setLoading(false);
+  };
+
   const loadVerifiedFactor = async () => {
     const client = supabase;
     if (!client) return;
@@ -313,6 +347,12 @@ export function MfaSetup() {
           {!status?.mfaSatisfied && status && !status.setupRequired && !challengeId && (
             <button type="button" disabled={loading} onClick={loadVerifiedFactor} className="rounded-xl bg-[#b7f34a] px-5 py-3 text-sm font-black text-[#09120d] transition hover:brightness-105 disabled:opacity-60">
               Confirmar MFA
+            </button>
+          )}
+
+          {status?.isAdmin && status.verifiedFactors > 0 && !factor && (
+            <button type="button" disabled={loading} onClick={resetMfa} className="rounded-xl border border-[#ffb86b]/40 px-5 py-3 text-sm font-black text-[#ffcf99] transition hover:bg-[#ffb86b]/10 disabled:opacity-60">
+              Redefinir autenticador
             </button>
           )}
 

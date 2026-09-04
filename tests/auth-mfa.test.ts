@@ -96,6 +96,49 @@ async function loadMfaStatus(options: { setupRequired: boolean; aal?: string }) 
   return { route, recordSecurityEvent };
 }
 
+async function loadMfaReset(options: {
+  requireAdminResult?: unknown;
+  factors?: Array<{ id: string; factor_type: string; status: string }>;
+  listError?: { name?: string; message?: string } | null;
+  deleteError?: { name?: string; message?: string } | null;
+}) {
+  vi.resetModules();
+  const recordSecurityEvent = vi.fn().mockResolvedValue({ ok: true });
+  const deleteFactor = vi.fn().mockResolvedValue({ data: { id: "deleted-factor" }, error: options.deleteError || null });
+  const listFactors = vi.fn().mockResolvedValue({
+    data: { factors: options.factors || [{ id: "totp-verified", factor_type: "totp", status: "verified" }] },
+    error: options.listError || null,
+  });
+  const adminClient = {
+    auth: {
+      admin: {
+        mfa: { listFactors, deleteFactor },
+      },
+    },
+  };
+  vi.doMock("@/lib/admin-auth", () => ({
+    requireAdmin: vi.fn().mockResolvedValue(options.requireAdminResult || {
+      role: "ADMIN",
+      token: "admin-token",
+      user: { id: "admin-1" },
+      adminClient,
+    }),
+  }));
+  vi.doMock("@/lib/security/security-events", () => ({ recordSecurityEvent }));
+  vi.doMock("@/lib/security/rate-limit", () => ({ requestAddress: () => "203.0.113.10" }));
+
+  const route = await import("@/app/api/auth/mfa/reset/route");
+  return { route, recordSecurityEvent, listFactors, deleteFactor };
+}
+
+function resetRequest(body: Record<string, unknown> = {}) {
+  return new Request("http://localhost/api/auth/mfa/reset", {
+    method: "POST",
+    headers: { Authorization: "Bearer admin-token", "Content-Type": "application/json", "User-Agent": "Vitest" },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("admin MFA hardening", () => {
   afterEach(() => {
     vi.resetModules();
@@ -103,6 +146,7 @@ describe("admin MFA hardening", () => {
     vi.doUnmock("@/lib/supabase/server");
     vi.doUnmock("@/lib/security/security-events");
     vi.doUnmock("@/lib/admin-auth");
+    vi.doUnmock("@/lib/security/rate-limit");
   });
 
   it("allows an admin without MFA to start setup through the MFA status endpoint", async () => {
@@ -183,5 +227,71 @@ describe("admin MFA hardening", () => {
     expect(serialized).not.toContain("ABC123");
     expect(serialized).not.toContain("SECRET");
     expect(serialized).not.toContain("otpauth://");
+  });
+
+  it("allows an admin to reset only their own TOTP factors", async () => {
+    const { route, deleteFactor, recordSecurityEvent } = await loadMfaReset({
+      factors: [
+        { id: "totp-verified", factor_type: "totp", status: "verified" },
+        { id: "phone-verified", factor_type: "phone", status: "verified" },
+      ],
+    });
+
+    const response = await route.POST(resetRequest()) as Response;
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.removedFactors).toBe(1);
+    expect(deleteFactor).toHaveBeenCalledTimes(1);
+    expect(deleteFactor).toHaveBeenCalledWith({ userId: "admin-1", id: "totp-verified" });
+    expect(JSON.stringify(deleteFactor.mock.calls)).not.toContain("phone-verified");
+    expect(recordSecurityEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "MFA_RESET", success: true, userId: "admin-1" }));
+  });
+
+  it("blocks MFA reset when there is no authenticated admin session", async () => {
+    const { route, deleteFactor } = await loadMfaReset({
+      requireAdminResult: { response: Response.json({ error: "Sessão ausente." }, { status: 401 }) },
+    });
+
+    const response = await route.POST(resetRequest()) as Response;
+
+    expect(response.status).toBe(401);
+    expect(deleteFactor).not.toHaveBeenCalled();
+  });
+
+  it("blocks common users through requireAdmin before resetting MFA", async () => {
+    const { route, deleteFactor } = await loadMfaReset({
+      requireAdminResult: { response: Response.json({ error: "Acesso não autorizado." }, { status: 403 }) },
+    });
+
+    const response = await route.POST(resetRequest()) as Response;
+
+    expect(response.status).toBe(403);
+    expect(deleteFactor).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe error when the requested TOTP factor does not belong to the authenticated admin", async () => {
+    const { route, deleteFactor, recordSecurityEvent } = await loadMfaReset({
+      factors: [{ id: "own-totp", factor_type: "totp", status: "verified" }],
+    });
+
+    const response = await route.POST(resetRequest({ factorId: "other-user-factor" })) as Response;
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error).toBe("Nenhum fator TOTP elegível para redefinição foi encontrado.");
+    expect(deleteFactor).not.toHaveBeenCalled();
+    expect(recordSecurityEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: "MFA_RESET", success: false, userId: "admin-1" }));
+  });
+
+  it("returns a safe error when no TOTP factor exists", async () => {
+    const { route, deleteFactor } = await loadMfaReset({
+      factors: [{ id: "phone-verified", factor_type: "phone", status: "verified" }],
+    });
+
+    const response = await route.POST(resetRequest()) as Response;
+
+    expect(response.status).toBe(404);
+    expect(deleteFactor).not.toHaveBeenCalled();
   });
 });
