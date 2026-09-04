@@ -138,6 +138,47 @@ describe("session bridge", () => {
     expect(response.headers.get("set-cookie")).not.toContain("header.eyJleHAiOjk5OTk5OTk5OTl9.signature");
   });
 
+  it("creates an AAL2 auxiliary cookie after MFA verification", async () => {
+    getAuthenticatorAssuranceLevel.mockResolvedValue({ data: { currentLevel: "aal2" }, error: null });
+    maybeSingle.mockResolvedValue({ data: { role: "ADMIN" }, error: null });
+    const { POST } = await import("@/app/api/auth/session/route");
+    const response = await POST(new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: "header.eyJleHAiOjk5OTk5OTk5OTl9.signature" }),
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.role).toBe("ADMIN");
+    expect(body.mfaSatisfied).toBe(true);
+    expect(response.headers.get("set-cookie")).toContain(SESSION_BRIDGE_COOKIE);
+  });
+
+  it("reports the current auxiliary session bridge state", async () => {
+    const { GET } = await import("@/app/api/auth/session/route");
+    const signed = await signSessionBridgePayload(payload({ role: "ADMIN", mfaSatisfied: true, aal: "aal2" }));
+    const response = await GET(new Request("http://localhost/api/auth/session", {
+      headers: { cookie: `${SESSION_BRIDGE_COOKIE}=${encodeURIComponent(signed)}` },
+    }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.authenticated).toBe(true);
+    expect(body.role).toBe("ADMIN");
+    expect(body.mfaSatisfied).toBe(true);
+    expect(body.aal).toBe("aal2");
+  });
+
+  it("rejects session bridge status checks without a valid auxiliary cookie", async () => {
+    const { GET } = await import("@/app/api/auth/session/route");
+    const response = await GET(new Request("http://localhost/api/auth/session"));
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.authenticated).toBe(false);
+  });
+
   it("clears the auxiliary cookie on logout and records LOGOUT without secrets", async () => {
     const { DELETE } = await import("@/app/api/auth/session/route");
     const response = await DELETE(new Request("http://localhost/api/auth/session", {

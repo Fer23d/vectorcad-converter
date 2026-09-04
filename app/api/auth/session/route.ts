@@ -7,6 +7,7 @@ import {
   SESSION_BRIDGE_MAX_AGE_SECONDS,
   sessionBridgeCookieOptions,
   signSessionBridgePayload,
+  verifySessionBridgeCookie,
   type SessionBridgeRole,
 } from "@/lib/security/session-bridge";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
@@ -48,6 +49,32 @@ async function resolveAal(accessToken: string) {
 function clearCookie(response: NextResponse) {
   response.cookies.set(SESSION_BRIDGE_COOKIE, "", sessionBridgeCookieOptions(0));
   return response;
+}
+
+function readCookie(header: string | null, name: string) {
+  if (!header) return "";
+  const cookies = header.split(";").map((cookie) => cookie.trim());
+  const prefix = `${name}=`;
+  const match = cookies.find((cookie) => cookie.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : "";
+}
+
+export async function GET(request: Request) {
+  const sessionCookie = readCookie(request.headers.get("cookie"), SESSION_BRIDGE_COOKIE);
+  const verification = await verifySessionBridgeCookie(sessionCookie);
+  if (!verification.valid) {
+    return NextResponse.json({ ok: false, authenticated: false, reason: verification.reason }, { status: 401 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    authenticated: true,
+    role: verification.payload.role,
+    emailConfirmed: verification.payload.emailConfirmed,
+    mfaSatisfied: verification.payload.mfaSatisfied,
+    aal: verification.payload.aal || null,
+    expiresAt: new Date(verification.payload.exp * 1000).toISOString(),
+  });
 }
 
 export async function POST(request: Request) {

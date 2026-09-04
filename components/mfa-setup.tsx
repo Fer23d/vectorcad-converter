@@ -228,11 +228,27 @@ export function MfaSetup() {
     await sendMfaEvent(verifiedAccessToken, factor ? "MFA_ENABLED" : "MFA_SUCCESS");
     const { data: sessionData } = await client.auth.getSession();
     const bridgeAccessToken = data?.access_token || sessionData.session?.access_token || accessToken;
-    await fetch("/api/auth/session", {
+    const bridgeResponse = await fetch("/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: bridgeAccessToken }),
-    }).catch(() => undefined);
+    });
+    const bridgePayload = await bridgeResponse.json().catch(() => ({}));
+    if (!bridgeResponse.ok || bridgePayload.mfaSatisfied !== true) {
+      logMfaSetupError("session-bridge-update", { status: bridgeResponse.status, code: bridgePayload.code || "MFA_SESSION_BRIDGE_NOT_AAL2" }, "MFA_SESSION_BRIDGE_NOT_AAL2");
+      setMessage("MFA confirmado, mas a sessão administrativa ainda não foi atualizada. Tente novamente.");
+      return;
+    }
+
+    const bridgeCheckResponse = await fetch("/api/auth/session", { method: "GET" });
+    const bridgeCheckPayload = await bridgeCheckResponse.json().catch(() => ({}));
+    if (!bridgeCheckResponse.ok || bridgeCheckPayload.mfaSatisfied !== true) {
+      logMfaSetupError("session-bridge-cookie-check", { status: bridgeCheckResponse.status, code: bridgeCheckPayload.reason || "MFA_SESSION_COOKIE_NOT_AAL2" }, "MFA_SESSION_COOKIE_NOT_AAL2");
+      setMessage("MFA confirmado, mas o navegador ainda não atualizou a sessão administrativa. Tente novamente em alguns segundos.");
+      return;
+    }
+
+    setStatus((current) => current ? { ...current, currentLevel: "aal2", mfaSatisfied: true, challengeRequired: false } : current);
     setMessage("MFA confirmado. Redirecionando para o Admin...");
     window.setTimeout(() => router.replace("/admin"), 900);
   };
