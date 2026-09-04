@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
   const authClient = createSupabaseAuthServerClient(adminAuth.token);
   const [aalResult, factorResult] = await Promise.all([
-    authClient.auth.mfa.getAuthenticatorAssuranceLevel(),
+    authClient.auth.mfa.getAuthenticatorAssuranceLevel(adminAuth.token),
     authClient.auth.mfa.listFactors(),
   ]);
 

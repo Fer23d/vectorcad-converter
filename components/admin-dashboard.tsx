@@ -185,20 +185,30 @@ export function AdminDashboard() {
       }
 
       setAdminToken(session.access_token);
-      await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: session.access_token }),
-      }).catch(() => undefined);
+      const bridgeResponse = await fetch("/api/auth/session", { method: "GET" }).catch(() => null);
+      const bridgePayload = bridgeResponse?.ok ? await bridgeResponse.json().catch(() => ({})) : null;
+      const bridgeAlreadyMfa = bridgePayload?.role === "ADMIN" && bridgePayload?.mfaSatisfied === true;
 
-      const mfaResponse = await fetch("/api/auth/mfa/status", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (mfaResponse.ok) {
-        const mfaPayload = await mfaResponse.json().catch(() => ({}));
-        if (!mfaPayload.mfaSatisfied) {
-          router.replace("/mfa/setup");
-          return;
+      if (!bridgeAlreadyMfa) {
+        const sessionBridgeResponse = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: session.access_token }),
+        }).catch(() => null);
+        const sessionBridgePayload = sessionBridgeResponse?.ok ? await sessionBridgeResponse.json().catch(() => ({})) : null;
+        if (sessionBridgePayload?.mfaSatisfied === false && bridgePayload?.mfaSatisfied === true) {
+          console.warn("[vetorcad][admin]", { stage: "session-bridge-downgrade-prevented", route: "/admin", aal: sessionBridgePayload?.aal || "unknown" });
+        }
+
+        const mfaResponse = await fetch("/api/auth/mfa/status", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (mfaResponse.ok) {
+          const mfaPayload = await mfaResponse.json().catch(() => ({}));
+          if (!mfaPayload.mfaSatisfied) {
+            router.replace("/mfa/setup");
+            return;
+          }
         }
       }
 

@@ -118,7 +118,7 @@ export async function requireAdminWithMFA(request: Request) {
   }
 
   const authClient = createSupabaseAuthServerClient(adminAuth.token);
-  const { data, error } = await authClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  const { data, error } = await authClient.auth.mfa.getAuthenticatorAssuranceLevel(adminAuth.token);
   if (error || data.currentLevel !== "aal2") {
     await recordSecurityEvent({
       eventType: "MFA_REQUIRED",

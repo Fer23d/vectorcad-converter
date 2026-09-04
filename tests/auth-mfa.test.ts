@@ -62,12 +62,16 @@ async function loadAdminAuth(options: { role?: string; aal?: string; adminHasMfa
   vi.doMock("@/lib/security/security-events", () => ({ recordSecurityEvent }));
 
   const mod = await import("@/lib/admin-auth");
-  return { ...mod, recordSecurityEvent };
+  return { ...mod, recordSecurityEvent, getAuthenticatorAssuranceLevel: authClient.auth.mfa.getAuthenticatorAssuranceLevel };
 }
 
 async function loadMfaStatus(options: { setupRequired: boolean; aal?: string }) {
   vi.resetModules();
   const recordSecurityEvent = vi.fn().mockResolvedValue({ ok: true });
+  const getAuthenticatorAssuranceLevel = vi.fn().mockResolvedValue({
+    data: { currentLevel: options.aal || "aal1", nextLevel: "aal2", currentAuthenticationMethods: [] },
+    error: null,
+  });
   vi.doMock("@/lib/admin-auth", () => ({
     requireAdmin: vi.fn().mockResolvedValue({
       role: "ADMIN",
@@ -79,10 +83,7 @@ async function loadMfaStatus(options: { setupRequired: boolean; aal?: string }) 
     createSupabaseAuthServerClient: () => ({
       auth: {
         mfa: {
-          getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
-            data: { currentLevel: options.aal || "aal1", nextLevel: "aal2", currentAuthenticationMethods: [] },
-            error: null,
-          }),
+          getAuthenticatorAssuranceLevel,
           listFactors: vi.fn().mockResolvedValue({
             data: { all: options.setupRequired ? [] : [{ id: "factor-1", factor_type: "totp", status: "verified" }] },
             error: null,
@@ -93,7 +94,7 @@ async function loadMfaStatus(options: { setupRequired: boolean; aal?: string }) 
   }));
   vi.doMock("@/lib/security/security-events", () => ({ recordSecurityEvent }));
   const route = await import("@/app/api/auth/mfa/status/route");
-  return { route, recordSecurityEvent };
+  return { route, recordSecurityEvent, getAuthenticatorAssuranceLevel };
 }
 
 async function loadMfaReset(options: {
@@ -150,13 +151,14 @@ describe("admin MFA hardening", () => {
   });
 
   it("allows an admin without MFA to start setup through the MFA status endpoint", async () => {
-    const { route } = await loadMfaStatus({ setupRequired: true, aal: "aal1" });
+    const { route, getAuthenticatorAssuranceLevel } = await loadMfaStatus({ setupRequired: true, aal: "aal1" });
     const response = await route.GET(adminRequest()) as Response;
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.setupRequired).toBe(true);
     expect(body.mfaSatisfied).toBe(false);
+    expect(getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("admin-token");
   });
 
   it("rejects critical admin operations when the admin session is AAL1", async () => {
@@ -168,10 +170,11 @@ describe("admin MFA hardening", () => {
   });
 
   it("allows critical admin operations when the admin session is AAL2", async () => {
-    const { requireAdminWithMFA } = await loadAdminAuth({ aal: "aal2", adminHasMfa: true });
+    const { requireAdminWithMFA, getAuthenticatorAssuranceLevel } = await loadAdminAuth({ aal: "aal2", adminHasMfa: true });
     const result = await requireAdminWithMFA(adminRequest());
 
     expect("response" in result).toBe(false);
+    expect(getAuthenticatorAssuranceLevel).toHaveBeenCalledWith("admin-token");
   });
 
   it("keeps requireAdmin compatible for common users by preserving role checks", async () => {
