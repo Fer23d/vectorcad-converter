@@ -126,16 +126,36 @@ describe("session bridge", () => {
 
   it("creates the auxiliary cookie after validating a Supabase session", async () => {
     const { POST } = await import("@/app/api/auth/session/route");
+    const token = "header.eyJleHAiOjk5OTk5OTk5OTl9.signature";
+    const response = await POST(new Request("http://localhost/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: token }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(getAuthenticatorAssuranceLevel).toHaveBeenCalledWith(token);
+    expect(response.headers.get("set-cookie")).toContain(SESSION_BRIDGE_COOKIE);
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+    expect(response.headers.get("set-cookie")).not.toContain(token);
+  });
+
+  it("does not mask AAL resolution errors as an AAL1 session", async () => {
+    getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: null,
+      error: { name: "AuthApiError", status: 401 },
+    });
+    const { POST } = await import("@/app/api/auth/session/route");
     const response = await POST(new Request("http://localhost/api/auth/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: "header.eyJleHAiOjk5OTk5OTk5OTl9.signature" }),
     }));
+    const body = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("set-cookie")).toContain(SESSION_BRIDGE_COOKIE);
-    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
-    expect(response.headers.get("set-cookie")).not.toContain("header.eyJleHAiOjk5OTk5OTk5OTl9.signature");
+    expect(response.status).toBe(401);
+    expect(body.code).toBe("AAL_RESOLUTION_FAILED");
+    expect(response.headers.get("set-cookie")).toContain(`${SESSION_BRIDGE_COOKIE}=`);
   });
 
   it("creates an AAL2 auxiliary cookie after MFA verification", async () => {

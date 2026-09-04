@@ -39,10 +39,26 @@ async function resolveRole(userId: string): Promise<SessionBridgeRole> {
 
 async function resolveAal(accessToken: string) {
   const authClient = createSupabaseAuthServerClient(accessToken);
-  const { data } = await authClient.auth.mfa.getAuthenticatorAssuranceLevel();
+  const { data, error } = await authClient.auth.mfa.getAuthenticatorAssuranceLevel(accessToken);
+  if (error) {
+    return {
+      currentLevel: null,
+      nextLevel: null,
+      mfaSatisfied: false,
+      aalError: {
+        name: error.name,
+        code: "AAL_RESOLUTION_FAILED",
+        status: "status" in error ? String(error.status) : undefined,
+      },
+    };
+  }
+
+  const currentLevel = data?.currentLevel || "aal1";
   return {
-    currentLevel: data?.currentLevel || "aal1",
-    mfaSatisfied: data?.currentLevel === "aal2",
+    currentLevel,
+    nextLevel: data?.nextLevel || null,
+    mfaSatisfied: currentLevel === "aal2",
+    aalError: null,
   };
 }
 
@@ -104,6 +120,19 @@ export async function POST(request: Request) {
   const exp = Math.min(tokenExp || now + SESSION_BRIDGE_MAX_AGE_SECONDS, now + SESSION_BRIDGE_MAX_AGE_SECONDS);
   const role = await resolveRole(user.id);
   const aal = await resolveAal(accessToken);
+  if (aal.aalError) {
+    console.warn("[vetorcad][session-bridge]", {
+      stage: "resolve-aal",
+      code: aal.aalError.code,
+      name: aal.aalError.name,
+      status: aal.aalError.status,
+    });
+    return clearCookie(NextResponse.json({
+      error: "Não foi possível validar o nível de autenticação da sessão.",
+      code: aal.aalError.code,
+    }, { status: 401 }));
+  }
+
   const signedCookie = await signSessionBridgePayload({
     sub: user.id,
     role,
@@ -118,6 +147,8 @@ export async function POST(request: Request) {
     ok: true,
     role,
     mfaSatisfied: aal.mfaSatisfied,
+    aal: aal.currentLevel,
+    nextLevel: aal.nextLevel,
     expiresAt: new Date(exp * 1000).toISOString(),
   });
   response.cookies.set(SESSION_BRIDGE_COOKIE, signedCookie, sessionBridgeCookieOptions(Math.max(0, exp - now)));

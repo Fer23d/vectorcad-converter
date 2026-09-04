@@ -34,6 +34,11 @@ type SafeMfaErrorDetails = {
   message?: string;
 };
 
+type MfaSessionTokens = {
+  access_token: string;
+  refresh_token: string;
+};
+
 async function sendMfaEvent(accessToken: string, eventType: string, reason?: string) {
   await fetch("/api/auth/mfa/event", {
     method: "POST",
@@ -69,6 +74,16 @@ function safeMfaReason(error: unknown, fallback: string) {
 
 function logMfaSetupError(stage: string, error: unknown, fallback: string) {
   console.warn("[vetorcad][mfa]", { stage, ...safeMfaErrorDetails(error, fallback) });
+}
+
+async function resolveClientAal(client: NonNullable<typeof supabase>, token: string) {
+  const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel(token);
+  return {
+    currentLevel: data?.currentLevel || null,
+    nextLevel: data?.nextLevel || null,
+    mfaSatisfied: data?.currentLevel === "aal2",
+    error,
+  };
 }
 
 export function findTotpFactor(factors: readonly MfaFactorSummary[], status: "verified" | "unverified") {
@@ -210,31 +225,73 @@ export function MfaSetup() {
     setLoading(true);
     const { data, error } = await client.auth.mfa.verify({ factorId, challengeId, code: code.trim() });
     setCode("");
-    setLoading(false);
 
     if (error) {
+      setLoading(false);
       logMfaSetupError("verify", error, "VERIFY_FAILED");
       await sendMfaEvent(accessToken, "MFA_FAILED", safeMfaReason(error, "VERIFY_FAILED"));
       setMessage("Código inválido ou expirado. Tente novamente.");
       return;
     }
 
-    if (data?.access_token && data?.refresh_token) {
-      await client.auth.setSession({ access_token: data.access_token, refresh_token: data.refresh_token });
-      setAccessToken(data.access_token);
+    if (!data?.access_token || !data?.refresh_token) {
+      setLoading(false);
+      logMfaSetupError("verify-session", { code: "MFA_VERIFY_SESSION_MISSING" }, "MFA_VERIFY_SESSION_MISSING");
+      await sendMfaEvent(accessToken, "MFA_FAILED", "MFA_VERIFY_SESSION_MISSING");
+      setMessage("MFA confirmado, mas a sessão segura não foi retornada. Tente novamente.");
+      return;
     }
 
-    const verifiedAccessToken = data?.access_token || accessToken;
-    await sendMfaEvent(verifiedAccessToken, factor ? "MFA_ENABLED" : "MFA_SUCCESS");
-    const { data: sessionData } = await client.auth.getSession();
-    const bridgeAccessToken = data?.access_token || sessionData.session?.access_token || accessToken;
+    const verifiedSession: MfaSessionTokens = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+    };
+
+    const { error: setSessionError } = await client.auth.setSession(verifiedSession);
+    if (setSessionError) {
+      setLoading(false);
+      logMfaSetupError("set-session-after-verify", setSessionError, "MFA_SET_SESSION_FAILED");
+      await sendMfaEvent(data.access_token, "MFA_FAILED", safeMfaReason(setSessionError, "MFA_SET_SESSION_FAILED"));
+      setMessage("MFA confirmado, mas não foi possível atualizar a sessão local. Tente novamente.");
+      return;
+    }
+
+    let bridgeAccessToken = data.access_token;
+    setAccessToken(bridgeAccessToken);
+
+    let aalCheck = await resolveClientAal(client, bridgeAccessToken);
+    if (!aalCheck.mfaSatisfied) {
+      const { data: refreshedData, error: refreshError } = await client.auth.refreshSession();
+      if (refreshError) {
+        logMfaSetupError("refresh-session-after-verify", refreshError, "MFA_REFRESH_SESSION_FAILED");
+      }
+      if (refreshedData.session?.access_token) {
+        bridgeAccessToken = refreshedData.session.access_token;
+        setAccessToken(bridgeAccessToken);
+        aalCheck = await resolveClientAal(client, bridgeAccessToken);
+      }
+    }
+
+    if (!aalCheck.mfaSatisfied) {
+      setLoading(false);
+      logMfaSetupError("client-aal-confirmation", {
+        code: "MFA_CLIENT_SESSION_NOT_AAL2",
+        status: aalCheck.currentLevel || "unknown",
+      }, "MFA_CLIENT_SESSION_NOT_AAL2");
+      await sendMfaEvent(bridgeAccessToken, "MFA_FAILED", "MFA_CLIENT_SESSION_NOT_AAL2");
+      setMessage("MFA confirmado, mas a sessão administrativa ainda não atingiu AAL2. Tente novamente.");
+      return;
+    }
+
+    await sendMfaEvent(bridgeAccessToken, factor ? "MFA_ENABLED" : "MFA_SUCCESS");
     const bridgeResponse = await fetch("/api/auth/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${bridgeAccessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ access_token: bridgeAccessToken }),
     });
     const bridgePayload = await bridgeResponse.json().catch(() => ({}));
     if (!bridgeResponse.ok || bridgePayload.mfaSatisfied !== true) {
+      setLoading(false);
       logMfaSetupError("session-bridge-update", { status: bridgeResponse.status, code: bridgePayload.code || "MFA_SESSION_BRIDGE_NOT_AAL2" }, "MFA_SESSION_BRIDGE_NOT_AAL2");
       setMessage("MFA confirmado, mas a sessão administrativa ainda não foi atualizada. Tente novamente.");
       return;
@@ -243,11 +300,13 @@ export function MfaSetup() {
     const bridgeCheckResponse = await fetch("/api/auth/session", { method: "GET" });
     const bridgeCheckPayload = await bridgeCheckResponse.json().catch(() => ({}));
     if (!bridgeCheckResponse.ok || bridgeCheckPayload.mfaSatisfied !== true) {
+      setLoading(false);
       logMfaSetupError("session-bridge-cookie-check", { status: bridgeCheckResponse.status, code: bridgeCheckPayload.reason || "MFA_SESSION_COOKIE_NOT_AAL2" }, "MFA_SESSION_COOKIE_NOT_AAL2");
       setMessage("MFA confirmado, mas o navegador ainda não atualizou a sessão administrativa. Tente novamente em alguns segundos.");
       return;
     }
 
+    setLoading(false);
     setStatus((current) => current ? { ...current, currentLevel: "aal2", mfaSatisfied: true, challengeRequired: false } : current);
     setMessage("MFA confirmado. Redirecionando para o Admin...");
     window.setTimeout(() => router.replace("/admin"), 900);
