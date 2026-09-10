@@ -1,5 +1,6 @@
 import Link from "next/link";
 import styles from "./public-hero-elegant.module.css";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 
 export function PublicHeroElegant() {
   return (
@@ -8,7 +9,7 @@ export function PublicHeroElegant() {
       <div className="relative mx-auto grid max-w-7xl items-center gap-14 px-4 py-20 lg:grid-cols-[.9fr_1.1fr] lg:px-8 lg:py-28">
         <div className={styles.hero}>
           <div className="mb-7 flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#b7f34a] text-sm font-black text-[#07100a] shadow-[0_0_28px_rgba(183,243,74,.18)]">VC</span>
+            <VetorCadBrandIcon size={44} priority className="shadow-[0_0_28px_rgba(183,243,74,.18)]" />
             <div><div className="text-sm font-black tracking-[.12em] text-[#edf5f0]">VetorCAD</div><div className="text-[10px] uppercase tracking-[.22em] text-[#7f9188]">Intelligent engineering workspace</div></div>
           </div>
           <span className="inline-flex rounded-full border border-[#b7f34a]/35 bg-[#b7f34a]/10 px-4 py-2 text-[11px] font-black uppercase tracking-[.16em] text-[#b7f34a]">VetorCAD Converter</span>

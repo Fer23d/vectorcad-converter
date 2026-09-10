@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PublicAdSenseScript } from "@/components/public-adsense-script";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 
 const navItems = [
   { href: "/", label: "Inicio" },
@@ -17,7 +18,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-20 border-b border-[#1c2822]/90 bg-[#070b09]/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#b7f34a] text-sm font-black text-[#07100a]">VC</span>
+            <VetorCadBrandIcon size={40} priority className="shadow-[0_0_28px_rgba(183,243,74,.16)]" />
             <span>
               <span className="block text-sm font-black tracking-[.12em]">VetorCAD</span>
               <span className="block text-[10px] uppercase tracking-[.22em] text-[#8ea098]">Converter</span>

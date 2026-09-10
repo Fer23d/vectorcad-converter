@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Box, KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 
 type MfaStatus = {
   isAdmin: boolean;
@@ -393,7 +394,7 @@ export function MfaSetup() {
     <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] px-5 py-10 text-[#e8efeb]">
       <section className="w-full max-w-lg rounded-3xl border border-[#33413a] bg-[#101613]/95 p-8 shadow-2xl shadow-black/40 backdrop-blur">
         <div className="mb-7 flex items-center gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d] shadow-lg shadow-[#b7f34a]/20"><Box size={22} /></div>
+          <VetorCadBrandIcon size={48} priority className="shadow-lg shadow-[#b7f34a]/20" />
           <div>
             <div className="text-base font-black tracking-[.12em]">VetorCAD</div>
             <div className="mt-1 text-[11px] text-[#84938b]">Segurança administrativa MFA</div>

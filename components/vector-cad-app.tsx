@@ -7,6 +7,7 @@ import { useResizableVerticalPanel } from "@/components/hooks/use-resizable-vert
 import { useZoomPan } from "@/components/hooks/use-zoom-pan";
 import { AdSideBox } from "@/components/ad-side-box";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { enhanceForCad } from "@/lib/image-processing/process";
 import type { CadCleanMetrics } from "@/lib/image-processing/cad-clean";
@@ -72,7 +73,7 @@ function Internal3DOnlyView({ document, svg, fileName, unit, onBack }: { documen
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] text-[#e8efeb]">
     <header className="fixed inset-x-0 top-0 z-50 flex min-h-16 items-center justify-between gap-3 border-b border-[#26312c] bg-[#080c0b]/95 px-4 py-3 backdrop-blur md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualização 3D</div></div></div>
+      <div className="flex items-center gap-3"><VetorCadBrandIcon size={36} /><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualização 3D</div></div></div>
       <button type="button" onClick={handleBack} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao Editor</button>
     </header>
     <section className="mx-auto max-w-[1600px] p-4 pt-24 md:p-7 md:pt-28">
@@ -1058,7 +1059,7 @@ export function VectorCadApp({ onUsageChange, initialData, onProjectChange, proj
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)]">
     <header className="flex h-16 items-center justify-between border-b border-[#26312c] px-4 md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
+      <div className="flex items-center gap-3"><VetorCadBrandIcon size={36} /><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Converter</div></div></div>
       <div className="hidden items-center gap-2 text-xs text-[#91a097] md:flex"><span className="h-2 w-2 rounded-full bg-[#b7f34a]" /> {usageInfo ? `Plano ${usageInfo.plan.toUpperCase()} · ${usageInfo.usageLimit === null ? "uso ilimitado" : `${usageInfo.usage}/${usageInfo.usageLimit} usos hoje`}` : "Motor vetorial pronto"}</div>
       <button onClick={() => input.current?.click()} className="flex items-center gap-2 rounded-lg border border-[#3c4b44] px-3 py-2 text-xs font-bold hover:bg-[#18201c]"><Upload size={14} /> Novo arquivo</button>
     </header>

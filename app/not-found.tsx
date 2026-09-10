@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Box, FolderOpen, Home } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 
 export default function NotFound() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -29,7 +30,7 @@ export default function NotFound() {
           <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
             <div className="max-w-2xl">
               <Link href="/" className="inline-flex items-center gap-3 rounded-2xl border border-[#304238] bg-[#070b09] px-4 py-3 text-sm font-black text-[#dce8e2] transition hover:border-[#b7f34a]/60 hover:text-[#b7f34a]">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#b7f34a] text-xs text-[#07100a]">VC</span>
+                <VetorCadBrandIcon size={36} priority />
                 VetorCAD
               </Link>
 

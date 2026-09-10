@@ -2,8 +2,9 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowLeft, Box, LoaderCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, LoaderCircle } from "lucide-react";
 import { SvgTo3DCadViewer } from "@/components/SvgTo3DCadViewer";
+import { VetorCadBrandIcon } from "@/components/vetorcad-brand-icon";
 import { generateSvg } from "@/lib/exporters/svg";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 import { prepareThreeViewerDocument } from "@/lib/three-viewer-document";
@@ -121,7 +122,7 @@ export function ProtectedProject3DViewer() {
 
   return <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,#1d3428_0,#080c0b_42%)] text-[#e8efeb]">
     <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-[#26312c] px-4 py-3 md:px-7">
-      <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-[#b7f34a] text-[#09120d]"><Box size={20} /></div><div><div className="text-sm font-black tracking-[.12em]">vetorcad</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualizador 3D</div></div></div>
+      <div className="flex items-center gap-3"><VetorCadBrandIcon size={36} /><div><div className="text-sm font-black tracking-[.12em]">VetorCAD</div><div className="text-[9px] tracking-[.28em] text-[#7e9187]">Visualizador 3D</div></div></div>
       {state && <div className="order-3 w-full text-center text-xs text-[#aab8b1] md:order-none md:w-auto"><span className="text-[#7e9187]">Projeto:</span> <strong className="text-[#b7f34a]">{state.project.name}</strong></div>}
       <button type="button" onClick={() => router.push("/dashboard")} className="flex items-center gap-2 rounded-lg border border-[#34413b] px-3 py-2 text-xs font-bold text-[#dce8e1] transition hover:border-[#b7f34a] hover:text-[#b7f34a]"><ArrowLeft size={14} /> Voltar ao projeto</button>
     </header>
