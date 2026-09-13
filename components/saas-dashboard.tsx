@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Save, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
+import { BookOpenCheck, Check, ChevronDown, ChevronUp, Clock3, Copy, Crown, Eye, EyeOff, FilePlus2, FolderOpen, LogOut, Save, Settings, ShieldCheck, Trash2, UserRound, Wrench } from "lucide-react";
 import { normalizeCompany, normalizeCompanyPlan, resolveEffectivePlan, userHasPremiumAccess, type CompanyPlan } from "@/lib/access-control";
 import { getBillingPlan } from "@/lib/billing";
 import { isSupabaseConfigured, supabase, supabaseConfig } from "@/lib/supabase/client";
@@ -12,10 +12,12 @@ import { VectorCadApp } from "@/components/vector-cad-app";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { OnboardingModal } from "@/components/onboarding-modal";
 import { SubscriptionCard, type UserSubscription } from "@/components/subscription-card";
+import { VetorCADAcademy } from "@/components/vetorcad-academy";
 import { persistProjectImagesToStorage, refreshProjectImagesFromStorage } from "@/lib/supabase/storage";
 import type { CadProject, CadProjectData } from "@/types/project";
 
 type DashboardTab = "projects" | "editor" | "profile";
+type ProfileSection = "account" | "learning";
 const BACKEND_AUTO_SAVE_DELAY_MS = 240_000;
 
 type UserProfile = {
@@ -104,6 +106,7 @@ const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
 export function SaasDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("editor");
+  const [profileSection, setProfileSection] = useState<ProfileSection>("account");
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
@@ -1046,8 +1049,30 @@ export function SaasDashboard() {
       <VectorCadApp key={activeProject?.id || "empty-editor"} projectId={activeProject?.id} initialData={activeProject?.data} onProjectChange={handleProjectChange} persistenceStatus={projectSaveState} projectVersion={currentDocumentRevision} savedProjectVersion={savedProjectVersion} onUsageChange={applyUsageSnapshot} />
     </section>}
 
-    {activeTab === "profile" && <section className="mx-auto max-w-4xl px-4 py-8">
-      <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
+    {activeTab === "profile" && <section className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-5 flex flex-col gap-4 rounded-3xl border border-[#26312c] bg-[#101613] p-5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-[.18em] text-[#b7f34a]">Meu Perfil</div>
+          <h2 className="mt-1 text-2xl font-black tracking-[-.04em] text-white">{profileSection === "learning" ? "Aprendizado" : "Conta"}</h2>
+          <p className="mt-1 text-sm text-[#8c9a93]">{profileSection === "learning" ? "Evolua no uso profissional do VetorCAD por uma trilha técnica progressiva." : "Gerencie dados pessoais, assinatura e preferências da sua conta."}</p>
+        </div>
+        <div className="flex rounded-2xl border border-[#26312c] bg-[#0b100e] p-1">
+          {([
+            { id: "account", label: "Conta", icon: <UserRound size={15} /> },
+            { id: "learning", label: "Aprendizado", icon: <BookOpenCheck size={15} /> },
+          ] as const).map((item) => <button
+            key={item.id}
+            type="button"
+            onClick={() => setProfileSection(item.id)}
+            className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black transition ${profileSection === item.id ? "bg-[#b7f34a] text-[#09120d]" : "text-[#95a49c] hover:bg-[#18221d] hover:text-white"}`}
+          >
+            {item.icon}
+            {item.label}
+          </button>)}
+        </div>
+      </div>
+
+      {profileSection === "account" && <div className="grid gap-4 md:grid-cols-[1.2fr_.8fr]">
         <div className="rounded-3xl border border-[#26312c] bg-[#101613] p-6">
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#b7f34a] text-[#09120d]"><UserRound size={22} /></div>
@@ -1137,7 +1162,9 @@ export function SaasDashboard() {
           <p className="mt-3 text-sm leading-6 text-[#8c9a93]">Este espaço fica reservado para preferências, assinatura, billing e configurações de exportação.</p>
           <button onClick={signOut} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[#34413b] py-3 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]"><LogOut size={15} /> Sair da conta</button>
         </div>
-      </div>
+      </div>}
+
+      {profileSection === "learning" && <VetorCADAcademy />}
     </section>}
   </main>;
 }
