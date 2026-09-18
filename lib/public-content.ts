@@ -1,10 +1,16 @@
 export type BlogArticle = {
   slug: string;
   title: string;
+  subtitle?: string;
   description: string;
   date: string;
   readTime: string;
   category: string;
+  image?: string;
+  featured?: boolean;
+  ctaLabel?: string;
+  ctaHref?: string;
+  tags?: string[];
   metaTitle?: string;
   metaDescription?: string;
   keywords?: string[];
@@ -12,6 +18,52 @@ export type BlogArticle = {
 };
 
 export const blogArticles: BlogArticle[] = [
+  {
+    slug: "vetorcad-agora-tambem-como-aplicativo",
+    title: "VetorCAD agora também como aplicativo",
+    subtitle: "VetorCAD Web + VetorCAD Aplicativo",
+    description: "O VetorCAD evoluiu. Agora, além da experiência web, o produto também possui uma versão em aplicativo.",
+    date: "2026-09-18",
+    readTime: "4 min",
+    category: "Aplicativo",
+    featured: true,
+    ctaLabel: "Conhecer o aplicativo",
+    ctaHref: "/login",
+    tags: ["VetorCAD", "Aplicativo", "Atualizações"],
+    metaTitle: "VetorCAD agora também como aplicativo",
+    metaDescription: "Conheça a evolução do VetorCAD, que agora combina a experiência web com uma versão em aplicativo para apoiar fluxos técnicos de CAD.",
+    keywords: ["VetorCAD aplicativo", "VetorCAD app", "CAD online", "aplicativo CAD", "vetorização CAD"],
+    sections: [
+      {
+        heading: "Uma nova etapa do VetorCAD",
+        body: [
+          "O VetorCAD nasceu como uma experiência web para transformar imagens e documentos técnicos em arquivos vetoriais voltados a CAD, CNC e fluxos de engenharia.",
+          "Agora, o produto passa a comunicar também sua evolução como aplicativo, mantendo a mesma identidade técnica e o mesmo foco em produtividade profissional.",
+        ],
+      },
+      {
+        heading: "O que permanece igual",
+        body: [
+          "A proposta central continua a mesma: apoiar usuários que precisam converter imagens e PDFs técnicos em bases editáveis para revisão, exportação e continuidade do trabalho em ambientes CAD.",
+          "O fluxo editorial do Blog seguirá cobrindo guias, tutoriais, DXF, SVG, CNC, engenharia, vetorização e atualizações relevantes do produto.",
+        ],
+      },
+      {
+        heading: "Por que comunicar a versão em aplicativo",
+        body: [
+          "Muitos usuários chegam ao VetorCAD buscando uma ferramenta prática para trabalhar com arquivos técnicos. Apresentar a evolução para aplicativo ajuda a deixar claro que o produto está amadurecendo como software profissional.",
+          "Essa comunicação também abre espaço para futuros conteúdos sobre novidades, melhorias de interface, recursos do app e boas práticas de uso, sempre sem prometer funcionalidades que ainda não estejam disponíveis.",
+        ],
+      },
+      {
+        heading: "Próximos conteúdos",
+        body: [
+          "O Blog passa a funcionar também como canal oficial de novidades do VetorCAD. Além dos guias técnicos, novos artigos poderão explicar recursos, atualizações e fluxos de trabalho do produto.",
+          "A categoria Aplicativo será usada para reunir conteúdos relacionados a essa evolução, preservando o caráter técnico e profissional da área editorial.",
+        ],
+      },
+    ],
+  },
   {
     slug: "vetorcad-conversao-desenhos-tecnicos",
     title: "vetorcad Converter: como a vetorização transforma desenhos técnicos em CAD",
