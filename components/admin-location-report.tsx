@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Globe2, Loader2, MapPin, ShieldCheck, UsersRound } from "lucide-react";
+import { ArrowLeft, FileDown, FileSpreadsheet, Globe2, Loader2, MapPin, ShieldCheck, UsersRound } from "lucide-react";
 import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { buildLocationExportRows, getExcelColumnWidths, LOCATION_EXPORT_COLUMNS } from "@/lib/admin-location-export";
 
 type LocationRow = {
   id: string;
   user_id: string | null;
+  ip_address: string | null;
   city: string | null;
   region: string | null;
   country: string | null;
@@ -31,6 +33,61 @@ function formatDate(value: string) {
 
 function hasCoordinates(row: LocationRow) {
   return typeof row.latitude === "number" && Number.isFinite(row.latitude) && typeof row.longitude === "number" && Number.isFinite(row.longitude);
+}
+
+async function exportToExcel(data: LocationRow[]) {
+  const XLSX = await import("xlsx");
+  const exportRows = buildLocationExportRows(data);
+  const worksheet = XLSX.utils.json_to_sheet(exportRows, { header: [...LOCATION_EXPORT_COLUMNS] });
+  worksheet["!cols"] = getExcelColumnWidths(exportRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Acessos globais");
+  XLSX.writeFile(workbook, "relatorio-acessos-globais-vetorcad.xlsx");
+}
+
+async function exportToPDF(data: LocationRow[]) {
+  const { default: jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+  const exportRows = buildLocationExportRows(data);
+  const doc = new jsPDF({ orientation: "landscape" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const generatedAt = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date()).replace(",", "");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("Relatório Analítico de Acessos Globais - VetorCAD", pageWidth / 2, 18, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Gerado em: ${generatedAt}`, pageWidth - 14, 28, { align: "right" });
+
+  autoTable(doc, {
+    startY: 36,
+    head: [LOCATION_EXPORT_COLUMNS],
+    body: exportRows.map((row) => LOCATION_EXPORT_COLUMNS.map((column) => row[column])),
+    theme: "striped",
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      halign: "center",
+    },
+    styles: {
+      fontSize: 10,
+      cellPadding: 6,
+    },
+    columnStyles: {
+      4: { halign: "center" },
+      5: { halign: "center" },
+    },
+  });
+
+  doc.save("relatorio-acessos-globais-vetorcad.pdf");
 }
 
 export function AdminLocationReport() {
@@ -155,8 +212,21 @@ export function AdminLocationReport() {
       </section>
 
       <section className="mt-6 overflow-hidden rounded-3xl border border-[#26312c] bg-[#101613]">
-        <div className="border-b border-[#26312c] p-5">
-          <h2 className="text-sm font-black uppercase tracking-[.16em] text-[#b7f34a]">Últimos acessos</h2>
+        <div className="flex flex-col gap-4 border-b border-[#26312c] p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-[.16em] text-[#b7f34a]">Últimos acessos</h2>
+            <p className="mt-2 text-xs text-[#8c9a93]">Exporte relatórios analíticos com layout corporativo para auditoria, BI e acompanhamento comercial.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => { void exportToPDF(rows); }} disabled={!rows.length} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#34413b] bg-[#0b100e] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:cursor-not-allowed disabled:opacity-45">
+              <FileDown size={15} />
+              Exportar PDF
+            </button>
+            <button type="button" onClick={() => { void exportToExcel(rows); }} disabled={!rows.length} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#34413b] bg-[#0b100e] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:cursor-not-allowed disabled:opacity-45">
+              <FileSpreadsheet size={15} />
+              Exportar Excel
+            </button>
+          </div>
           {message && <p className="mt-3 rounded-xl border border-[#5a4024] bg-[#1a1309] px-3 py-2 text-xs font-bold text-[#f0c98a]">{message}</p>}
         </div>
         <div className="overflow-x-auto">
@@ -167,21 +237,23 @@ export function AdminLocationReport() {
                 <th className="px-5 py-3">Cidade</th>
                 <th className="px-5 py-3">Estado</th>
                 <th className="px-5 py-3">País</th>
+                <th className="px-5 py-3">IP</th>
                 <th className="px-5 py-3">Coordenadas</th>
                 <th className="px-5 py-3">ID do usuário</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1d2923]">
-              {loading && <tr><td colSpan={6} className="px-5 py-8 text-center text-[#8c9a93]">Carregando localizações...</td></tr>}
+              {loading && <tr><td colSpan={7} className="px-5 py-8 text-center text-[#8c9a93]">Carregando localizações...</td></tr>}
               {!loading && rows.map((row) => <tr key={row.id} className="transition hover:bg-[#0d1411]">
                 <td className="whitespace-nowrap px-5 py-4 text-[#dce8e2]">{formatDate(row.created_at)}</td>
                 <td className="px-5 py-4">{row.city || "Não informado"}</td>
                 <td className="px-5 py-4">{row.region || "Não informado"}</td>
                 <td className="px-5 py-4">{row.country || "Não informado"}</td>
+                <td className="px-5 py-4 font-mono text-xs text-[#8c9a93]">{row.ip_address || "Não informado"}</td>
                 <td className="px-5 py-4 font-mono text-xs text-[#8c9a93]">{hasCoordinates(row) ? `${row.latitude?.toFixed(4)}, ${row.longitude?.toFixed(4)}` : "Sem coordenadas"}</td>
                 <td className="px-5 py-4 font-mono text-xs text-[#8c9a93]">{row.user_id || "Visitante"}</td>
               </tr>)}
-              {!loading && !rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-[#8c9a93]">Nenhum acesso registrado ainda.</td></tr>}
+              {!loading && !rows.length && <tr><td colSpan={7} className="px-5 py-8 text-center text-[#8c9a93]">Nenhum acesso registrado ainda.</td></tr>}
             </tbody>
           </table>
         </div>

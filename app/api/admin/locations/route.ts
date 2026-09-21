@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 type LocationRow = {
   id: string;
   user_id: string | null;
+  ip_address: string | null;
   city: string | null;
   region: string | null;
   country: string | null;
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await auth.adminClient
     .from("user_locations")
-    .select("id,user_id,city,region,country,latitude,longitude,created_at")
+    .select("id,user_id,ip_address,city,region,country,latitude,longitude,created_at")
     .order("created_at", { ascending: false })
     .limit(250);
 
