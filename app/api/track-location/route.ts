@@ -72,6 +72,8 @@ export async function POST(request: Request) {
       city: location.city,
       region: location.region,
       country: location.country,
+      latitude: location.latitude,
+      longitude: location.longitude,
     });
 
     if (error) {

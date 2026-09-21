@@ -7,12 +7,34 @@ describe("user location tracking", () => {
       "x-vercel-ip-city": "S%C3%A3o%20Paulo",
       "x-vercel-ip-country-region": "SP",
       "x-vercel-ip-country": "BR",
+      "x-vercel-ip-latitude": "-23.5505",
+      "x-vercel-ip-longitude": "-46.6333",
     });
 
     expect(extractVercelLocation(headers)).toEqual({
       city: "São Paulo",
       region: "SP",
       country: "BR",
+      latitude: -23.5505,
+      longitude: -46.6333,
+    });
+  });
+
+  it("ignores invalid latitude and longitude values", () => {
+    const headers = new Headers({
+      "x-vercel-ip-city": "Curitiba",
+      "x-vercel-ip-country-region": "PR",
+      "x-vercel-ip-country": "BR",
+      "x-vercel-ip-latitude": "invalid",
+      "x-vercel-ip-longitude": "",
+    });
+
+    expect(extractVercelLocation(headers)).toEqual({
+      city: "Curitiba",
+      region: "PR",
+      country: "BR",
+      latitude: null,
+      longitude: null,
     });
   });
 

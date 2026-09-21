@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Globe2, Loader2, MapPin, ShieldCheck, UsersRound } from "lucide-react";
+import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
 
 type LocationRow = {
@@ -11,6 +12,8 @@ type LocationRow = {
   city: string | null;
   region: string | null;
   country: string | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
 };
 
@@ -24,6 +27,10 @@ type LocationPayload = {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString("pt-BR");
+}
+
+function hasCoordinates(row: LocationRow) {
+  return typeof row.latitude === "number" && Number.isFinite(row.latitude) && typeof row.longitude === "number" && Number.isFinite(row.longitude);
 }
 
 export function AdminLocationReport() {
@@ -70,6 +77,7 @@ export function AdminLocationReport() {
 
   const rows = useMemo(() => data?.locations || [], [data?.locations]);
   const loggedUsers = useMemo(() => rows.filter((row) => row.user_id).length, [rows]);
+  const mappedRows = useMemo(() => rows.filter(hasCoordinates), [rows]);
 
   return <main className="min-h-screen bg-[#070b09] px-4 py-8 text-[#edf5f0] lg:px-8">
     <div className="mx-auto max-w-7xl">
@@ -104,6 +112,48 @@ export function AdminLocationReport() {
         </section>
       </div>
 
+      <section className="mt-6 overflow-hidden rounded-3xl border border-[#26312c] bg-[#08100d] shadow-[0_30px_120px_rgba(0,0,0,.45)]">
+        <div className="flex flex-col gap-3 border-b border-[#26312c] bg-[#101613] p-5 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-[.16em] text-[#b7f34a]">Mapa global de usuários</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#8c9a93]">
+              Pontos baseados em latitude e longitude fornecidas pelos headers da Vercel. Registros sem coordenadas continuam aparecendo na tabela.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-[#2f3b35] bg-[#0b100e] px-4 py-3 text-xs font-black uppercase tracking-[.14em] text-[#dce8e2]">
+            {mappedRows.length} ponto(s) no mapa
+          </div>
+        </div>
+        <div className="relative min-h-[360px] overflow-hidden bg-[radial-gradient(circle_at_50%_10%,rgba(183,243,74,.12),transparent_35%),linear-gradient(180deg,#070b09,#0b100e)] p-4 md:p-6">
+          <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(183,243,74,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(183,243,74,.12)_1px,transparent_1px)] [background-size:48px_48px]" />
+          <ComposableMap
+            projectionConfig={{ scale: 155 }}
+            className="relative z-10 h-auto w-full"
+            style={{ width: "100%", height: "auto" }}
+          >
+            <Geographies geography="/world-countries-110m.json">
+              {({ geographies }) => geographies.map((geo) => <Geography
+                key={geo.rsmKey}
+                geography={geo}
+                fill="#111a16"
+                stroke="#2e3b34"
+                strokeWidth={0.55}
+                className="outline-none transition-colors hover:fill-[#16231d]"
+              />)}
+            </Geographies>
+            {mappedRows.map((row) => <Marker key={row.id} coordinates={[row.longitude as number, row.latitude as number]}>
+              <circle r={4.5} fill="#b7f34a" fillOpacity={0.95} stroke="#f5ffe4" strokeWidth={1.2} />
+              <circle r={11} fill="#b7f34a" fillOpacity={0.12} />
+              <title>{`${row.city || "Não informado"} · ${row.country || "Não informado"}`}</title>
+            </Marker>)}
+          </ComposableMap>
+          {!loading && !mappedRows.length && <div className="absolute inset-x-4 top-1/2 z-20 mx-auto max-w-md -translate-y-1/2 rounded-2xl border border-[#34413b] bg-[#101613]/95 p-5 text-center shadow-2xl">
+            <div className="text-sm font-black uppercase tracking-[.16em] text-[#b7f34a]">Sem coordenadas ainda</div>
+            <p className="mt-2 text-sm text-[#9aaaa2]">Novos acessos em produção na Vercel devem preencher latitude e longitude automaticamente quando os headers estiverem disponíveis.</p>
+          </div>}
+        </div>
+      </section>
+
       <section className="mt-6 overflow-hidden rounded-3xl border border-[#26312c] bg-[#101613]">
         <div className="border-b border-[#26312c] p-5">
           <h2 className="text-sm font-black uppercase tracking-[.16em] text-[#b7f34a]">Últimos acessos</h2>
@@ -117,19 +167,21 @@ export function AdminLocationReport() {
                 <th className="px-5 py-3">Cidade</th>
                 <th className="px-5 py-3">Estado</th>
                 <th className="px-5 py-3">País</th>
+                <th className="px-5 py-3">Coordenadas</th>
                 <th className="px-5 py-3">ID do usuário</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1d2923]">
-              {loading && <tr><td colSpan={5} className="px-5 py-8 text-center text-[#8c9a93]">Carregando localizações...</td></tr>}
+              {loading && <tr><td colSpan={6} className="px-5 py-8 text-center text-[#8c9a93]">Carregando localizações...</td></tr>}
               {!loading && rows.map((row) => <tr key={row.id} className="transition hover:bg-[#0d1411]">
                 <td className="whitespace-nowrap px-5 py-4 text-[#dce8e2]">{formatDate(row.created_at)}</td>
                 <td className="px-5 py-4">{row.city || "Não informado"}</td>
                 <td className="px-5 py-4">{row.region || "Não informado"}</td>
                 <td className="px-5 py-4">{row.country || "Não informado"}</td>
+                <td className="px-5 py-4 font-mono text-xs text-[#8c9a93]">{hasCoordinates(row) ? `${row.latitude?.toFixed(4)}, ${row.longitude?.toFixed(4)}` : "Sem coordenadas"}</td>
                 <td className="px-5 py-4 font-mono text-xs text-[#8c9a93]">{row.user_id || "Visitante"}</td>
               </tr>)}
-              {!loading && !rows.length && <tr><td colSpan={5} className="px-5 py-8 text-center text-[#8c9a93]">Nenhum acesso registrado ainda.</td></tr>}
+              {!loading && !rows.length && <tr><td colSpan={6} className="px-5 py-8 text-center text-[#8c9a93]">Nenhum acesso registrado ainda.</td></tr>}
             </tbody>
           </table>
         </div>

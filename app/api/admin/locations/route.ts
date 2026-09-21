@@ -7,6 +7,8 @@ type LocationRow = {
   city: string | null;
   region: string | null;
   country: string | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
 };
 
@@ -16,7 +18,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await auth.adminClient
     .from("user_locations")
-    .select("id,user_id,city,region,country,created_at")
+    .select("id,user_id,city,region,country,latitude,longitude,created_at")
     .order("created_at", { ascending: false })
     .limit(250);
 

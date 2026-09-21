@@ -2,6 +2,8 @@ export type VercelLocation = {
   city: string;
   region: string;
   country: string;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 function cleanHeader(value: string | null) {
@@ -13,15 +15,25 @@ function cleanHeader(value: string | null) {
   }
 }
 
+function parseCoordinate(value: string | null) {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function extractVercelLocation(headers: Headers): VercelLocation | null {
   const city = cleanHeader(headers.get("x-vercel-ip-city"));
   const region = cleanHeader(headers.get("x-vercel-ip-country-region"));
   const country = cleanHeader(headers.get("x-vercel-ip-country"));
+  const latitude = parseCoordinate(headers.get("x-vercel-ip-latitude"));
+  const longitude = parseCoordinate(headers.get("x-vercel-ip-longitude"));
   if (!city && !region && !country) return null;
   return {
     city: city || "Não informado",
     region: region || "Não informado",
     country: country || "Não informado",
+    latitude,
+    longitude,
   };
 }
 
