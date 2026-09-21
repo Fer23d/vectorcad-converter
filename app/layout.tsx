@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { LocationTracker } from "@/components/location-tracker";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return <html lang="pt-br">
   <head />
   <body>
+    <LocationTracker />
     {children}
     <Script src="https://sdk.mercadopago.com/js/v2" strategy="afterInteractive" />
   </body></html>;

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
+import { Activity, Building2, ChevronDown, ChevronUp, Clock3, CreditCard, FolderOpen, MapPin, ScrollText, ShieldAlert, ShieldCheck, Trash2, UserPlus, UsersRound, XCircle } from "lucide-react";
 import type { AdminRole } from "@/lib/admin";
 import { COMPANY_PLANS, type CompanyPlan, isPremiumCompany, normalizeCompanyPlan, planHasPremiumAccess, resolveUserPlan } from "@/lib/access-control";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
@@ -614,7 +614,10 @@ export function AdminDashboard() {
             </div>
           </div>
         </div>
-        <button onClick={() => router.push("/dashboard")} className="rounded-xl border border-[#34413b] px-4 py-2 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]">Voltar ao dashboard</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => router.push("/admin/locations")} className="inline-flex items-center gap-2 rounded-xl border border-[#34413b] px-4 py-2 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]"><MapPin size={14} /> Localizações</button>
+          <button onClick={() => router.push("/dashboard")} className="rounded-xl border border-[#34413b] px-4 py-2 text-xs font-black text-[#d6e0da] hover:border-[#b7f34a] hover:text-[#b7f34a]">Voltar ao dashboard</button>
+        </div>
       </div>
     </header>
 
