@@ -217,10 +217,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-[#33413a] bg-[#101613]/95 p-8 text-[#e8efeb] shadow-2xl shadow-black/40 backdrop-blur">
       <div className="mb-7 flex items-center gap-4"><VetorCadBrandIcon size={48} priority className="shadow-lg shadow-[#b7f34a]/20" /><div><div className="text-base font-black tracking-[.12em]">VetorCAD</div><div className="mt-1 text-[11px] text-[#84938b]">{mode === "login" ? "Acesse seu workspace SaaS" : "Crie sua conta profissional"}</div></div></div>
       {mode === "signup" && <div className="mb-4 grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-bold text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={inputClass} type="text" placeholder="Fernando" required /></label>
-        <label className="block text-xs font-bold text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className={inputClass} type="text" placeholder="Fernandes" required /></label>
+        <label className="block text-xs font-bold text-[#aab8b1]">Nome<input value={firstName} onChange={(event) => setFirstName(event.target.value)} className={inputClass} type="text" placeholder="João" required /></label>
+        <label className="block text-xs font-bold text-[#aab8b1]">Sobrenome<input value={lastName} onChange={(event) => setLastName(event.target.value)} className={inputClass} type="text" placeholder="Silva" required /></label>
       </div>}
-      {mode === "signup" && <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Empresa <span className="text-[#66756d]">(opcional)</span><input value={company} onChange={(event) => setCompany(event.target.value)} className={inputClass} type="text" placeholder="SM&A" /></label>}
+      {mode === "signup" && <label className="mb-4 block text-xs font-bold text-[#aab8b1]">Empresa <span className="text-[#66756d]">(opcional)</span><input value={company} onChange={(event) => setCompany(event.target.value)} className={inputClass} type="text" placeholder="Engenharia XYZ" /></label>}
       <label className="mb-4 block text-xs font-bold text-[#aab8b1]">E-mail<input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} type="email" placeholder="nome@email.com" required /></label>
       <label className="mb-3 block text-xs font-bold text-[#aab8b1]">Senha
         <div className="relative mt-2 w-full">
