@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dailyLocationKey, extractVercelLocation, sanitizeIpAddress } from "@/lib/location-tracking";
+import { dailyLocationKey, extractVercelLocation, isBotUserAgent, sanitizeIpAddress } from "@/lib/location-tracking";
 
 describe("user location tracking", () => {
   it("extracts city, region and country from Vercel headers", () => {
@@ -44,6 +44,12 @@ describe("user location tracking", () => {
 
   it("keeps only the first forwarded IP address", () => {
     expect(sanitizeIpAddress("203.0.113.10, 198.51.100.2")).toBe("203.0.113.10");
+  });
+
+  it("detects bot and crawler user agents", () => {
+    expect(isBotUserAgent("Mozilla/5.0 Googlebot/2.1")).toBe(true);
+    expect(isBotUserAgent("BingPreview crawler")).toBe(true);
+    expect(isBotUserAgent("Mozilla/5.0 Chrome/120.0 Safari/537.36")).toBe(false);
   });
 
   it("creates a daily dedupe key from user or IP", () => {

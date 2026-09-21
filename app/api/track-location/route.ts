@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { extractVercelLocation, sanitizeIpAddress } from "@/lib/location-tracking";
+import { extractVercelLocation, isBotUserAgent, sanitizeIpAddress } from "@/lib/location-tracking";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -32,6 +32,11 @@ function todayRange() {
 }
 
 export async function POST(request: Request) {
+  const userAgent = request.headers.get("user-agent");
+  if (isBotUserAgent(userAgent)) {
+    return NextResponse.json({ message: "Bot ignored" }, { status: 200 });
+  }
+
   const location = extractVercelLocation(request.headers);
   if (!location) {
     return NextResponse.json({ ok: true, tracked: false, reason: "LOCATION_HEADERS_MISSING" });

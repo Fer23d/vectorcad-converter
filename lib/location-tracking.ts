@@ -6,6 +6,8 @@ export type VercelLocation = {
   longitude: number | null;
 };
 
+const BOT_USER_AGENT_PATTERN = /(bot|crawler|spider|google|bing|slurp|yandex|duckduckgo|baidu)/i;
+
 function cleanHeader(value: string | null) {
   if (!value) return "";
   try {
@@ -19,6 +21,10 @@ function parseCoordinate(value: string | null) {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isBotUserAgent(userAgent: string | null) {
+  return BOT_USER_AGENT_PATTERN.test((userAgent || "").toLowerCase());
 }
 
 export function extractVercelLocation(headers: Headers): VercelLocation | null {
