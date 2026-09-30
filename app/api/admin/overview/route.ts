@@ -9,6 +9,12 @@ function isMissingRelation(error: { code?: string; message?: string }) {
   return error.code === "42P01" || error.code === "42703" || error.code === "PGRST205" || message.includes("schema cache");
 }
 
+function isMissingAccessStatus(error: { code?: string; message?: string } | null | undefined) {
+  if (!error) return false;
+  const message = error?.message?.toLowerCase() || "";
+  return isMissingRelation(error) || message.includes("users.status") || message.includes("profiles.status") || message.includes("status");
+}
+
 export async function GET(request: Request) {
   const adminAuth = await requireAdmin(request);
   if ("response" in adminAuth) return adminAuth.response;
@@ -20,17 +26,28 @@ export async function GET(request: Request) {
   const adminName = [adminFirstName, adminLastName].filter(Boolean).join(" ") || "Administrador vetorcad";
   const [
     { data: projectsData, error: projectsError },
-    { data: appUsersData, error: appUsersError },
     { data: companiesData, error: companiesError },
     { data: logsData, error: logsError },
     { data: rolesData, error: rolesError },
   ] = await Promise.all([
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
-    adminClient.from("users").select("id,email,company,company_id,plan,is_premium,status"),
     adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("name", { ascending: true }),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
     adminClient.from("user_roles").select("user_id,role"),
   ]);
+
+  const appUsersResult = await adminClient
+    .from("users")
+    .select("id,email,company,company_id,plan,is_premium,status");
+  let appUsersData = appUsersResult.data as AdminBillingUserRow[] | null;
+  let appUsersError = appUsersResult.error;
+  if (appUsersError && isMissingAccessStatus(appUsersError)) {
+    const fallback = await adminClient
+      .from("users")
+      .select("id,email,company,company_id,plan,is_premium");
+    appUsersData = fallback.data as AdminBillingUserRow[] | null;
+    appUsersError = fallback.error;
+  }
 
   if (projectsError) return NextResponse.json({ error: projectsError.message }, { status: 500 });
   if (appUsersError) return NextResponse.json({ error: appUsersError.message }, { status: 500 });
@@ -38,9 +55,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: companiesError.message }, { status: 500 });
   }
 
-  const [authUsers, { data: profilesData, error: profilesError }, { data: membershipsData, error: membershipsError }, { data: subscriptionsData, error: subscriptionsError }] = await Promise.all([
+  const profilesResult = await adminClient
+    .from("profiles")
+    .select("user_id,plan,is_premium,company,company_id,status");
+  let profilesData = profilesResult.data as AdminProfileRow[] | null;
+  let profilesError = profilesResult.error;
+  if (profilesError && isMissingAccessStatus(profilesError)) {
+    const fallback = await adminClient
+      .from("profiles")
+      .select("user_id,plan,is_premium,company,company_id");
+    profilesData = fallback.data as AdminProfileRow[] | null;
+    profilesError = fallback.error;
+  }
+
+  const [authUsers, { data: membershipsData, error: membershipsError }, { data: subscriptionsData, error: subscriptionsError }] = await Promise.all([
     listAllAuthUsers(adminClient),
-    adminClient.from("profiles").select("user_id,plan,is_premium,company,company_id,status"),
     adminClient.from("companies_users").select("user_id,company_id,company_name,plan_grant"),
     adminClient.from("subscriptions").select("user_id,plan,status,amount,created_at,updated_at"),
   ]);
@@ -84,7 +113,7 @@ export async function GET(request: Request) {
       plan: effective.plan,
       planSource: effective.source,
       role: rolesByUserId.get(user.id) || "USER",
-      status: appUser?.status || profile?.status || "active",
+      status: profile?.status || appUser?.status || user.user_metadata?.access_status || "active",
       is_premium: premium,
       premium,
       created_at: user.created_at,

@@ -112,6 +112,14 @@ describe("admin user access management", () => {
     expect(insert).toHaveBeenCalledWith([expect.objectContaining({ action: "user.access_restored" })]);
   });
 
+  it("does not allow an admin to block their own account", async () => {
+    const { PATCH } = await import("@/app/api/admin/users/[id]/access/route");
+    const response = await PATCH(request({ status: "blocked" }), { params: Promise.resolve({ id: "admin-1" }) });
+
+    expect(response.status).toBe(400);
+    expect(updateUserById).not.toHaveBeenCalled();
+  });
+
   it("requires EXCLUIR confirmation before permanent deletion", async () => {
     const { DELETE } = await import("@/app/api/admin/users/[id]/route");
     const response = await DELETE(request({ confirmation: "delete" }, "DELETE"), { params: Promise.resolve({ id: "user-1" }) });
