@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole } from "@/lib/admin";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
 import { recordSecurityEvent } from "@/lib/security/security-events";
+import { getUserAccessStatus } from "@/lib/user-access";
 
 export { ADMIN_ROLES, getUserRole, isAdminRole, normalizeAdminRole, type AdminRole };
 
@@ -38,6 +39,11 @@ export async function requireAdmin(request: Request) {
   }
 
   const adminClient = createSupabaseAdminClient();
+  const accessStatus = await getUserAccessStatus(adminClient, user.id);
+  if (accessStatus === "blocked") {
+    return { response: NextResponse.json({ error: "Acesso revogado. Entre em contato com o administrador." }, { status: 403 }) };
+  }
+
   const { data: roleRow, error: roleError } = await adminClient
     .from("user_roles")
     .select("role")

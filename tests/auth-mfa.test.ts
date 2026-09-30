@@ -19,6 +19,13 @@ function adminClientMock(options: { role?: string; adminHasMfa?: boolean }) {
       },
     },
     from: vi.fn((table: string) => {
+      if (table === "profiles" || table === "users") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { status: "active" }, error: null }) })),
+          })),
+        };
+      }
       if (table !== "user_roles") throw new Error(`Unexpected table ${table}`);
       return {
         select: vi.fn(() => ({

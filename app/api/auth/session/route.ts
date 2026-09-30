@@ -11,6 +11,7 @@ import {
   type SessionBridgeRole,
 } from "@/lib/security/session-bridge";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { getUserAccessStatus } from "@/lib/user-access";
 
 function bearerToken(request: Request) {
   const [type, token] = (request.headers.get("authorization") || "").split(" ");
@@ -113,6 +114,14 @@ export async function POST(request: Request) {
 
   if (!user.email_confirmed_at) {
     return clearCookie(NextResponse.json({ error: "E-mail não confirmado." }, { status: 403 }));
+  }
+
+  if (isSupabaseAdminConfigured) {
+    const adminClient = createSupabaseAdminClient();
+    const accessStatus = await getUserAccessStatus(adminClient, user.id);
+    if (accessStatus === "blocked") {
+      return clearCookie(NextResponse.json({ error: "Acesso revogado. Entre em contato com o administrador.", code: "USER_ACCESS_BLOCKED" }, { status: 403 }));
+    }
   }
 
   const now = Math.floor(Date.now() / 1000);

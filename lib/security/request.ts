@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAuthServerClient, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { requireActiveUser } from "@/lib/user-access";
 
 function bearerToken(request: Request) {
   const [type, token] = (request.headers.get("authorization") || "").split(" ");
@@ -14,6 +15,8 @@ export async function requireAuthenticatedUser(request: Request) {
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return { response: NextResponse.json({ error: "Sessão inválida." }, { status: 401 }) };
   if (!data.user.email_confirmed_at) return { response: NextResponse.json({ error: "E-mail não confirmado." }, { status: 403 }) };
+  const blockedResponse = await requireActiveUser(data.user.id);
+  if (blockedResponse) return { response: blockedResponse };
   return { user: data.user };
 }
 

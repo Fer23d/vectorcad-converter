@@ -5,6 +5,7 @@ import { getUserRole, isAdminRole } from "@/lib/admin";
 import { consumeRateLimit, requestAddress, type RateLimitDecision } from "@/lib/security/rate-limit";
 import { recordSecurityEvent } from "@/lib/security/security-events";
 import { createSupabaseAdminClient, createSupabaseAuthServerClient, isSupabaseAdminConfigured, isSupabaseServerConfigured } from "@/lib/supabase/server";
+import { getUserAccessStatus } from "@/lib/user-access";
 
 const GENERIC_LOGIN_ERROR = "Não foi possível entrar. Verifique os dados e tente novamente.";
 const LOCKED_LOGIN_ERROR = "Muitas tentativas de login. Aguarde alguns minutos antes de tentar novamente.";
@@ -215,6 +216,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: EMAIL_NOT_CONFIRMED_ERROR, code: "EMAIL_NOT_CONFIRMED" }, { status: 403 });
     }
     return NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
+  }
+
+  if (isSupabaseAdminConfigured) {
+    const adminClient = createSupabaseAdminClient();
+    const accessStatus = await getUserAccessStatus(adminClient, data.user.id);
+    if (accessStatus === "blocked") {
+      await recordLoginFailure(request, email, "USER_ACCESS_BLOCKED", true);
+      return NextResponse.json({ error: "Acesso revogado. Entre em contato com o administrador.", code: "USER_ACCESS_BLOCKED" }, { status: 403 });
+    }
   }
 
   await recordSecurityEvent({

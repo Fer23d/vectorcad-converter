@@ -90,6 +90,7 @@ type AdminUser = {
   plan?: CompanyPlan;
   is_premium?: boolean;
   premium: boolean;
+  status?: "active" | "blocked";
   created_at: string;
   last_sign_in_at: string | null;
 };
@@ -144,6 +145,10 @@ export function AdminDashboard() {
   const [removeCompanyUser, setRemoveCompanyUser] = useState<AdminUser | null>(null);
   const [companyInput, setCompanyInput] = useState("SM&A");
   const [companySavingUserId, setCompanySavingUserId] = useState<string | null>(null);
+  const [accessSavingUserId, setAccessSavingUserId] = useState<string | null>(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<AdminUser | null>(null);
+  const [deleteUserConfirmation, setDeleteUserConfirmation] = useState("");
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [createCompanyOpen, setCreateCompanyOpen] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState("");
@@ -437,6 +442,92 @@ export function AdminDashboard() {
     if (!removeCompanyUser) return;
     const removed = await updateUserCompany(removeCompanyUser, null);
     if (removed) setRemoveCompanyUser(null);
+  };
+
+  const updateUserAccess = async (targetUser: AdminUser, status: "active" | "blocked") => {
+    if (!adminToken || !overview) return;
+    const previousOverview = overview;
+    const nextUsers = overview.users.map((user) => user.id === targetUser.id ? { ...user, status } : user);
+    setAccessSavingUserId(targetUser.id);
+    setOverview(rebuildOverviewUsers(overview, nextUsers));
+    setBackendFilteredUsers((current) => current ? current.map((user) => user.id === targetUser.id ? { ...user, status } : user) : current);
+
+    try {
+      const response = await fetch(`/api/admin/users/${targetUser.id}/access`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setOverview(previousOverview);
+        setBackendFilteredUsers(null);
+        setMessage(payload.error || "Não foi possível atualizar o acesso do usuário.");
+        showToast(payload.error || "Não foi possível atualizar o acesso do usuário.");
+        return;
+      }
+
+      setMessage(status === "blocked" ? "Acesso do usuário revogado." : "Acesso do usuário restaurado.");
+      showToast(status === "blocked" ? "Acesso revogado." : "Acesso restaurado.");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? `Não foi possível atualizar o acesso: ${error.message}` : "Não foi possível atualizar o acesso.";
+      setOverview(previousOverview);
+      setBackendFilteredUsers(null);
+      setMessage(errorMessage);
+      showToast(errorMessage);
+    } finally {
+      setAccessSavingUserId(null);
+    }
+  };
+
+  const deleteUserPermanently = async () => {
+    if (!adminToken || !overview || !deleteUserTarget) return;
+    if (deleteUserConfirmation !== "EXCLUIR") {
+      setMessage("Digite EXCLUIR para confirmar a exclusão permanente.");
+      showToast("Digite EXCLUIR para confirmar.");
+      return;
+    }
+
+    const previousOverview = overview;
+    setDeletingUserId(deleteUserTarget.id);
+    setOverview(rebuildOverviewUsers(overview, overview.users.filter((user) => user.id !== deleteUserTarget.id)));
+    setBackendFilteredUsers((current) => current ? current.filter((user) => user.id !== deleteUserTarget.id) : current);
+
+    try {
+      const response = await fetch(`/api/admin/users/${deleteUserTarget.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ confirmation: deleteUserConfirmation }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setOverview(previousOverview);
+        setBackendFilteredUsers(null);
+        setMessage(payload.error || "Não foi possível excluir o usuário permanentemente.");
+        showToast(payload.error || "Não foi possível excluir o usuário.");
+        return;
+      }
+
+      setDeleteUserTarget(null);
+      setDeleteUserConfirmation("");
+      setMessage("Usuário excluído permanentemente.");
+      showToast("Usuário excluído permanentemente.");
+      await refreshOverview().catch(() => null);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? `Não foi possível excluir o usuário: ${error.message}` : "Não foi possível excluir o usuário.";
+      setOverview(previousOverview);
+      setBackendFilteredUsers(null);
+      setMessage(errorMessage);
+      showToast(errorMessage);
+    } finally {
+      setDeletingUserId(null);
+    }
   };
 
   const createCompany = async () => {
@@ -756,17 +847,40 @@ export function AdminDashboard() {
         <section className="rounded-3xl border border-[#26312c] bg-[#101613] p-5">
           <h2 className="text-sm font-black uppercase tracking-[.14em]">Usuários</h2>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="text-[#7c8b83]"><tr><th className="py-2">E-mail</th><th>Empresa</th><th>Plano</th><th>ID</th><th>Criado em</th><th>Último login</th><th>Ações</th></tr></thead>
+            <table className="w-full min-w-[760px] text-left text-xs">
+              <thead className="text-[#7c8b83]"><tr><th className="py-2">E-mail</th><th>Status</th><th>Empresa</th><th>Plano</th><th>ID</th><th>Criado em</th><th>Último login</th><th>Ações</th></tr></thead>
               <tbody>
                 {filteredUsers.map((user) => <tr key={user.id} className="border-t border-[#26312c]">
                   <td className="py-3 font-bold text-[#e8efeb]">{user.email}</td>
+                  <td><AccessStatusBadge status={user.status || "active"} /></td>
                   <td className="text-[#9aa8a1]"><CompanyBadge company={user.company} premium={user.premium} /></td>
                   <td className="text-[#9aa8a1]"><PlanBadge plan={user.plan || (user.premium ? "empresarial" : "free")} premium={user.premium} /></td>
                   <td className="max-w-[180px] truncate text-[#9aa8a1]">{user.id}</td>
                   <td className="text-[#9aa8a1]">{formatDate(user.created_at)}</td>
                   <td className="text-[#9aa8a1]">{formatOptionalDate(user.last_sign_in_at)}</td>
-                  <td>
+                  <td className="min-w-[240px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={accessSavingUserId === user.id}
+                        onClick={() => updateUserAccess(user, user.status === "blocked" ? "active" : "blocked")}
+                        className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black transition disabled:opacity-50 ${user.status === "blocked" ? "text-[#b7f34a] hover:bg-[#172314]" : "text-[#ffd27a] hover:bg-[#2a2111]"}`}
+                      >
+                        <ShieldAlert size={12} /> {accessSavingUserId === user.id ? "Salvando..." : user.status === "blocked" ? "Restaurar acesso" : "Revogar acesso"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingUserId === user.id}
+                        onClick={() => {
+                          setDeleteUserTarget(user);
+                          setDeleteUserConfirmation("");
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black text-[#ff8f8f] transition hover:bg-[#2a1111] disabled:opacity-50"
+                      >
+                        <Trash2 size={12} /> Excluir permanentemente
+                      </button>
+                    </div>
+                    <div className="mt-2">
                     {user.company ? <button
                       type="button"
                       disabled={companySavingUserId === user.id}
@@ -775,6 +889,7 @@ export function AdminDashboard() {
                     >
                       <XCircle size={12} /> Remover
                     </button> : <span className="text-[10px] font-bold text-[#5f6b65]">Sem empresa</span>}
+                    </div>
                   </td>
                 </tr>)}
               </tbody>
@@ -840,6 +955,38 @@ export function AdminDashboard() {
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={() => setRemoveCompanyUser(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
           <button type="button" disabled={companySavingUserId === removeCompanyUser.id} onClick={confirmRemoveUserCompany} className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-60">
             {companySavingUserId === removeCompanyUser.id ? "Removendo..." : "Confirmar remocao"}
+          </button>
+        </div>
+      </div>
+    </div>}
+
+    {deleteUserTarget && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-3xl border border-[#5a2020] bg-[#101613] p-6 shadow-2xl shadow-black/50">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[#2a1111] text-[#ff8f8f]"><Trash2 size={22} /></div>
+        <h3 className="mt-4 text-xl font-black">Excluir usuário permanentemente</h3>
+        <p className="mt-2 text-sm leading-6 text-[#9caaa3]">
+          Esta ação remove a conta de <span className="font-bold text-[#e8efeb]">{deleteUserTarget.email}</span>, seus projetos, dados relacionados e arquivos próprios no Storage. Logs administrativos mínimos serão preservados.
+        </p>
+        <p className="mt-3 rounded-2xl border border-[#5a2020] bg-[#1a0d0d] p-3 text-xs leading-5 text-[#ffb3b3]">
+          A exclusão é permanente. Para bloquear temporariamente, use Revogar acesso.
+        </p>
+        <label className="mt-4 block text-xs font-bold text-[#aab8b1]">Digite EXCLUIR para confirmar
+          <input
+            value={deleteUserConfirmation}
+            onChange={(event) => setDeleteUserConfirmation(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-[#4a2a2a] bg-[#0b100e] px-4 py-3 text-sm text-[#eef5f1] outline-none focus:border-[#ff8f8f]"
+            placeholder="EXCLUIR"
+          />
+        </label>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" disabled={deletingUserId === deleteUserTarget.id} onClick={() => setDeleteUserTarget(null)} className="rounded-xl border border-[#34413b] px-4 py-3 text-xs font-black text-[#d6e0da] transition hover:border-[#b7f34a] hover:text-[#b7f34a] disabled:opacity-50">Cancelar</button>
+          <button
+            type="button"
+            disabled={deletingUserId === deleteUserTarget.id || deleteUserConfirmation !== "EXCLUIR"}
+            onClick={deleteUserPermanently}
+            className="rounded-xl bg-[#ff8f8f] px-4 py-3 text-xs font-black text-[#190909] transition hover:brightness-105 disabled:opacity-50"
+          >
+            {deletingUserId === deleteUserTarget.id ? "Excluindo..." : "Excluir permanentemente"}
           </button>
         </div>
       </div>
@@ -915,6 +1062,12 @@ function PlanBadge({ plan, premium }: { plan: CompanyPlan; premium?: boolean }) 
   return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black uppercase ${highlighted ? "bg-[#b7f34a] text-[#09120d]" : "bg-[#111915] text-[#8c9a93]"}`}>{normalizedPlan}</span>;
 }
 
+function AccessStatusBadge({ status }: { status: "active" | "blocked" }) {
+  return status === "blocked"
+    ? <span className="inline-flex rounded-full bg-[#2a1111] px-2 py-1 text-[10px] font-black uppercase text-[#ff8f8f]">Bloqueado</span>
+    : <span className="inline-flex rounded-full bg-[#172314] px-2 py-1 text-[10px] font-black uppercase text-[#b7f34a]">Ativo</span>;
+}
+
 function CollapsibleSection({ title, collapsed, onToggle, children, accent = false }: { title: string; collapsed: boolean; onToggle: () => void; children: React.ReactNode; accent?: boolean }) {
   return <section className={`rounded-3xl border bg-[#101613] p-5 ${accent ? "border-[#b7f34a]/40" : "border-[#26312c]"}`}>
     <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 text-left">
@@ -930,7 +1083,10 @@ function CollapsibleSection({ title, collapsed, onToggle, children, accent = fal
 function UserList({ users, empty, actionLabel, actionIcon, actionTone = "default", loadingUserId, onAction }: { users: AdminUser[]; empty: string; actionLabel?: string; actionIcon?: React.ReactNode; actionTone?: "default" | "danger"; loadingUserId?: string | null; onAction?: (user: AdminUser) => void }) {
   return <div className="mt-4 grid gap-2">
     {users.length ? users.map((user) => <div key={user.id} className="rounded-2xl border border-[#27352f] bg-[#0c110f] p-4">
-      <div className="truncate text-sm font-black text-[#e8efeb]">{user.email}</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="truncate text-sm font-black text-[#e8efeb]">{user.email}</div>
+        <AccessStatusBadge status={user.status || "active"} />
+      </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#8c9a93]"><CompanyBadge company={user.company} premium={user.premium} /> {formatOptionalDate(user.last_sign_in_at)}</div>
       {actionLabel && onAction && <button
         type="button"

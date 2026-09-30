@@ -2,8 +2,8 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { normalizeCompanyPlan, type CompanyPlan } from "@/lib/access-control";
 
 export type AdminPlanSource = "COMPANY" | "SUBSCRIPTION" | "PROFILE" | "DEFAULT";
-export type AdminProfileRow = { user_id: string; plan?: string | null; is_premium?: boolean | null; company?: string | null; company_id?: string | null; usage_count_today?: number | null; export3d_count_today?: number | null };
-export type AdminBillingUserRow = { id: string; plan?: string | null; company?: string | null; company_id?: string | null; usage_count_today?: number | null; export3d_count_today?: number | null };
+export type AdminProfileRow = { user_id: string; plan?: string | null; is_premium?: boolean | null; company?: string | null; company_id?: string | null; status?: string | null; usage_count_today?: number | null; export3d_count_today?: number | null };
+export type AdminBillingUserRow = { id: string; email?: string | null; plan?: string | null; is_premium?: boolean | null; company?: string | null; company_id?: string | null; status?: string | null; usage_count_today?: number | null; export3d_count_today?: number | null };
 export type AdminMembershipRow = { user_id: string; company_id?: string | null; company_name?: string | null; plan_grant?: string | null };
 export type AdminCompanyRow = { id: string; name: string; plan?: string | null };
 export type AdminSubscriptionRow = { user_id: string; plan?: string | null; status?: string | null; amount?: number | string | null; created_at?: string | null; updated_at?: string | null };

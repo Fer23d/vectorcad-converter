@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     { data: rolesData, error: rolesError },
   ] = await Promise.all([
     adminClient.from("projects").select("id,name,user_id,type,created_at,updated_at").order("created_at", { ascending: false }),
-    adminClient.from("users").select("id,email,company,company_id,plan,is_premium"),
+    adminClient.from("users").select("id,email,company,company_id,plan,is_premium,status"),
     adminClient.from("companies").select("id,name,plan,created_at,updated_at").order("name", { ascending: true }),
     adminClient.from("admin_logs").select("id,admin_id,action,target_type,target_id,metadata,created_at").order("created_at", { ascending: false }).limit(40),
     adminClient.from("user_roles").select("user_id,role"),
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
   const [authUsers, { data: profilesData, error: profilesError }, { data: membershipsData, error: membershipsError }, { data: subscriptionsData, error: subscriptionsError }] = await Promise.all([
     listAllAuthUsers(adminClient),
-    adminClient.from("profiles").select("user_id,plan,is_premium,company,company_id"),
+    adminClient.from("profiles").select("user_id,plan,is_premium,company,company_id,status"),
     adminClient.from("companies_users").select("user_id,company_id,company_name,plan_grant"),
     adminClient.from("subscriptions").select("user_id,plan,status,amount,created_at,updated_at"),
   ]);
@@ -49,6 +49,7 @@ export async function GET(request: Request) {
   if (subscriptionsError) return NextResponse.json({ error: subscriptionsError.message }, { status: 500 });
 
   const appUsersById = new Map((appUsersData || []).map((appUser) => [appUser.id, appUser]));
+  const profilesById = new Map(((profilesData || []) as AdminProfileRow[]).map((profile) => [profile.user_id, profile]));
   if (rolesError) return NextResponse.json({ error: rolesError.message }, { status: 500 });
   const rolesByUserId = new Map((rolesData || []).map((row) => [row.user_id, normalizeAdminRole(row.role)]));
   const companyRecords = companiesError ? [] : companiesData || [];
@@ -66,6 +67,7 @@ export async function GET(request: Request) {
 
   const users = authUsers.map((user) => {
     const appUser = appUsersById.get(user.id);
+    const profile = profilesById.get(user.id);
     const effective = resolutions.get(user.id)!;
 
     const companyRecord = effective.companyId ? companyById.get(effective.companyId) : effective.company ? companyByName.get(effective.company) : null;
@@ -82,6 +84,7 @@ export async function GET(request: Request) {
       plan: effective.plan,
       planSource: effective.source,
       role: rolesByUserId.get(user.id) || "USER",
+      status: appUser?.status || profile?.status || "active",
       is_premium: premium,
       premium,
       created_at: user.created_at,
